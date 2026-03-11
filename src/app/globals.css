@@ -3,24 +3,66 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-display: "Trebuchet MS", "Avenir Next Condensed", "Arial Narrow", sans-serif;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+}
+
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+}
+
+.dukaanhq-map-pin {
+  background: transparent;
+  border: 0;
+}
+
+.dukaanhq-map-pin__dot {
+  position: absolute;
+  inset: 4px;
+  border-radius: 9999px;
+  background: #111827;
+  border: 3px solid #ffffff;
+  box-shadow: 0 6px 18px rgba(17, 24, 39, 0.28);
+}
+
+.dukaanhq-map-pin__pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: rgba(17, 24, 39, 0.14);
 }
