@@ -14,13 +14,23 @@ export default async function OnboardingPage() {
     redirect("/auth/login");
   }
 
+  const { data: existingMembership } = await supabase
+    .from("shop_members")
+    .select("shop_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existingMembership) {
+    redirect("/dashboard?toast=already-has-shop");
+  }
+
   return (
     <main className="h-screen bg-stone-100 text-stone-950">
       <div className="mx-auto flex h-screen w-full max-w-2xl flex-col overflow-y-auto bg-white px-4 py-4 md:px-6">
         <header className="flex items-center justify-between gap-3 border-b border-stone-100 pb-4">
           <div className="flex items-center gap-3">
             <Link
-              href="/app"
+              href="/dashboard"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-700 transition hover:bg-stone-50"
               aria-label="Back to app"
             >

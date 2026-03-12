@@ -37,7 +37,7 @@ export default async function LoginPage() {
   } = await supabase.auth.getUser();
 
   if (user) {
-    redirect("/app");
+    redirect("/dashboard");
   }
 
   return (

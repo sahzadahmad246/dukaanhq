@@ -28,6 +28,7 @@ const onboardingSchema = z.object({
   phone: tenDigitPhone,
   email: z.email("Enter a valid business email."),
   whatsapp: z.union([z.literal(""), tenDigitPhone]),
+  logoUrl: z.url().optional().or(z.literal("")),
   addressLine1: z.string().min(4, "Address line 1 is required."),
   addressLine2: z.string().optional(),
   city: z.string().min(2, "City is required."),
@@ -74,6 +75,7 @@ export async function createShopAction(
     phone: getString(formData, "phone"),
     email: getString(formData, "email"),
     whatsapp: getString(formData, "whatsapp"),
+    logoUrl: getString(formData, "logoUrl"),
     addressLine1: getString(formData, "addressLine1"),
     addressLine2: getString(formData, "addressLine2"),
     city: getString(formData, "city"),
@@ -140,6 +142,7 @@ export async function createShopAction(
       legal_name: values.legalName || null,
       slug: values.slug,
       category: "electronics_mobile",
+      logo_url: values.logoUrl || null,
       phone: values.phone,
       email: values.email,
       whatsapp: values.whatsapp || null,
@@ -201,5 +204,7 @@ export async function createShopAction(
     return { status: "error", message: profileError.message, fieldErrors: {} };
   }
 
-  redirect("/app");
+  await supabase.from("onboarding_drafts").delete().eq("user_id", user.id);
+
+  redirect("/dashboard?toast=shop-created");
 }

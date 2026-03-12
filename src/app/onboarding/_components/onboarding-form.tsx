@@ -9,6 +9,7 @@ import {
   ImagePlus,
   LoaderCircle,
   MapPin,
+  Pencil,
   Upload,
   X,
 } from "lucide-react";
@@ -33,6 +34,7 @@ const steps = [
   { id: 3, key: "address", title: "Address" },
   { id: 4, key: "billing", title: "Billing" },
   { id: 5, key: "hours", title: "Hours" },
+  { id: 6, key: "preview", title: "Preview" },
 ] as const;
 
 const workingDays = [
@@ -45,6 +47,8 @@ const workingDays = [
   { value: "sunday", label: "Sun" },
 ] as const;
 
+const ONBOARDING_DRAFT_STORAGE_KEY = "dukaanhq:onboarding:draft";
+
 type OnboardingFormProps = {
   defaultBusinessEmail: string;
 };
@@ -52,6 +56,41 @@ type OnboardingFormProps = {
 type SlugState = "idle" | "checking" | "available" | "taken" | "error";
 type FieldErrors = Record<string, string>;
 type LatLng = { lat: number; lng: number };
+type OnboardingDraft = {
+  currentStep: number;
+  slugManuallyEdited: boolean;
+  invoicePrefixEdited: boolean;
+  shopName: string;
+  legalName: string;
+  slugInput: string;
+  phone: string;
+  email: string;
+  whatsapp: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateValue: string;
+  postalCode: string;
+  country: string;
+  latitude: string;
+  longitude: string;
+  location: LatLng | null;
+  gstNumber: string;
+  invoicePrefix: string;
+  currency: string;
+  taxMode: string;
+  invoiceFooter: string;
+  openingTime: string;
+  closingTime: string;
+  selectedDays: string[];
+  logoUrl: string;
+  logoFileName: string;
+  logoPublicId: string;
+};
+
+function isBlobUrl(value: string | null): value is string {
+  return Boolean(value?.startsWith("blob:"));
+}
 
 function StepIndicator({
   currentStep,
@@ -61,6 +100,7 @@ function StepIndicator({
   onStepChange: (step: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stepRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -81,6 +121,15 @@ function StepIndicator({
       window.removeEventListener("resize", update);
     };
   }, []);
+
+  useEffect(() => {
+    const activeButton = stepRefs.current[currentStep - 1];
+    activeButton?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [currentStep]);
 
   return (
     <div className="space-y-3">
@@ -114,6 +163,9 @@ function StepIndicator({
             return (
               <div key={step.id} className="flex items-start">
                 <button
+                  ref={(element) => {
+                    stepRefs.current[index] = element;
+                  }}
                   type="button"
                   onClick={() => onStepChange(step.id)}
                   className="flex min-w-20 flex-col items-center gap-2 text-center"
@@ -223,9 +275,46 @@ function LogoPicker({ previewUrl, fileName, showPreview, onOpenPreview, onCloseP
   );
 }
 
+function PreviewField({
+  label,
+  value,
+  step,
+  onEdit,
+}: {
+  label: string;
+  value: React.ReactNode;
+  step: number;
+  onEdit: (step: number) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-2xl bg-stone-50 px-4 py-3">
+      <div className="min-w-0">
+        <div className="text-xs font-medium uppercase tracking-[0.16em] text-stone-500">{label}</div>
+        <div className="mt-1 break-words text-sm text-stone-900">{value || "-"}</div>
+      </div>
+      <button
+        type="button"
+        onClick={() => onEdit(step)}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 transition hover:bg-stone-100"
+        aria-label={`Edit ${label}`}
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 function getInitialStep() {
   if (typeof window === "undefined") return 1;
   return Math.max(1, steps.find((step) => step.key === new URLSearchParams(window.location.search).get("step"))?.id ?? 1);
+}
+
+function buildSlugSuggestion(value: string) {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+
+function buildInvoicePrefixSuggestion(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
 }
 
 export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
@@ -258,16 +347,174 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
   const [selectedDays, setSelectedDays] = useState<string[]>(workingDays.slice(0, 6).map((day) => day.value));
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [logoFileName, setLogoFileName] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [logoPublicId, setLogoPublicId] = useState("");
   const [showLogoPreview, setShowLogoPreview] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState("");
   const [slugState, setSlugState] = useState<SlugState>("idle");
   const [slugMessage, setSlugMessage] = useState("");
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const [state, formAction, isPending] = useActionState<OnboardingActionState, FormData>(createShopAction, initialOnboardingState);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [serverDraftChecked, setServerDraftChecked] = useState(false);
 
-  const slugSuggestion = useMemo(() => shopName.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40), [shopName]);
-  const invoicePrefixSuggestion = useMemo(() => shopName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6), [shopName]);
+  const slugSuggestion = useMemo(() => buildSlugSuggestion(shopName), [shopName]);
+  const invoicePrefixSuggestion = useMemo(() => buildInvoicePrefixSuggestion(shopName), [shopName]);
   const slugValue = slugManuallyEdited ? slugInput : slugSuggestion;
   const invoicePrefixValue = invoicePrefixEdited ? invoicePrefix : invoicePrefixSuggestion;
+
+  useEffect(() => {
+    if (!slugValue) {
+      setSlugState("idle");
+      setSlugMessage("");
+    }
+  }, [slugValue]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const rawDraft = window.localStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY);
+      if (!rawDraft) {
+        setDraftHydrated(true);
+        return;
+      }
+
+      const draft = JSON.parse(rawDraft) as Partial<OnboardingDraft>;
+
+      if (typeof draft.currentStep === "number") {
+        setCurrentStep(Math.max(1, Math.min(steps.length, draft.currentStep)));
+      }
+      const draftShopName = typeof draft.shopName === "string" ? draft.shopName : "";
+      const draftSlugInput = typeof draft.slugInput === "string" ? draft.slugInput : "";
+      const draftInvoicePrefix = typeof draft.invoicePrefix === "string" ? draft.invoicePrefix : "";
+      const inferredSlugManual = typeof draft.slugManuallyEdited === "boolean"
+        ? draft.slugManuallyEdited && draftSlugInput !== buildSlugSuggestion(draftShopName)
+        : draftSlugInput !== "" && draftSlugInput !== buildSlugSuggestion(draftShopName);
+      const inferredInvoicePrefixManual = typeof draft.invoicePrefixEdited === "boolean"
+        ? draft.invoicePrefixEdited && draftInvoicePrefix !== buildInvoicePrefixSuggestion(draftShopName)
+        : draftInvoicePrefix !== "" && draftInvoicePrefix !== buildInvoicePrefixSuggestion(draftShopName);
+
+      setSlugManuallyEdited(inferredSlugManual);
+      setInvoicePrefixEdited(inferredInvoicePrefixManual);
+      if (typeof draft.shopName === "string") setShopName(draft.shopName);
+      if (typeof draft.legalName === "string") setLegalName(draft.legalName);
+      if (typeof draft.slugInput === "string") setSlugInput(draft.slugInput);
+      if (typeof draft.phone === "string") setPhone(draft.phone);
+      if (typeof draft.email === "string") setEmail(draft.email);
+      if (typeof draft.whatsapp === "string") setWhatsapp(draft.whatsapp);
+      if (typeof draft.addressLine1 === "string") setAddressLine1(draft.addressLine1);
+      if (typeof draft.addressLine2 === "string") setAddressLine2(draft.addressLine2);
+      if (typeof draft.city === "string") setCity(draft.city);
+      if (typeof draft.stateValue === "string") setStateValue(draft.stateValue);
+      if (typeof draft.postalCode === "string") setPostalCode(draft.postalCode);
+      if (typeof draft.country === "string") setCountry(draft.country);
+      if (typeof draft.latitude === "string") setLatitude(draft.latitude);
+      if (typeof draft.longitude === "string") setLongitude(draft.longitude);
+      if (draft.location && typeof draft.location.lat === "number" && typeof draft.location.lng === "number") {
+        setLocation(draft.location);
+      }
+      if (typeof draft.gstNumber === "string") setGstNumber(draft.gstNumber);
+      if (typeof draft.invoicePrefix === "string") setInvoicePrefix(draft.invoicePrefix);
+      if (typeof draft.currency === "string") setCurrency(draft.currency);
+      if (typeof draft.taxMode === "string") setTaxMode(draft.taxMode);
+      if (typeof draft.invoiceFooter === "string") setInvoiceFooter(draft.invoiceFooter);
+      if (typeof draft.openingTime === "string") setOpeningTime(draft.openingTime);
+      if (typeof draft.closingTime === "string") setClosingTime(draft.closingTime);
+      if (Array.isArray(draft.selectedDays)) setSelectedDays(draft.selectedDays);
+      if (typeof draft.logoUrl === "string") {
+        setLogoUrl(draft.logoUrl);
+        setLogoPreviewUrl(draft.logoUrl || null);
+      }
+      if (typeof draft.logoFileName === "string") setLogoFileName(draft.logoFileName);
+      if (typeof draft.logoPublicId === "string") setLogoPublicId(draft.logoPublicId);
+    } catch {
+      window.localStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+    } finally {
+      setDraftHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRemoteDraft() {
+      try {
+        const response = await fetch("/api/onboarding-draft", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const result = (await response.json()) as { draft?: Partial<OnboardingDraft> | null };
+        const draft = result.draft;
+        if (!draft || cancelled) {
+          return;
+        }
+
+        if (typeof draft.currentStep === "number") {
+          setCurrentStep(Math.max(1, Math.min(steps.length, draft.currentStep)));
+        }
+        const draftShopName = typeof draft.shopName === "string" ? draft.shopName : "";
+        const draftSlugInput = typeof draft.slugInput === "string" ? draft.slugInput : "";
+        const draftInvoicePrefix = typeof draft.invoicePrefix === "string" ? draft.invoicePrefix : "";
+        const inferredSlugManual = typeof draft.slugManuallyEdited === "boolean"
+          ? draft.slugManuallyEdited && draftSlugInput !== buildSlugSuggestion(draftShopName)
+          : draftSlugInput !== "" && draftSlugInput !== buildSlugSuggestion(draftShopName);
+        const inferredInvoicePrefixManual = typeof draft.invoicePrefixEdited === "boolean"
+          ? draft.invoicePrefixEdited && draftInvoicePrefix !== buildInvoicePrefixSuggestion(draftShopName)
+          : draftInvoicePrefix !== "" && draftInvoicePrefix !== buildInvoicePrefixSuggestion(draftShopName);
+
+        setSlugManuallyEdited(inferredSlugManual);
+        setInvoicePrefixEdited(inferredInvoicePrefixManual);
+        if (typeof draft.shopName === "string") setShopName(draft.shopName);
+        if (typeof draft.legalName === "string") setLegalName(draft.legalName);
+        if (typeof draft.slugInput === "string") setSlugInput(draft.slugInput);
+        if (typeof draft.phone === "string") setPhone(draft.phone);
+        if (typeof draft.email === "string") setEmail(draft.email);
+        if (typeof draft.whatsapp === "string") setWhatsapp(draft.whatsapp);
+        if (typeof draft.addressLine1 === "string") setAddressLine1(draft.addressLine1);
+        if (typeof draft.addressLine2 === "string") setAddressLine2(draft.addressLine2);
+        if (typeof draft.city === "string") setCity(draft.city);
+        if (typeof draft.stateValue === "string") setStateValue(draft.stateValue);
+        if (typeof draft.postalCode === "string") setPostalCode(draft.postalCode);
+        if (typeof draft.country === "string") setCountry(draft.country);
+        if (typeof draft.latitude === "string") setLatitude(draft.latitude);
+        if (typeof draft.longitude === "string") setLongitude(draft.longitude);
+        if (draft.location && typeof draft.location.lat === "number" && typeof draft.location.lng === "number") {
+          setLocation(draft.location);
+        }
+        if (typeof draft.gstNumber === "string") setGstNumber(draft.gstNumber);
+        if (typeof draft.invoicePrefix === "string") setInvoicePrefix(draft.invoicePrefix);
+        if (typeof draft.currency === "string") setCurrency(draft.currency);
+        if (typeof draft.taxMode === "string") setTaxMode(draft.taxMode);
+        if (typeof draft.invoiceFooter === "string") setInvoiceFooter(draft.invoiceFooter);
+        if (typeof draft.openingTime === "string") setOpeningTime(draft.openingTime);
+        if (typeof draft.closingTime === "string") setClosingTime(draft.closingTime);
+        if (Array.isArray(draft.selectedDays)) setSelectedDays(draft.selectedDays);
+        if (typeof draft.logoUrl === "string") {
+          setLogoUrl(draft.logoUrl);
+          setLogoPreviewUrl(draft.logoUrl || null);
+        }
+        if (typeof draft.logoFileName === "string") setLogoFileName(draft.logoFileName);
+        if (typeof draft.logoPublicId === "string") setLogoPublicId(draft.logoPublicId);
+      } catch {
+        return;
+      } finally {
+        if (!cancelled) {
+          setServerDraftChecked(true);
+        }
+      }
+    }
+
+    loadRemoteDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -286,6 +533,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
     const controller = new AbortController();
     const timeoutId = setTimeout(async () => {
       setSlugState("checking");
+      setSlugMessage("");
       try {
         const response = await fetch(`/api/slug-check?slug=${encodeURIComponent(slugValue)}`, { signal: controller.signal });
         const result = (await response.json()) as { available: boolean; message?: string };
@@ -315,13 +563,151 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
   }, [slugValue]);
 
   useEffect(() => {
-    if (typeof navigator === "undefined" || location) return;
+    if (typeof navigator === "undefined" || location || !draftHydrated) return;
     navigator.geolocation.getCurrentPosition((position) => {
       setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
       setLatitude(position.coords.latitude.toFixed(6));
       setLongitude(position.coords.longitude.toFixed(6));
     });
-  }, [location]);
+  }, [draftHydrated, location]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !draftHydrated) {
+      return;
+    }
+
+    const draft: OnboardingDraft = {
+      currentStep,
+      slugManuallyEdited,
+      invoicePrefixEdited,
+      shopName,
+      legalName,
+      slugInput,
+      phone,
+      email,
+      whatsapp,
+      addressLine1,
+      addressLine2,
+      city,
+      stateValue,
+      postalCode,
+      country,
+      latitude,
+      longitude,
+      location,
+      gstNumber,
+      invoicePrefix,
+      currency,
+      taxMode,
+      invoiceFooter,
+      openingTime,
+      closingTime,
+      selectedDays,
+      logoUrl,
+      logoFileName,
+      logoPublicId,
+    };
+
+    window.localStorage.setItem(ONBOARDING_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+
+    if (!serverDraftChecked) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      fetch("/api/onboarding-draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft }),
+      }).catch(() => undefined);
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    currentStep,
+    slugManuallyEdited,
+    invoicePrefixEdited,
+    shopName,
+    legalName,
+    slugInput,
+    phone,
+    email,
+    whatsapp,
+    addressLine1,
+    addressLine2,
+    city,
+    stateValue,
+    postalCode,
+    country,
+    latitude,
+    longitude,
+    location,
+    gstNumber,
+    invoicePrefix,
+    currency,
+    taxMode,
+    invoiceFooter,
+    openingTime,
+    closingTime,
+    selectedDays,
+    logoUrl,
+    logoFileName,
+    logoPublicId,
+    draftHydrated,
+    serverDraftChecked,
+  ]);
+
+  async function clearDraft() {
+    if (isBlobUrl(logoPreviewUrl)) {
+      URL.revokeObjectURL(logoPreviewUrl);
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+    }
+    if (logoPublicId) {
+      fetch("/api/onboarding-draft/logo", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicId: logoPublicId }),
+      }).catch(() => undefined);
+    }
+    fetch("/api/onboarding-draft", { method: "DELETE" }).catch(() => undefined);
+    setCurrentStep(getInitialStep());
+    setSlugManuallyEdited(false);
+    setInvoicePrefixEdited(false);
+    setShopName("");
+    setLegalName("");
+    setSlugInput("");
+    setPhone("");
+    setEmail(defaultBusinessEmail);
+    setWhatsapp("");
+    setAddressLine1("");
+    setAddressLine2("");
+    setCity("");
+    setStateValue("");
+    setPostalCode("");
+    setCountry("India");
+    setLatitude("");
+    setLongitude("");
+    setLocation(null);
+    setIsResolvingLocation(false);
+    setGstNumber("");
+    setInvoicePrefix("");
+    setCurrency("INR");
+    setTaxMode("exclusive");
+    setInvoiceFooter("");
+    setOpeningTime("10:00");
+    setClosingTime("20:00");
+    setSelectedDays(workingDays.slice(0, 6).map((day) => day.value));
+    setLogoPreviewUrl(null);
+    setLogoFileName("");
+    setLogoUrl("");
+    setLogoPublicId("");
+    setShowLogoPreview(false);
+    setIsUploadingLogo(false);
+    setLogoUploadError("");
+    setClientErrors({});
+  }
 
   useEffect(() => {
     if (!location) return;
@@ -335,12 +721,9 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
         const address = result.address ?? {};
         const locality = address.city ?? address.town ?? address.village ?? address.suburb ?? "";
         const region = address.state ?? address.county ?? "";
-        const line1 = [address.house_number, address.road].filter(Boolean).join(" ").trim();
-        if (line1) setAddressLine1(line1);
         if (locality) setCity(locality);
         if (region) setStateValue(region);
         if (address.country) setCountry(address.country);
-        if (address.postcode) setPostalCode(address.postcode);
       })
       .catch(() => undefined)
       .finally(() => setIsResolvingLocation(false));
@@ -369,7 +752,6 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
       if (!shopName.trim()) nextErrors.shopName = "Shop name is required.";
       if (!slugValue.trim()) nextErrors.slug = "Shop slug is required.";
       if (slugState === "taken") nextErrors.slug = "Slug is already taken.";
-      if (slugState === "error") nextErrors.slug = slugMessage || "Slug check failed.";
     }
     if (step === 2) {
       if (!/^\d{10}$/.test(phone)) nextErrors.phone = "Enter a valid 10-digit mobile number.";
@@ -402,23 +784,142 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
     setCurrentStep(Math.max(1, Math.min(steps.length, step)));
   }
 
-  function handleLogoChange(file: File | null) {
+  const previewSections = [
+    {
+      title: "Basic info",
+      items: [
+        { label: "Shop name", value: shopName, step: 1 },
+        { label: "Legal name", value: legalName, step: 1 },
+        { label: "Slug", value: slugValue, step: 1 },
+        {
+          label: "Logo",
+          value: logoPreviewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreviewUrl} alt="Shop logo" className="h-14 w-14 rounded-2xl object-cover" />
+          ) : "No logo selected",
+          step: 1,
+        },
+      ],
+    },
+    {
+      title: "Contact",
+      items: [
+        { label: "Phone", value: phone, step: 2 },
+        { label: "WhatsApp", value: whatsapp, step: 2 },
+        { label: "Email", value: email, step: 2 },
+      ],
+    },
+    {
+      title: "Address",
+      items: [
+        { label: "Address line 1", value: addressLine1, step: 3 },
+        { label: "Address line 2", value: addressLine2, step: 3 },
+        { label: "City", value: city, step: 3 },
+        { label: "State", value: stateValue, step: 3 },
+        { label: "Postal code", value: postalCode, step: 3 },
+        { label: "Country", value: country, step: 3 },
+        { label: "Latitude", value: latitude, step: 3 },
+        { label: "Longitude", value: longitude, step: 3 },
+      ],
+    },
+    {
+      title: "Billing",
+      items: [
+        { label: "GST number", value: gstNumber, step: 4 },
+        { label: "Invoice prefix", value: invoicePrefixValue, step: 4 },
+        { label: "Currency", value: currency, step: 4 },
+        { label: "Tax mode", value: taxMode, step: 4 },
+        { label: "Invoice footer", value: invoiceFooter, step: 4 },
+      ],
+    },
+    {
+      title: "Business timings",
+      items: [
+        { label: "Opening time", value: openingTime, step: 5 },
+        { label: "Closing time", value: closingTime, step: 5 },
+        { label: "Working days", value: selectedDays.map((day) => workingDays.find((item) => item.value === day)?.label ?? day).join(", "), step: 5 },
+      ],
+    },
+  ];
+
+  async function handleLogoChange(file: File | null) {
     if (!file) {
-      if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+      if (isBlobUrl(logoPreviewUrl)) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+      if (logoPublicId) {
+        fetch("/api/onboarding-draft/logo", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ publicId: logoPublicId }),
+        }).catch(() => undefined);
+      }
       setLogoPreviewUrl(null);
       setLogoFileName("");
+      setLogoUrl("");
+      setLogoPublicId("");
+      setLogoUploadError("");
       return;
     }
+
     const objectUrl = URL.createObjectURL(file);
-    if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+    if (isBlobUrl(logoPreviewUrl)) {
+      URL.revokeObjectURL(logoPreviewUrl);
+    }
     setLogoPreviewUrl(objectUrl);
     setLogoFileName(file.name);
+    setLogoUploadError("");
+    setIsUploadingLogo(true);
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append("file", file);
+      const response = await fetch("/api/onboarding-draft/logo", {
+        method: "POST",
+        body: uploadFormData,
+      });
+      const result = (await response.json()) as {
+        secureUrl?: string;
+        publicId?: string;
+        originalFilename?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !result.secureUrl || !result.publicId) {
+        setLogoUploadError(result.message ?? "Could not upload logo right now.");
+        return;
+      }
+
+      if (logoPublicId && logoPublicId !== result.publicId) {
+        fetch("/api/onboarding-draft/logo", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ publicId: logoPublicId }),
+        }).catch(() => undefined);
+      }
+
+      setLogoUrl(result.secureUrl);
+      setLogoPublicId(result.publicId);
+      setLogoFileName(result.originalFilename ?? file.name);
+    } catch {
+      setLogoUploadError("Could not upload logo right now.");
+    } finally {
+      setIsUploadingLogo(false);
+    }
   }
 
   return (
     <form action={formAction} className="space-y-5">
-      <StepIndicator currentStep={currentStep} onStepChange={goToStep} />
-      {state.message && Object.keys(state.fieldErrors ?? {}).length === 0 ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{state.message}</div> : null}
+      <div className="sticky top-[-1rem] z-[1100] -mx-4 -mt-5 bg-white px-4 py-3 md:-mx-6 md:px-6">
+        <StepIndicator currentStep={currentStep} onStepChange={goToStep} />
+      </div>
+      {state.message ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{state.message}</div> : null}
+      <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
+        <span>Draft is saved locally in this browser while you fill the form.</span>
+        <button type="button" onClick={clearDraft} className="font-medium text-stone-700 transition hover:text-stone-950">
+          Clear draft
+        </button>
+      </div>
 
       <div className="space-y-5 py-2">
         {currentStep === 1 ? (
@@ -431,9 +932,12 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
               <TextInput id="legalName" name="legalName" value={legalName} onChange={setLegalName} placeholder="Soni Electronics Pvt Ltd" />
             </FieldShell>
             <FieldShell label="Shop slug" name="slug" required error={getError("slug")}>
-              <TextInput id="slug" name="slug" value={slugValue} onChange={(value) => { const next = value.toLowerCase().replace(/\s+/g, "-"); setSlugManuallyEdited(true); setSlugInput(next); setError("slug", next.trim() ? "" : "Shop slug is required."); }} placeholder="soni-mobile-world" rightAdornment={slugState === "checking" ? <LoaderCircle className="h-4 w-4 animate-spin text-stone-400" /> : slugState === "available" ? <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Check className="h-3.5 w-3.5" /></span> : null} />
+              <TextInput id="slug" name="slug" value={slugValue} onChange={(value) => { const next = value.toLowerCase().replace(/\s+/g, "-"); setSlugManuallyEdited(true); setSlugInput(next); setError("slug", next.trim() ? "" : "Shop slug is required."); }} placeholder="soni-mobile-world" rightAdornment={slugState === "checking" ? <LoaderCircle className="h-4 w-4 animate-spin text-stone-400" /> : slugState === "available" ? <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Check className="h-3.5 w-3.5" /></span> : slugState === "taken" || slugState === "error" ? <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600"><X className="h-3.5 w-3.5" /></span> : null} />
             </FieldShell>
-            <LogoPicker previewUrl={logoPreviewUrl} fileName={logoFileName} showPreview={showLogoPreview} onOpenPreview={() => setShowLogoPreview(true)} onClosePreview={() => setShowLogoPreview(false)} onFileChange={handleLogoChange} onRemove={() => { if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl); setLogoPreviewUrl(null); setLogoFileName(""); setShowLogoPreview(false); }} />
+            {slugState === "error" && slugMessage ? <p className="text-xs text-amber-700">Slug check could not be verified right now. You can still continue, and final submit will validate it. {slugMessage}</p> : null}
+          <LogoPicker previewUrl={logoPreviewUrl} fileName={logoFileName} showPreview={showLogoPreview} onOpenPreview={() => setShowLogoPreview(true)} onClosePreview={() => setShowLogoPreview(false)} onFileChange={handleLogoChange} onRemove={() => { void handleLogoChange(null); setShowLogoPreview(false); }} />
+            {isUploadingLogo ? <p className="text-xs text-stone-500">Uploading logo...</p> : null}
+            {logoUploadError ? <p className="text-xs text-red-600">{logoUploadError}</p> : null}
           </div>
         ) : null}
 
@@ -463,6 +967,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
             <div className="grid gap-3">
               <div className="flex items-center gap-2 text-sm font-medium text-stone-900"><MapPin className="h-4 w-4" />Pick shop location<span className="text-red-500">*</span></div>
               <DynamicLocationPicker value={location} onChange={handleLocationChange} />
+              <p className="text-xs text-stone-500">Click the map to place the marker, then drag it to fine-tune the shop location.</p>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
                 <span>Lat: {latitude || "-"}</span>
                 <span>Lng: {longitude || "-"}</span>
@@ -540,7 +1045,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
                   const selected = selectedDays.includes(day.value);
                   return (
                     <label key={day.value} className={["flex cursor-pointer items-center justify-center rounded-2xl px-2 py-3 text-xs font-medium transition", selected ? "bg-stone-950 text-white" : "bg-stone-100 text-stone-700"].join(" ")}>
-                      <input type="checkbox" name="workingDays" value={day.value} checked={selected} onChange={(event) => { setSelectedDays((current) => event.target.checked ? [...current, day.value] : current.filter((value) => value !== day.value)); setError("workingDays", ""); }} className="sr-only" />
+                      <input type="checkbox" value={day.value} checked={selected} onChange={(event) => { setSelectedDays((current) => event.target.checked ? [...current, day.value] : current.filter((value) => value !== day.value)); setError("workingDays", ""); }} className="sr-only" />
                       {day.label}
                     </label>
                   );
@@ -550,14 +1055,67 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
             </div>
           </div>
         ) : null}
+
+        {currentStep === 6 ? (
+          <div className="grid gap-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight">Review and confirm</h2>
+                <p className="mt-1 text-sm text-stone-500">Check all details before creating the shop. Use the edit icon next to any field to jump back and change it.</p>
+              </div>
+            </div>
+            {previewSections.map((section) => (
+              <div key={section.title} className="grid gap-3">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">{section.title}</h3>
+                <div className="grid gap-3">
+                  {section.items.map((item) => (
+                    <PreviewField
+                      key={`${section.title}-${item.label}`}
+                      label={item.label}
+                      value={item.value}
+                      step={item.step}
+                      onEdit={setCurrentStep}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
+
+      <input type="hidden" name="shopName" value={shopName} />
+      <input type="hidden" name="legalName" value={legalName} />
+      <input type="hidden" name="slug" value={slugValue} />
+      <input type="hidden" name="phone" value={phone} />
+      <input type="hidden" name="email" value={email} />
+      <input type="hidden" name="whatsapp" value={whatsapp} />
+      <input type="hidden" name="logoUrl" value={logoUrl} />
+      <input type="hidden" name="addressLine1" value={addressLine1} />
+      <input type="hidden" name="addressLine2" value={addressLine2} />
+      <input type="hidden" name="city" value={city} />
+      <input type="hidden" name="state" value={stateValue} />
+      <input type="hidden" name="postalCode" value={postalCode} />
+      <input type="hidden" name="country" value={country} />
+      <input type="hidden" name="latitude" value={latitude} />
+      <input type="hidden" name="longitude" value={longitude} />
+      <input type="hidden" name="gstNumber" value={gstNumber} />
+      <input type="hidden" name="invoicePrefix" value={invoicePrefixValue} />
+      <input type="hidden" name="currency" value={currency} />
+      <input type="hidden" name="taxMode" value={taxMode} />
+      <input type="hidden" name="invoiceFooter" value={invoiceFooter} />
+      <input type="hidden" name="openingTime" value={openingTime} />
+      <input type="hidden" name="closingTime" value={closingTime} />
+      {selectedDays.map((day) => (
+        <input key={day} type="hidden" name="workingDays" value={day} />
+      ))}
 
       <div className="flex items-center justify-between gap-3 pt-2">
         <button type="button" onClick={() => goToStep(currentStep - 1)} disabled={currentStep === 1 || isPending} className="flex h-12 items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-900 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="h-4 w-4" /><span>Back</span></button>
         {currentStep < steps.length ? (
           <button type="button" onClick={() => goToStep(currentStep + 1)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-stone-800"><span>Next</span><ChevronRight className="h-4 w-4" /></button>
         ) : (
-          <button type="submit" disabled={isPending || slugState === "taken" || slugState === "error"} className="flex h-12 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60">{isPending ? <Upload className="h-4 w-4 animate-pulse" /> : null}<span>{isPending ? "Creating Shop..." : "Create Shop"}</span><ChevronRight className="h-4 w-4" /></button>
+          <button type="submit" disabled={isPending || isUploadingLogo || slugState === "taken"} className="flex h-12 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60">{isPending ? <Upload className="h-4 w-4 animate-pulse" /> : null}<span>{isPending ? "Creating Shop..." : isUploadingLogo ? "Uploading Logo..." : "Create Shop"}</span><ChevronRight className="h-4 w-4" /></button>
         )}
       </div>
     </form>

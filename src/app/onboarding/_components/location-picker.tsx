@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import L from "leaflet";
 
 type LatLng = {
@@ -10,24 +10,80 @@ type LatLng = {
   lng: number;
 };
 
-const markerIcon = L.divIcon({
-  className: "dukaanhq-map-pin",
-  html: '<div class="dukaanhq-map-pin__dot"></div><div class="dukaanhq-map-pin__pulse"></div>',
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
+const markerIcon = L.icon({
+  iconUrl: "/leaflet/marker-icon.png",
+  iconRetinaUrl: "/leaflet/marker-icon-2x.png",
+  shadowUrl: "/leaflet/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
 });
 
 export function LocationPicker({
   value,
   onChange,
+  interactive = true,
+  className = "h-72",
 }: {
   value: LatLng | null;
   onChange: (coords: LatLng) => void;
+  interactive?: boolean;
+  className?: string;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const onChangeRef = useRef(onChange);
+  const initialValueRef = useRef(value);
+
+  function invalidateMapSize() {
+    if (!mapRef.current) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      mapRef.current?.invalidateSize(false);
+    });
+
+    window.setTimeout(() => {
+      mapRef.current?.invalidateSize(false);
+    }, 150);
+  }
+
+  const placeMarker = useCallback((coords: LatLng) => {
+    if (!mapRef.current) {
+      return;
+    }
+
+    const latLng: L.LatLngExpression = [coords.lat, coords.lng];
+
+    if (!markerRef.current) {
+      markerRef.current = L.marker(latLng, {
+        draggable: interactive,
+        icon: markerIcon,
+      }).addTo(mapRef.current);
+      if (interactive) {
+        markerRef.current.on("dragend", () => {
+          const nextPosition = markerRef.current?.getLatLng();
+          if (!nextPosition) {
+            return;
+          }
+          onChangeRef.current({ lat: nextPosition.lat, lng: nextPosition.lng });
+        });
+      }
+      markerRef.current.bindPopup("Selected location");
+    } else {
+      markerRef.current.setLatLng(latLng);
+      if (markerRef.current.dragging && interactive !== markerRef.current.dragging.enabled()) {
+        if (interactive) {
+          markerRef.current.dragging.enable();
+        } else {
+          markerRef.current.dragging.disable();
+        }
+      }
+    }
+  }, [interactive]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -38,46 +94,67 @@ export function LocationPicker({
       return;
     }
 
-    const initialCenter: L.LatLngExpression = value ? [value.lat, value.lng] : [20.5937, 78.9629];
+    const initialCenter: L.LatLngExpression = initialValueRef.current
+      ? [initialValueRef.current.lat, initialValueRef.current.lng]
+      : [20.5937, 78.9629];
 
     const map = L.map(mapContainerRef.current, {
-      zoomControl: true,
+      zoomControl: interactive,
       attributionControl: true,
-    }).setView(initialCenter, value ? 16 : 5);
+      dragging: interactive,
+      touchZoom: interactive,
+      doubleClickZoom: interactive,
+      scrollWheelZoom: interactive,
+      boxZoom: interactive,
+      keyboard: interactive,
+      tapHold: interactive,
+    }).setView(initialCenter, initialValueRef.current ? 16 : 5);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
-    map.on("click", (event: L.LeafletMouseEvent) => {
-      onChangeRef.current({ lat: event.latlng.lat, lng: event.latlng.lng });
-    });
+    if (interactive) {
+      map.on("click", (event: L.LeafletMouseEvent) => {
+        const coords = { lat: event.latlng.lat, lng: event.latlng.lng };
+        placeMarker(coords);
+        onChangeRef.current(coords);
+      });
+    }
 
-    setTimeout(() => map.invalidateSize(), 0);
     mapRef.current = map;
+    invalidateMapSize();
+
+    if (initialValueRef.current) {
+      placeMarker(initialValueRef.current);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      invalidateMapSize();
+    });
+    resizeObserver.observe(mapContainerRef.current);
 
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
+      markerRef.current = null;
     };
-  }, [value]);
+  }, [interactive, placeMarker]);
 
   useEffect(() => {
     if (!mapRef.current || !value) {
       return;
     }
 
-    const latLng: L.LatLngExpression = [value.lat, value.lng];
-    mapRef.current.setView(latLng, 16);
-    mapRef.current.invalidateSize();
-
     if (!markerRef.current) {
-      markerRef.current = L.marker(latLng, { icon: markerIcon }).addTo(mapRef.current);
-      markerRef.current.bindPopup("Selected location");
-    } else {
-      markerRef.current.setLatLng(latLng);
+      const latLng: L.LatLngExpression = [value.lat, value.lng];
+      mapRef.current.setView(latLng, 16);
+      invalidateMapSize();
     }
-  }, [value]);
 
-  return <div ref={mapContainerRef} className="h-72 w-full rounded-[1.75rem]" />;
+    placeMarker(value);
+  }, [interactive, placeMarker, value]);
+
+  return <div ref={mapContainerRef} className={`${className} w-full overflow-hidden bg-stone-100`} />;
 }
