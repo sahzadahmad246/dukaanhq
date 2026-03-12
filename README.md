@@ -1,6 +1,6 @@
 # DukaanHQ
 
-DukaanHQ is a mobile first multi-tenant SaaS for retail shops.
+DukaanHQ is a mobile-first multi-tenant SaaS for retail shops.
 
 ## Stack
 - Next.js
