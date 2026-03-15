@@ -161,7 +161,7 @@ export function ProductDetailsDrawer({
                           </p>
                           {movement.reason && <p className="mt-0.5 text-xs text-stone-500">{movement.reason}</p>}
                           <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-stone-400">
-                            {format(new Date(movement.created_at), "MMM d, yyyy • h:mm a")}
+                            By {movement.performed_by_name} • {format(new Date(movement.created_at), "MMM d, yyyy • h:mm a")}
                           </p>
                         </div>
                       </div>

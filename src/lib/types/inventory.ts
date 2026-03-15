@@ -96,6 +96,7 @@ export type StockMovement = z.infer<typeof StockMovementSchema>;
 // Form schemas (omitting generated fields like id, dates)
 export const ProductFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
+  category_name: z.string().optional().nullable(),
   category_id: z.string().uuid().optional().nullable(),
   brand_id: z.string().uuid().optional().nullable(),
   description: z.string().optional().nullable(),

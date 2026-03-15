@@ -70,6 +70,31 @@ export async function createProductAction(
 
   const supabase = await createSupabaseServerClient();
 
+  // 0. Resolve Category
+  const categoryName = formData.get("category_name") as string | null;
+  let finalCategoryId = values.category_id;
+
+  if (!finalCategoryId && categoryName && categoryName.trim()) {
+    const slug = categoryName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const { data: existingCat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("shop_id", shop.id)
+      .eq("slug", slug)
+      .single();
+    
+    if (existingCat) {
+      finalCategoryId = existingCat.id;
+    } else {
+      const { data: newCat } = await supabase
+        .from("categories")
+        .insert({ shop_id: shop.id, name: categoryName.trim(), slug })
+        .select("id")
+        .single();
+      if (newCat) finalCategoryId = newCat.id;
+    }
+  }
+
   // 1. Create Product
   const { data: product, error: productError } = await supabase
     .from("products")
@@ -77,7 +102,7 @@ export async function createProductAction(
       shop_id: shop.id,
       name: values.name,
       slug: values.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + Date.now().toString().slice(-4),
-      category_id: values.category_id,
+      category_id: finalCategoryId,
       brand_id: values.brand_id,
       description: values.description,
       image_url: imageUrl,
@@ -230,8 +255,24 @@ export async function getProductDetailsAction(productId: string): Promise<Action
 
   product.total_quantity = total_quantity;
 
-  // Sort stock movements by newest first
-  if (product.stock_movements) {
+  // Map user names and sort
+  if (product.stock_movements && product.stock_movements.length > 0) {
+    const userIds = Array.from(new Set(product.stock_movements.map((m: any) => m.performed_by)));
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", userIds);
+    
+    const profileMap = (profiles || []).reduce((acc: any, p: any) => {
+      acc[p.id] = p.full_name;
+      return acc;
+    }, {});
+
+    product.stock_movements = product.stock_movements.map((m: any) => ({
+      ...m,
+      performed_by_name: profileMap[m.performed_by] || "Admin",
+    }));
+
     product.stock_movements.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
