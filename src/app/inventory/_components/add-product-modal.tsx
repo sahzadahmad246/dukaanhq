@@ -123,15 +123,26 @@ export function AddProductModal({
             </div>
 
             {trackingType === "QUANTITY_BASED" ? (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-stone-700">Initial Stock</label>
-                <input
-                  name="initial_stock"
-                  type="number"
-                  min="0"
-                  className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  placeholder="Total units available right now"
-                />
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="mb-1 block text-sm font-medium text-stone-700">Initial Stock</label>
+                  <input
+                    name="initial_stock"
+                    type="number"
+                    min="0"
+                    className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Total units available right now"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="mb-1 block text-sm font-medium text-stone-700">Low Stock Alert Threshold</label>
+                  <input
+                    name="low_stock_threshold"
+                    type="number"
+                    defaultValue={5}
+                    className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
               </div>
             ) : (
               <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
@@ -212,16 +223,18 @@ export function AddProductModal({
                 </div>
               </div>
             )}
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-stone-700">Low Stock Alert Threshold</label>
-              <input
-                name="low_stock_threshold"
-                type="number"
-                defaultValue={5}
-                className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
+            
+            {trackingType === "SERIALIZED" && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-stone-700">Low Stock Alert Threshold</label>
+                <input
+                  name="low_stock_threshold"
+                  type="number"
+                  defaultValue={5}
+                  className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+            )}
             
             <input type="hidden" name="is_active" value="true" />
             <input type="hidden" name="tax_rate" value="0" />
