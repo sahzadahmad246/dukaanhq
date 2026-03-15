@@ -52,79 +52,76 @@ export function AddProductModal({
 
         <div className="max-h-[70vh] overflow-y-auto px-6 py-4">
           <form action={formAction} id="add-product-form" className="space-y-4">
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium text-stone-700">Product Name *</label>
-                <input
-                  name="name"
-                  required
-                  className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  placeholder="e.g. iPhone 15 Pro"
-                />
-                {state.fieldErrors?.name && <p className="mt-1 text-xs text-red-500">{state.fieldErrors.name}</p>}
-              </div>
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium text-stone-700">Category</label>
-                <input
-                  name="category_name"
-                  className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  placeholder="e.g. Mobiles, Cables, Chargers"
-                />
-              </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-stone-700">Product Name *</label>
+              <input
+                name="name"
+                required
+                className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="e.g. iPhone 15 Pro"
+              />
+              {state.fieldErrors?.name && <p className="mt-1 text-xs text-red-500">{state.fieldErrors.name}</p>}
             </div>
 
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium text-stone-700">Product Image</label>
-                <input
-                  name="image"
-                  type="file"
-                  accept="image/*"
-                  className="w-full rounded-xl border bg-stone-50 px-3 py-1.5 text-sm file:mr-4 file:rounded-xl file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium text-stone-700">Tracking Model</label>
-                <select
-                  name="tracking_type"
-                  className="w-full rounded-xl border bg-stone-50 px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  value={trackingType}
-                  onChange={(e) => setTrackingType(e.target.value as "QUANTITY_BASED" | "SERIALIZED")}
-                >
-                  <option value="QUANTITY_BASED">Quantity Based (e.g. Cables)</option>
-                  <option value="SERIALIZED">Serialized (e.g. Mobiles, Laptops)</option>
-                </select>
-              </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-stone-700">Category</label>
+              <input
+                name="category_name"
+                className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="e.g. Mobiles, Cables, Chargers"
+              />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-stone-700">Purchase Price</label>
-                <input
-                  name="base_purchase_price"
-                  type="number"
-                  min="0"
-                  required
-                  className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-stone-700">Selling Price</label>
-                <input
-                  name="base_selling_price"
-                  type="number"
-                  min="0"
-                  required
-                  className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  placeholder="0.00"
-                />
-              </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-stone-700">Product Image</label>
+              <input
+                name="image"
+                type="file"
+                accept="image/*"
+                className="w-full rounded-xl border bg-stone-50 px-3 py-1.5 text-sm file:mr-4 file:rounded-xl file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-stone-700">Tracking Model</label>
+              <select
+                name="tracking_type"
+                className="w-full rounded-xl border bg-stone-50 px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                value={trackingType}
+                onChange={(e) => setTrackingType(e.target.value as "QUANTITY_BASED" | "SERIALIZED")}
+              >
+                <option value="QUANTITY_BASED">Quantity Based (e.g. Cables)</option>
+                <option value="SERIALIZED">Serialized (e.g. Mobiles, Laptops)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-stone-700">Purchase Price</label>
+              <input
+                name="base_purchase_price"
+                type="number"
+                min="0"
+                required
+                className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="0.00"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-stone-700">Selling Price</label>
+              <input
+                name="base_selling_price"
+                type="number"
+                min="0"
+                required
+                className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="0.00"
+              />
             </div>
 
             {trackingType === "QUANTITY_BASED" ? (
-              <div className="flex gap-4">
-                <div className="flex-1">
+              <>
+                <div>
                   <label className="mb-1 block text-sm font-medium text-stone-700">Initial Stock</label>
                   <input
                     name="initial_stock"
@@ -134,7 +131,7 @@ export function AddProductModal({
                     placeholder="Total units available right now"
                   />
                 </div>
-                <div className="flex-1">
+                <div>
                   <label className="mb-1 block text-sm font-medium text-stone-700">Low Stock Alert Threshold</label>
                   <input
                     name="low_stock_threshold"
@@ -143,7 +140,7 @@ export function AddProductModal({
                     className="w-full rounded-xl border px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
-              </div>
+              </>
             ) : (
               <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
                 <div className="mb-3 flex items-center justify-between">
