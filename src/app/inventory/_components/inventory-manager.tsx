@@ -6,9 +6,11 @@ import { Plus } from "lucide-react";
 import { Product } from "@/lib/types/inventory";
 import { ProductList } from "./product-list";
 import { AddProductModal } from "./add-product-modal";
+import { ProductDetailsDrawer } from "./product-details-drawer";
 
 export function InventoryManager({ products }: { products: (Product & { total_quantity: number })[] }) {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
 
   return (
     <>
@@ -26,11 +28,16 @@ export function InventoryManager({ products }: { products: (Product & { total_qu
         </button>
       </div>
 
-      <ProductList products={products} />
+      <ProductList products={products} onProductClick={setSelectedProductId} />
 
       <AddProductModal
         open={isAddProductOpen}
         onClose={() => setIsAddProductOpen(false)}
+      />
+
+      <ProductDetailsDrawer
+        productId={selectedProductId}
+        onClose={() => setSelectedProductId(null)}
       />
     </>
   );

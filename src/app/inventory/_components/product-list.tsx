@@ -2,8 +2,10 @@ import { Product } from "@/lib/types/inventory";
 
 export function ProductList({
   products,
+  onProductClick,
 }: {
   products: (Product & { total_quantity: number })[];
+  onProductClick?: (id: string) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-[1.7rem] border border-stone-200 bg-white shadow-sm">
@@ -16,7 +18,8 @@ export function ProductList({
           products.map((product) => (
             <div
               key={product.id}
-              className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-stone-50/50"
+              onClick={() => onProductClick?.(product.id)}
+              className="flex cursor-pointer items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-stone-50/50"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
