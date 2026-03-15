@@ -15,7 +15,11 @@ import {
   SquareUserRound,
   Tickets,
   Users,
+  LogOut,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useState } from "react";
 
 type DrawerSection = {
   title: string;
@@ -75,6 +79,22 @@ export function OwnerDrawer({
   ownerRole: string;
   userAvatarUrl: string | null;
 }) {
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      router.push("/auth/login");
+    } catch (error) {
+      console.error("Error signing out:", error);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   useEffect(() => {
     if (!open) {
       return;
@@ -210,6 +230,17 @@ export function OwnerDrawer({
               </div>
             </section>
           ))}
+          
+          <section className="mx-4 mt-4 mb-8">
+            <button
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="flex w-full items-center justify-center gap-2 rounded-[1.5rem] bg-rose-50 px-4 py-4 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-50"
+            >
+              <LogOut className="h-5 w-5" />
+              {isLoggingOut ? "Logging out..." : "Log out"}
+            </button>
+          </section>
         </div>
       </aside>
     </div>
