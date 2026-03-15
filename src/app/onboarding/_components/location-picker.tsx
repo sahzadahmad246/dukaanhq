@@ -156,5 +156,5 @@ export function LocationPicker({
     placeMarker(value);
   }, [interactive, placeMarker, value]);
 
-  return <div ref={mapContainerRef} className={`${className} w-full overflow-hidden bg-stone-100`} />;
+  return <div ref={mapContainerRef} className={`${className} w-full overflow-hidden bg-stone-100 relative z-0`} />;
 }
