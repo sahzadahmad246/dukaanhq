@@ -37,6 +37,7 @@ export function WorkspaceShell({
   ownerEmail,
   ownerRole,
   userAvatarUrl,
+  hideHeader = false,
   children,
 }: {
   title: string;
@@ -48,6 +49,7 @@ export function WorkspaceShell({
   ownerEmail: string;
   ownerRole: string;
   userAvatarUrl: string | null;
+  hideHeader?: boolean;
   children: React.ReactNode;
 }) {
   const [scrollDirection, setScrollDirection] = useState<"idle" | "up" | "down">("idle");
@@ -78,7 +80,7 @@ export function WorkspaceShell({
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const showHeader = scrollDirection !== "up";
+  const showHeader = !hideHeader && scrollDirection !== "up";
   const showBottomNav = scrollDirection !== "down";
 
   return (
@@ -97,44 +99,46 @@ export function WorkspaceShell({
       />
 
       <div className="mx-auto min-h-screen w-full max-w-lg bg-[#f7f8fb] shadow-[0_18px_80px_rgba(15,23,42,0.08)] lg:border-x lg:border-stone-200">
-        <header
-          className={[
-            "fixed inset-x-0 top-0 z-40 transition-transform duration-300",
-            showHeader ? "translate-y-0" : "-translate-y-full",
-          ].join(" ")}
-        >
-          <div className="mx-auto flex w-full max-w-lg items-center justify-between border-b border-stone-200 bg-[#f7f8fb]/95 px-4 py-3 text-stone-950 backdrop-blur">
-            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-stone-900 text-sm font-semibold text-white">
-              {shopLogoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={shopLogoUrl} alt={shopName} className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-sm font-semibold">{shopName.slice(0, 1).toUpperCase()}</span>
-              )}
+        {!hideHeader ? (
+          <header
+            className={[
+              "fixed inset-x-0 top-0 z-40 transition-transform duration-300",
+              showHeader ? "translate-y-0" : "-translate-y-full",
+            ].join(" ")}
+          >
+            <div className="mx-auto flex w-full max-w-lg items-center justify-between border-b border-stone-200 bg-[#f7f8fb]/95 px-4 py-3 text-stone-950 backdrop-blur">
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-stone-900 text-sm font-semibold text-white">
+                {shopLogoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={shopLogoUrl} alt={shopName} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-sm font-semibold">{shopName.slice(0, 1).toUpperCase()}</span>
+                )}
+              </div>
+              <div className="text-sm font-semibold tracking-[0.18em] uppercase">{title}</div>
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-stone-900 text-sm font-semibold text-white"
+                aria-label="Open owner menu"
+              >
+                {userAvatarUrl ? (
+                  <Image
+                    src={userAvatarUrl}
+                    alt="Profile"
+                    width={44}
+                    height={44}
+                    className="h-11 w-11 rounded-full object-cover"
+                  />
+                ) : (
+                  <span>{shopName.slice(0, 1).toUpperCase()}</span>
+                )}
+              </button>
             </div>
-            <div className="text-sm font-semibold tracking-[0.18em] uppercase">{title}</div>
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(true)}
-              className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-stone-900 text-sm font-semibold text-white"
-              aria-label="Open owner menu"
-            >
-              {userAvatarUrl ? (
-                <Image
-                  src={userAvatarUrl}
-                  alt="Profile"
-                  width={44}
-                  height={44}
-                  className="h-11 w-11 rounded-full object-cover"
-                />
-              ) : (
-                <span>{shopName.slice(0, 1).toUpperCase()}</span>
-              )}
-            </button>
-          </div>
-        </header>
+          </header>
+        ) : null}
 
-        <div className="mx-auto flex w-full max-w-lg flex-col px-3 pb-28 pt-20">
+        <div className={`mx-auto flex w-full max-w-lg flex-col px-3 pb-28 ${hideHeader ? "pt-3" : "pt-20"}`}>
           {children}
         </div>
 

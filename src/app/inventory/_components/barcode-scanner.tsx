@@ -46,8 +46,8 @@ export function BarcodeScanner({
             }
           );
         }
-      } catch (err: any) {
-        setError(err.message || "Failed to start camera.");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to start camera.");
       }
     }
 

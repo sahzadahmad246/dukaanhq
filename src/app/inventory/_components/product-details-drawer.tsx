@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { X, PackageOpen, History, Tag, Box, ArrowUpRight, ArrowDownRight, Loader2, FileText, GalleryHorizontal } from "lucide-react";
+import { X, PackageOpen, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "../queries";
 import { ProductActionsMenu } from "./product-actions-menu";
@@ -16,8 +16,8 @@ export function ProductDetailsDrawer({
   onClose,
 }: {
   productId: string | null;
-  onEdit: (productId: string) => void;
-  onDelete: (productId: string) => void;
+  onEdit?: (productId: string) => void;
+  onDelete?: (productId: string) => void;
   onClose: () => void;
 }) {
   const { data: product, isLoading, isError, error } = useQuery({
@@ -45,18 +45,20 @@ export function ProductDetailsDrawer({
       <div 
         className={`fixed bottom-0 left-0 right-0 z-50 flex h-[85vh] flex-col rounded-t-[2rem] bg-white shadow-[0_-20px_60px_rgba(0,0,0,0.1)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] sm:left-auto sm:right-4 sm:top-24 sm:h-[calc(100vh-8rem)] sm:w-[450px] sm:rounded-[2rem] ${productId ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-x-[120%]"}`}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-6 py-4 sm:px-8 sm:py-6">
-          <h2 className="text-lg font-bold text-stone-900">Product Details</h2>
-          <div className="flex items-center gap-2">
-            {productId && !isLoading && !isError ? (
+        <div className="flex shrink-0 items-center justify-between px-6 py-5 sm:px-8 sm:py-7">
+            <h2 className="text-xl font-bold tracking-tight text-stone-950">Details</h2>
+          <div className="flex items-center gap-3">
+            {productId && !isLoading && !isError && onEdit && onDelete ? (
               <ProductActionsMenu
                 onEdit={() => onEdit(productId)}
                 onDelete={() => onDelete(productId)}
               />
             ) : null}
             <button
+              type="button"
               onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900"
+              className="flex h-9 w-9 items-center justify-center text-stone-400 transition hover:text-stone-900"
+              aria-label="Close product details"
             >
               <X className="h-5 w-5" />
             </button>
@@ -76,27 +78,28 @@ export function ProductDetailsDrawer({
               <p className="mt-4 text-sm font-medium">Fetching product data...</p>
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-6">
               {/* Header Info */}
               <div className="flex gap-4">
                 {product.image_url ? (
-                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-stone-100 border border-stone-200">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-stone-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
                   </div>
                 ) : (
-                  <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 border border-blue-100">
-                    <PackageOpen className="h-10 w-10" />
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-400">
+                    <PackageOpen className="h-8 w-8" />
                   </div>
                 )}
-                <div>
-                  <h3 className="text-xl font-bold text-stone-950">{product.name}</h3>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wider ${
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-bold text-stone-950 truncate">{product.name}</h3>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${
                       product.product_kind === "MOBILE"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-emerald-50 text-emerald-700"
                         : product.tracking_type === "SERIALIZED"
-                          ? "bg-purple-100 text-purple-700"
-                          : "bg-blue-100 text-blue-700"
+                          ? "bg-purple-50 text-purple-700"
+                          : "bg-blue-50 text-blue-700"
                     }`}>
                       {product.product_kind === "MOBILE"
                         ? "Mobile"
@@ -104,51 +107,46 @@ export function ProductDetailsDrawer({
                           ? "Serialized"
                           : "Qty Based"}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
-                      <Tag className="h-3 w-3" />
-                      {product.category?.name || "Uncategorized"}
-                    </span>
-                    {product.brand?.name ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
+                    {product.category?.name && (
+                      <span className="inline-flex rounded px-2 py-1 text-xs font-medium text-stone-600 bg-stone-50">
+                        {product.category.name}
+                      </span>
+                    )}
+                    {product.brand?.name && (
+                      <span className="inline-flex rounded px-2 py-1 text-xs font-medium text-stone-600 bg-stone-50">
                         {product.brand.name}
                       </span>
-                    ) : null}
+                    )}
                   </div>
-                  <div className="mt-3 flex gap-4 text-sm font-medium text-stone-500">
-                    <div className="flex flex-col">
-                      <span className="text-xs uppercase tracking-wider text-stone-400">Purchase</span>
-                      <span className="text-stone-900">₹{product.base_purchase_price}</span>
+                  <div className="mt-3 flex gap-6">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Purchase</p>
+                      <p className="mt-0.5 text-sm font-bold text-stone-900">₹{product.base_purchase_price}</p>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs uppercase tracking-wider text-stone-400">Selling</span>
-                      <span className="text-emerald-600">₹{product.base_selling_price}</span>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Selling</p>
+                      <p className="mt-0.5 text-sm font-bold text-emerald-600">₹{product.base_selling_price}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               {product.description ? (
-                <section>
-                  <h4 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-stone-400">
-                    <FileText className="h-4 w-4" /> Description
-                  </h4>
-                  <div className="mt-3 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-                    <p className="text-sm leading-6 text-stone-700">{product.description}</p>
-                  </div>
+                <section className="border-t border-stone-100 pt-6">
+                  <p className="text-sm leading-6 text-stone-700">{product.description}</p>
                 </section>
               ) : null}
 
               {galleryImages.length > 0 ? (
-                <section>
-                  <h4 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-stone-400">
-                    <GalleryHorizontal className="h-4 w-4" /> Images
-                  </h4>
-                  <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+                <section className="border-t border-stone-100 pt-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-3">Images</h4>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
                     {galleryImages.map((image) => (
                       <div
                         key={image.id}
-                        className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
+                        className="h-20 w-20 shrink-0 overflow-hidden rounded bg-stone-100"
                       >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={image.image_url} alt={product.name} className="h-full w-full object-cover" />
                       </div>
                     ))}
@@ -157,23 +155,18 @@ export function ProductDetailsDrawer({
               ) : null}
 
               {product.variants?.length ? (
-                <section>
-                  <h4 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-stone-400">
-                    <Tag className="h-4 w-4" /> Variants
-                  </h4>
-                  <div className="mt-3 space-y-3">
-                    {product.variants.map((variant) => (
-                      <div key={variant.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-                        <p className="text-sm font-semibold text-stone-900">{variant.name}</p>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-500">
-                          {variant.color ? <span className="rounded-full bg-stone-100 px-2.5 py-1">{variant.color}</span> : null}
-                          {variant.storage_label ? (
-                            <span className="rounded-full bg-stone-100 px-2.5 py-1">{variant.storage_label}</span>
-                          ) : null}
-                          {product.tracking_type === "QUANTITY_BASED" ? (
-                            <span className="rounded-full bg-stone-100 px-2.5 py-1">{variant.quantity ?? 0} in stock</span>
-                          ) : null}
+                <section className="border-t border-stone-100 pt-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-4">Variants</h4>
+                  <div className="space-y-4">
+                    {product.variants.map((variant, idx, variants) => (
+                      <div key={variant.id}>
+                        <p className="text-sm font-semibold text-stone-900 mb-2">{variant.name}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {variant.color && <span className="text-xs bg-stone-50 px-2.5 py-1 rounded text-stone-700">{variant.color}</span>}
+                          {variant.storage_label && <span className="text-xs bg-stone-50 px-2.5 py-1 rounded text-stone-700">{variant.storage_label}</span>}
+                          {product.tracking_type === "QUANTITY_BASED" && <span className="text-xs bg-stone-50 px-2.5 py-1 rounded text-stone-700">{variant.quantity ?? 0} in stock</span>}
                         </div>
+                        {idx < variants.length - 1 && <div className="mt-4 border-b border-stone-100" />}
                       </div>
                     ))}
                   </div>
@@ -181,72 +174,64 @@ export function ProductDetailsDrawer({
               ) : null}
 
               {/* Stock Info */}
-              <section>
-                <h4 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-stone-400">
-                  <Box className="h-4 w-4" /> Current Stock
-                </h4>
-                <div className="mt-3 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-                  <div className="mb-4 flex items-end justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wider text-stone-500">Total Available</p>
-                      <p className={`mt-1 text-3xl font-black ${product.total_quantity <= product.low_stock_threshold ? "text-rose-600" : "text-stone-900"}`}>
-                        {product.total_quantity}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-medium uppercase tracking-wider text-stone-500">Threshold</p>
-                      <p className="mt-1 text-sm font-bold text-stone-700">{product.low_stock_threshold} units</p>
+              <section className="border-t border-stone-100 pt-6">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-4">Stock Status</h4>
+                <div className="mb-4 flex items-start justify-between gap-8">
+                  <div className="flex flex-col justify-start">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-1">Total</p>
+                    <p className={`text-3xl font-bold ${product.total_quantity <= product.low_stock_threshold ? "text-rose-600" : "text-stone-900"}`}>
+                      {product.total_quantity}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end justify-start pt-[2px] text-right">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-1">Threshold</p>
+                    <p className="text-sm font-bold text-stone-700">{product.low_stock_threshold}</p>
+                  </div>
+                </div>
+
+                {product.tracking_type === "SERIALIZED" && (product.inventory_items?.length ?? 0) > 0 && (
+                  <div className="pt-4 border-t border-stone-100">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-stone-500">
+                      {product.product_kind === "MOBILE" ? "IMEI Numbers" : "Identifiers"}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {inStockItems.map((item: InventoryItem) => (
+                        <span key={item.id} className="bg-stone-50 px-2 py-1 text-xs font-mono text-stone-700 rounded">
+                          {item.serial_number}
+                        </span>
+                      ))}
                     </div>
                   </div>
-
-                  {product.tracking_type === "SERIALIZED" && (product.inventory_items?.length ?? 0) > 0 && (
-                    <div className="mt-4 border-t border-stone-100 pt-4">
-                      <p className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-500">
-                        Active {product.product_kind === "MOBILE" ? "IMEI Numbers" : "Identifiers"}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {inStockItems.map((item: InventoryItem) => (
-                          <span key={item.id} className="rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700 font-mono">
-                            {item.serial_number}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </section>
 
               {/* Audit / Movements */}
-              <section>
-                <h4 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-stone-400">
-                  <History className="h-4 w-4" /> Activity Log
-                </h4>
-                <div className="mt-3 space-y-3">
-                  {product.stock_movements?.length === 0 ? (
-                    <p className="text-sm text-stone-500">No activity recorded yet.</p>
-                  ) : (
-                    product.stock_movements?.map((movement: StockMovement) => (
-                      <div key={movement.id} className="flex items-start gap-4 rounded-2xl border border-stone-100 bg-stone-50 p-4">
-                        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${movement.quantity_change > 0 ? "bg-emerald-100 text-emerald-600" : "bg-rose-100 text-rose-600"}`}>
-                          {movement.quantity_change > 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+              {product.stock_movements && product.stock_movements.length > 0 && (
+                <section className="border-t border-stone-100 pt-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-4">Activity</h4>
+                  <div className="space-y-0">
+                    {product.stock_movements.map((movement: StockMovement, idx, movements) => (
+                      <div key={movement.id}>
+                        <div className="flex items-start gap-3 py-3">
+                          <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${movement.quantity_change > 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                            {movement.quantity_change > 0 ? "+" : "−"}{Math.abs(movement.quantity_change)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-stone-900 capitalize">
+                              {movement.type.toLowerCase().replace("_", " ")}
+                            </p>
+                            {movement.reason && <p className="text-xs text-stone-600 mt-0.5">{movement.reason}</p>}
+                            <p className="text-[11px] text-stone-500 mt-1">
+                              {movement.performed_by_name} • {format(new Date(movement.created_at), "MMM d, h:mm a")}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-stone-900">
-                            {movement.type.replace("_", " ")} 
-                            <span className={`ml-2 font-bold ${movement.quantity_change > 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                              {movement.quantity_change > 0 ? "+" : ""}{movement.quantity_change}
-                            </span>
-                          </p>
-                          {movement.reason && <p className="mt-0.5 text-xs text-stone-500">{movement.reason}</p>}
-                          <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-stone-400">
-                            By {movement.performed_by_name} • {format(new Date(movement.created_at), "MMM d, yyyy • h:mm a")}
-                          </p>
-                        </div>
+                        {idx < movements.length - 1 && <div className="border-b border-stone-100" />}
                       </div>
-                    ))
-                  )}
-                </div>
-              </section>
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           )}
         </div>

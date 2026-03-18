@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { Brand, Category, Product } from "@/lib/types/inventory";
@@ -12,13 +12,18 @@ import { AddProductModal } from "./add-product-modal";
 import { ProductDetailsDrawer } from "./product-details-drawer";
 import { productDetailsQueryOptions } from "../queries";
 import { deleteProductAction } from "../actions";
+import { InventoryTopBar } from "./inventory-top-bar";
 
 export function InventoryManager({
   products,
   categories,
   brands,
 }: {
-  products: (Product & { total_quantity: number })[];
+  products: (Product & {
+    total_quantity: number;
+    brand?: { name?: string | null } | null;
+    category?: { name?: string | null } | null;
+  })[];
   categories: Category[];
   brands: Brand[];
 }) {
@@ -27,9 +32,25 @@ export function InventoryManager({
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED">("ALL");
+  const [showHeader, setShowHeader] = useState(true);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDeleting, startDeleteTransition] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const onScroll = () => {
+      const atTop = window.scrollY <= 4;
+      setShowHeader(atTop);
+      setShowScrollTop(window.scrollY > 700);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   function prefetchProduct(productId: string) {
     void queryClient.prefetchQuery(productDetailsQueryOptions(productId));
@@ -79,22 +100,28 @@ export function InventoryManager({
 
   return (
     <>
-      <div className="flex items-center justify-between pb-4">
-        <div>
-          <h2 className="text-xl font-semibold text-stone-900">Products Catalog</h2>
-          <p className="text-sm text-stone-500">Manage your store&apos;s inventory and stock levels.</p>
+      <div
+        className={`fixed inset-x-0 top-0 z-40 transition-transform duration-300 ${
+          showHeader ? "translate-y-0" : "-translate-y-full"
+        }`}
+      >
+        <div className="mx-auto w-full max-w-lg border-b border-stone-200 bg-[#f7f8fb]/95 px-3 py-3 backdrop-blur">
+          <InventoryTopBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onBack={() => router.back()}
+            onAdd={handleAddOpen}
+          />
         </div>
-        <button
-          onClick={handleAddOpen}
-          className="flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800"
-        >
-          <Plus className="h-4 w-4" />
-          Add Product
-        </button>
       </div>
+
+      <div className="h-14" />
 
       <ProductList
         products={products}
+        activeTab={activeTab}
+        searchQuery={searchQuery}
+        onActiveTabChange={setActiveTab}
         onProductClick={handleProductClick}
         onProductHover={prefetchProduct}
         onProductEdit={handleProductEdit}
@@ -113,6 +140,7 @@ export function InventoryManager({
           }}
           categories={categories}
           brands={brands}
+          products={products}
         />
       ) : null}
 
@@ -129,6 +157,17 @@ export function InventoryManager({
           onCancel={() => setConfirmDeleteProductId(null)}
           onConfirm={confirmDelete}
         />
+      ) : null}
+
+      {showScrollTop ? (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="fixed bottom-24 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-stone-950 text-white shadow-lg"
+          aria-label="Scroll to top"
+        >
+          <ChevronUp className="h-4 w-4" />
+        </button>
       ) : null}
     </>
   );

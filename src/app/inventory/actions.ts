@@ -16,6 +16,7 @@ import {
   deleteImagesFromCloudinary,
   uploadImagesToCloudinary,
 } from "@/lib/cloudinary";
+import { computeInventoryQuantity } from "./inventory-utils";
 
 export type ActionResponse<T = unknown> = {
   status: "success" | "error";
@@ -199,16 +200,6 @@ export async function createProductAction(
     .getAll("images")
     .filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-  if (imageFiles.length === 0) {
-    return {
-      status: "error",
-      message: "Add at least one product image.",
-      fieldErrors: {
-        images: "Add at least one product image.",
-      },
-    };
-  }
-
   const uploadedImages = await uploadImagesToCloudinary(imageFiles);
   const primaryImage = uploadedImages[0] ?? null;
 
@@ -298,14 +289,6 @@ export async function updateProductAction(
   const newImageFiles = formData
     .getAll("images")
     .filter((entry): entry is File => entry instanceof File && entry.size > 0);
-
-  if (keptExistingImages.length === 0 && newImageFiles.length === 0) {
-    return {
-      status: "error",
-      message: "Add at least one product image.",
-      fieldErrors: { images: "Add at least one product image." },
-    };
-  }
 
   const supabase = await createSupabaseServerClient();
   const { data: existingProduct, error: existingProductError } = await supabase
@@ -550,17 +533,12 @@ export async function getProductDetailsAction(productId: string): Promise<Action
   };
 
   // Calculate total quantity directly here for convenience
-  let total_quantity = 0;
-  if (productWithRelations.tracking_type === "QUANTITY_BASED" && productWithRelations.variants) {
-    total_quantity = productWithRelations.variants.reduce(
-      (acc: number, variant: ProductVariantRow) => acc + (variant.quantity || 0),
-      0
-    );
-  } else if (productWithRelations.tracking_type === "SERIALIZED" && productWithRelations.inventory_items) {
-    total_quantity = productWithRelations.inventory_items.filter(
-      (item: InventoryItemRow) => item.status === "IN_STOCK"
-    ).length;
-  }
+  const total_quantity = computeInventoryQuantity({
+    productKind: productWithRelations.product_kind,
+    trackingType: productWithRelations.tracking_type,
+    variants: productWithRelations.variants as ProductVariantRow[],
+    inventoryItems: productWithRelations.inventory_items as InventoryItemRow[],
+  });
 
   productWithRelations.total_quantity = total_quantity;
 

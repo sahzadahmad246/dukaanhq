@@ -31,9 +31,23 @@ import { cn } from "@/lib/utils";
 import { ActionResponse, createProductAction, updateProductAction } from "../actions";
 import { BarcodeScanner } from "./barcode-scanner";
 import { fetchProductDetails, productDetailsQueryKey } from "../queries";
+import { matchesSearch } from "../inventory-utils";
 
 type StepId = "basics" | "variants" | "stock" | "preview";
 type SearchableOption = { value: string; label: string };
+type InventoryProductSummary = {
+  id: string;
+  name: string;
+  product_kind: ProductKind;
+  description: string | null;
+  base_purchase_price: number;
+  base_selling_price: number;
+  low_stock_threshold: number;
+  category_id: string | null;
+  brand_id: string | null;
+  category?: { name?: string | null } | null;
+  brand?: { name?: string | null } | null;
+};
 
 type ProductProfile = {
   id: ProductKind;
@@ -89,6 +103,58 @@ function createVariant(productKind: ProductKind): VariantDraft {
     storage: "",
     quantity: "0",
     identifiers: [createIdentifierField()],
+  };
+}
+
+const MOBILE_IMEI_DELIMITER = " | ";
+
+function splitMobileIdentifierValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  return trimmed.split(MOBILE_IMEI_DELIMITER).map((item) => item.trim()).filter(Boolean);
+}
+
+function toMobileUnits(variants: VariantDraft[], identifierType: IdentifierType) {
+  return variants.flatMap((variant) => {
+    const filledIdentifiers = variant.identifiers.map((field) => field.value.trim()).filter(Boolean);
+    const units = [];
+
+    for (let index = 0; index < filledIdentifiers.length; index += 2) {
+      const pair = filledIdentifiers.slice(index, index + 2);
+      if (pair.length === 0) continue;
+      units.push({
+        variant_temp_key: variant.id,
+        identifier_type: identifierType,
+        identifier_value: pair.join(MOBILE_IMEI_DELIMITER),
+      });
+    }
+
+    return units;
+  });
+}
+
+function revokeNewImagePreviews(images: SelectedImage[]) {
+  for (const image of images) {
+    if (image.kind === "new") {
+      URL.revokeObjectURL(image.previewUrl);
+    }
+  }
+}
+
+async function cloneTemplateImage(url: string, name: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Could not load template image.");
+  }
+
+  const blob = await response.blob();
+  const file = new File([blob], name, { type: blob.type || "image/jpeg" });
+
+  return {
+    id: crypto.randomUUID(),
+    previewUrl: URL.createObjectURL(file),
+    kind: "new" as const,
+    file,
   };
 }
 
@@ -240,14 +306,12 @@ function ProductStepIndicator({
 }
 
 function SearchableSelect({
-  label,
   value,
   onChange,
   options,
   placeholder,
   emptyLabel,
 }: {
-  label: string;
   value: string;
   onChange: (value: string) => void;
   options: SearchableOption[];
@@ -273,7 +337,6 @@ function SearchableSelect({
 
   return (
     <div className="space-y-2" ref={wrapperRef}>
-      <Label>{label}</Label>
       <div className="relative">
         <button
           type="button"
@@ -288,7 +351,7 @@ function SearchableSelect({
           <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${label.toLowerCase()}`} className="pl-9" />
+              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search options" className="pl-9" />
             </div>
             <div className="mt-2 max-h-52 overflow-y-auto">
               {filtered.length === 0 ? (
@@ -357,6 +420,7 @@ export function AddProductModal({
   onClose,
   categories,
   brands,
+  products,
 }: {
   open: boolean;
   mode: "create" | "edit";
@@ -364,6 +428,7 @@ export function AddProductModal({
   onClose: () => void;
   categories: Category[];
   brands: Brand[];
+  products: InventoryProductSummary[];
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -390,6 +455,7 @@ export function AddProductModal({
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [fullscreenImageId, setFullscreenImageId] = useState<string | null>(null);
   const [scanningTarget, setScanningTarget] = useState<{ variantId: string; fieldId: string } | null>(null);
+  const [selectedTemplateProductId, setSelectedTemplateProductId] = useState<string | null>(null);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -423,6 +489,21 @@ export function AddProductModal({
   const selectedProfileMeta = profiles.find((profile) => profile.id === selectedProfile) ?? profiles[0];
   const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }));
   const brandOptions = brands.map((brand) => ({ value: brand.id, label: brand.name }));
+  const mobileTemplateOptions = useMemo(
+    () =>
+      products.filter(
+        (product) =>
+          product.product_kind === "MOBILE" &&
+          product.id !== productId &&
+          matchesSearch(
+            [product.name, product.brand?.name ?? "", product.category?.name ?? ""].join(" "),
+            name
+          )
+      ),
+    [name, productId, products]
+  );
+  const shouldShowMobileSuggestions =
+    selectedProfile === "MOBILE" && name.trim().length > 0 && mobileTemplateOptions.length > 0;
 
   const payload = useMemo(() => {
     const activeVariants = selectedProfile === "QUANTITY_BASED" ? variants.slice(0, 1) : variants;
@@ -439,22 +520,31 @@ export function AddProductModal({
       units:
         selectedProfile === "QUANTITY_BASED"
           ? []
-          : activeVariants.flatMap((variant) =>
-              variant.identifiers
-                .map((field) => field.value.trim())
-                .filter(Boolean)
-                .map((value) => ({
-                  variant_temp_key: variant.id,
-                  identifier_type: resolvedIdentifierType,
-                  identifier_value: value,
-                }))
-            ),
+          : selectedProfile === "MOBILE"
+            ? toMobileUnits(activeVariants, resolvedIdentifierType)
+            : activeVariants.flatMap((variant) =>
+                variant.identifiers
+                  .map((field) => field.value.trim())
+                  .filter(Boolean)
+                  .map((value) => ({
+                    variant_temp_key: variant.id,
+                    identifier_type: resolvedIdentifierType,
+                    identifier_value: value,
+                  }))
+              ),
     });
   }, [resolvedIdentifierType, selectedProfile, variants]);
 
   const totalUnits = useMemo(() => {
     if (selectedProfile === "QUANTITY_BASED") {
       return Number.parseInt(variants[0]?.quantity || "0", 10) || 0;
+    }
+    if (selectedProfile === "MOBILE") {
+      const imeiCount = variants.reduce(
+        (sum, variant) => sum + variant.identifiers.filter((field) => field.value.trim().length > 0).length,
+        0
+      );
+      return Math.ceil(imeiCount / 2);
     }
     return variants.reduce(
       (sum, variant) => sum + variant.identifiers.filter((field) => field.value.trim().length > 0).length,
@@ -471,7 +561,6 @@ export function AddProductModal({
     lowStockThreshold.trim().length > 0 &&
     ((brandMode === "existing" && selectedBrandId.length > 0) || (brandMode === "new" && newBrandName.trim().length > 0)) &&
     ((categoryMode === "existing" && selectedCategoryId.length > 0) || (categoryMode === "new" && newCategoryName.trim().length > 0)) &&
-    selectedImages.length > 0 &&
     (selectedProfile === "QUANTITY_BASED" ? totalUnits >= 0 : totalUnits > 0);
 
   useEffect(() => {
@@ -500,6 +589,7 @@ export function AddProductModal({
       );
       setClientErrors({});
       setState({ status: "success", message: "" });
+      setSelectedTemplateProductId(null);
 
       const incomingImages: SelectedImage[] = [];
       const seenPublicIds = new Set<string>();
@@ -544,12 +634,20 @@ export function AddProductModal({
               : (
                   editingProduct.inventory_items
                     ?.filter((item) => item.variant_id === variant.id)
-                    .map((item) => createIdentifierField(item.serial_number)) ?? []
+                    .flatMap((item) =>
+                      editingProduct.product_kind === "MOBILE"
+                        ? splitMobileIdentifierValue(item.serial_number).map((value) => createIdentifierField(value))
+                        : [createIdentifierField(item.serial_number)]
+                    ) ?? []
                 ).length > 0
                 ? (
                     editingProduct.inventory_items
                       ?.filter((item) => item.variant_id === variant.id)
-                      .map((item) => createIdentifierField(item.serial_number)) ?? []
+                      .flatMap((item) =>
+                        editingProduct.product_kind === "MOBILE"
+                          ? splitMobileIdentifierValue(item.serial_number).map((value) => createIdentifierField(value))
+                          : [createIdentifierField(item.serial_number)]
+                      ) ?? []
                   )
                 : [createIdentifierField()],
         }))
@@ -576,6 +674,7 @@ export function AddProductModal({
     setFullscreenImageId(null);
     setClientErrors({});
     setState({ status: "success", message: "" });
+    setSelectedTemplateProductId(null);
   }
 
   function clearClientError(keys: string[]) {
@@ -675,7 +774,6 @@ export function AddProductModal({
     if (step === "basics") {
       if (!name.trim()) errors.name = "Product name is required.";
       if (!description.trim()) errors.description = "Description is required.";
-      if (selectedImages.length === 0) errors.images = "Add at least one product image.";
       if (!purchasePrice.trim()) {
         errors.base_purchase_price = "Purchase price is required.";
       } else if (Number.isNaN(Number(purchasePrice)) || Number(purchasePrice) < 0) {
@@ -727,6 +825,9 @@ export function AddProductModal({
         const normalized = identifiers.map((value) => value.toLowerCase());
         if (new Set(normalized).size !== normalized.length) {
           errors.stock = "Duplicate identifier values found.";
+        }
+        if (selectedProfile === "MOBILE" && identifiers.length > 0 && totalUnits === 0) {
+          errors.stock = "Add at least one mobile unit.";
         }
       }
     }
@@ -790,6 +891,54 @@ export function AddProductModal({
     });
   }
 
+  async function applyMobileTemplate(templateProductId: string) {
+    setSelectedTemplateProductId(templateProductId);
+    try {
+      const template = await fetchProductDetails(templateProductId);
+      const templateImages = [
+        ...(template.image_url ? [template.image_url] : []),
+        ...((template.product_images ?? []).map((image) => image.image_url)),
+      ].filter((value, index, list) => list.indexOf(value) === index);
+      const copiedImages = await Promise.all(
+        templateImages.map((url, index) => cloneTemplateImage(url, `template-image-${index + 1}.jpg`))
+      );
+
+      setSelectedImages((current) => {
+        revokeNewImagePreviews(current);
+        return copiedImages;
+      });
+      setName(template.name ?? "");
+      setDescription(template.description ?? "");
+      setPurchasePrice(String(template.base_purchase_price ?? ""));
+      setSellingPrice(String(template.base_selling_price ?? ""));
+      setLowStockThreshold(String(template.low_stock_threshold ?? 0));
+      setCategoryMode(template.category_id ? "existing" : "new");
+      setBrandMode(template.brand_id ? "existing" : "new");
+      setSelectedCategoryId(template.category_id ?? categories[0]?.id ?? "");
+      setSelectedBrandId(template.brand_id ?? "");
+      setNewCategoryName(template.category_id ? "" : template.category?.name ?? "");
+      setNewBrandName(template.brand_id ? "" : template.brand?.name ?? "");
+      setVariants(
+        (template.variants ?? [{ id: crypto.randomUUID(), name: "Default", color: null, storage_label: null, quantity: 0 }]).map(
+          (variant) => ({
+            id: crypto.randomUUID(),
+            label: variant.color || variant.storage_label ? "" : variant.name,
+            color: variant.color ?? "",
+            storage: variant.storage_label ?? "",
+            quantity: "0",
+            identifiers: [createIdentifierField(), createIdentifierField()],
+          })
+        )
+      );
+      setClientErrors({});
+      toast.success("Phone details and images filled from existing product. Add this phone's IMEI numbers to continue.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load that phone template.");
+    } finally {
+      setSelectedTemplateProductId(null);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-stone-950/55 backdrop-blur-sm">
       <div
@@ -848,12 +997,7 @@ export function AddProductModal({
         ) : (
           <form
             ref={formRef}
-            id="add-product-form"
             className="flex min-h-0 flex-1 flex-col"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitForm();
-            }}
           >
             <div className="sticky top-0 z-10 border-b border-stone-200/80 bg-[#fffdf9] px-4 py-3 sm:px-6">
               <ProductStepIndicator
@@ -869,19 +1013,54 @@ export function AddProductModal({
                 <section className="space-y-4 py-2">
                   <StepTitle step={stepIndex + 1} title="Basics" />
                   <Field label="Product Name" required error={clientErrors.name || state.fieldErrors?.name}>
-                    <Input
-                      name="name"
-                      value={name}
-                      onChange={(event) => {
-                        setName(event.target.value);
-                        clearClientError(["name"]);
-                      }}
-                      placeholder={profileCopy.namePlaceholder}
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        name="name"
+                        value={name}
+                        onChange={(event) => {
+                          setName(event.target.value);
+                          clearClientError(["name"]);
+                        }}
+                        placeholder={profileCopy.namePlaceholder}
+                        required
+                      />
+                      {shouldShowMobileSuggestions ? (
+                        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
+                          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+                            Matching phones
+                          </p>
+                          <div className="max-h-56 overflow-y-auto">
+                            {mobileTemplateOptions.slice(0, 6).map((product) => (
+                              <button
+                                key={product.id}
+                                type="button"
+                                onClick={() => applyMobileTemplate(product.id)}
+                                disabled={selectedTemplateProductId === product.id}
+                                className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-stone-100 disabled:opacity-60"
+                              >
+                                <div>
+                                  <div className="text-sm font-semibold text-stone-900">{product.name}</div>
+                                  <div className="text-xs text-stone-500">
+                                    {[product.brand?.name, product.category?.name].filter(Boolean).join(" • ") || "Mobile"}
+                                  </div>
+                                </div>
+                                {selectedTemplateProductId === product.id ? (
+                                  <LoaderCircle className="h-4 w-4 animate-spin text-stone-500" />
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    {selectedProfile === "MOBILE" ? (
+                      <p className="text-xs text-stone-500">
+                        Start typing a phone name to reuse details from an existing model. We&apos;ll keep IMEI fields empty because each device has unique IMEI numbers.
+                      </p>
+                    ) : null}
                   </Field>
 
-                  <Field label="Product Images" required error={clientErrors.images}>
+                  <Field label="Product Images" error={clientErrors.images}>
                     <div className="space-y-3">
                       <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
                         <button
@@ -938,7 +1117,6 @@ export function AddProductModal({
                     error={clientErrors.category}
                     existing={
                       <SearchableSelect
-                        label="Category"
                         value={selectedCategoryId}
                         onChange={(value) => {
                           setSelectedCategoryId(value);
@@ -970,7 +1148,6 @@ export function AddProductModal({
                     error={clientErrors.brand}
                     existing={
                       <SearchableSelect
-                        label="Brand"
                         value={selectedBrandId}
                         onChange={(value) => {
                           setSelectedBrandId(value);
@@ -1077,6 +1254,9 @@ export function AddProductModal({
                       <Field label="Label">
                         <Input value={variant.label} onChange={(event) => setVariantField(variant.id, "label", event.target.value)} placeholder="Standard" />
                       </Field>
+                      <p className="text-xs text-stone-500">
+                        Label is the easy name for this variant, like Standard, Pro, or Box Pack. If color or storage already makes it clear, you can leave label empty.
+                      </p>
                       <Field label="Color">
                         <Input value={variant.color} onChange={(event) => setVariantField(variant.id, "color", event.target.value)} placeholder="Black" />
                       </Field>
@@ -1108,26 +1288,37 @@ export function AddProductModal({
                         </Field>
                       ) : (
                         <div className="space-y-3">
+                          {selectedProfile === "MOBILE" ? (
+                            <p className="text-xs leading-5 text-stone-500">
+                              Add IMEI numbers for this phone here. If the phone has two IMEIs, enter both and we&apos;ll still count it as 1 stock item.
+                            </p>
+                          ) : null}
                           {variant.identifiers.map((field, fieldIndex) => (
                             <div key={field.id} className="flex items-center gap-2">
                               <Input
                                 value={field.value}
                                 onChange={(event) => setIdentifierValue(variant.id, field.id, event.target.value)}
-                                placeholder={resolvedIdentifierType === "IMEI" ? "Enter IMEI" : "Enter identifier"}
+                                placeholder={
+                                  resolvedIdentifierType === "IMEI"
+                                    ? selectedProfile === "MOBILE"
+                                      ? `Enter IMEI ${fieldIndex + 1}`
+                                      : "Enter IMEI"
+                                    : "Enter identifier"
+                                }
                               />
-                              <Button variant="ghost" className="h-11 w-11 shrink-0 px-0 text-stone-900 hover:bg-stone-100" onClick={() => setScanningTarget({ variantId: variant.id, fieldId: field.id })}>
+                              <Button type="button" variant="ghost" className="h-11 w-11 shrink-0 px-0 text-stone-900 hover:bg-stone-100" onClick={() => setScanningTarget({ variantId: variant.id, fieldId: field.id })}>
                                 <ScanBarcode className="h-4 w-4" />
                               </Button>
                               {fieldIndex > 0 ? (
-                                <Button variant="ghost" className="h-11 w-11 shrink-0 px-0 text-rose-600 hover:bg-rose-50" onClick={() => removeIdentifierField(variant.id, field.id)}>
+                                <Button type="button" variant="ghost" className="h-11 w-11 shrink-0 px-0 text-rose-600 hover:bg-rose-50" onClick={() => removeIdentifierField(variant.id, field.id)}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               ) : null}
                             </div>
                           ))}
-                          <Button variant="secondary" onClick={() => addIdentifierField(variant.id)}>
+                          <Button type="button" variant="secondary" onClick={() => addIdentifierField(variant.id)}>
                             <Plus className="h-4 w-4" />
-                            Add More
+                            {selectedProfile === "MOBILE" ? "Add Another IMEI Field" : "Add More"}
                           </Button>
                         </div>
                       )}
@@ -1297,12 +1488,12 @@ export function AddProductModal({
                   {stepIndex <= 0 ? "Profiles" : "Back"}
                 </Button>
                 {currentStep === "preview" ? (
-                  <Button type="submit" form="add-product-form" disabled={isPending || !canSubmit}>
+                  <Button type="button" onClick={submitForm} disabled={isPending || !canSubmit}>
                     {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                    {isEditMode ? "Update Product" : "Save Product"}
+                    {isEditMode ? "Update Product" : "Add Product"}
                   </Button>
                 ) : (
-                  <Button onClick={() => moveStep(1)}>
+                  <Button type="button" onClick={() => moveStep(1)}>
                     Next
                     <ChevronRight className="h-4 w-4" />
                   </Button>

@@ -9,10 +9,12 @@ export function ProductActionsMenu({
   onEdit,
   onDelete,
   align = "right",
+  compact = false,
 }: {
   onEdit: () => void;
   onDelete: () => void;
   align?: "left" | "right";
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -36,7 +38,10 @@ export function ProductActionsMenu({
           event.stopPropagation();
           setOpen((current) => !current);
         }}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
+        className={cn(
+          "flex items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900",
+          compact ? "h-8 w-8" : "h-9 w-9"
+        )}
         aria-label="Product actions"
       >
         <MoreHorizontal className="h-4 w-4" />
