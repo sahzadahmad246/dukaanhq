@@ -15,7 +15,7 @@ export async function uploadImageToCloudinary(file: File): Promise<{ url: string
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         { folder: "dukaanhq_products" },
         (error, result) => {
@@ -39,6 +39,13 @@ export async function uploadImageToCloudinary(file: File): Promise<{ url: string
   }
 }
 
+export async function uploadImagesToCloudinary(
+  files: File[]
+): Promise<Array<{ url: string; public_id: string }>> {
+  const uploads = await Promise.all(files.map((file) => uploadImageToCloudinary(file)));
+  return uploads.filter((upload): upload is { url: string; public_id: string } => Boolean(upload));
+}
+
 export async function deleteImageFromCloudinary(publicId: string): Promise<boolean> {
   try {
     const result = await cloudinary.uploader.destroy(publicId);
@@ -47,4 +54,8 @@ export async function deleteImageFromCloudinary(publicId: string): Promise<boole
     console.error("Cloudinary delete failed", error);
     return false;
   }
+}
+
+export async function deleteImagesFromCloudinary(publicIds: string[]): Promise<void> {
+  await Promise.all(publicIds.map((publicId) => deleteImageFromCloudinary(publicId)));
 }

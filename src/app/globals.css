@@ -3,8 +3,6 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
-  --font-display: "Trebuchet MS", "Avenir Next Condensed", "Arial Narrow", sans-serif;
 }
 
 @theme inline {
@@ -12,6 +10,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
 }
 
 * {
@@ -25,7 +24,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-body);
+  font-family: var(--font-body), sans-serif;
 }
 
 .scrollbar-hidden {
@@ -43,7 +42,12 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: var(--font-display);
+  font-family: var(--font-display), sans-serif;
+}
+
+button,
+label {
+  font-family: var(--font-ui), sans-serif;
 }
 
 .dukaanhq-map-pin {
