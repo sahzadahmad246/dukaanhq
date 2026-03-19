@@ -18,6 +18,7 @@ export async function loadInventoryData() {
   if (shop) {
     type ProductRow = Product & {
       variants?: Array<{
+        id: string;
         quantity: number | null;
         name: string | null;
         color: string | null;
@@ -34,7 +35,7 @@ export async function loadInventoryData() {
         *,
         brand:brands ( name ),
         category:categories ( name ),
-        variants:product_variants ( quantity, name, color, storage_label ),
+        variants:product_variants ( id, quantity, name, color, storage_label ),
         inventory_items ( status )
       `)
       .eq("shop_id", shop.id)
