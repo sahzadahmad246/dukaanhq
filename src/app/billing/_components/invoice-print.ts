@@ -294,6 +294,30 @@ export function printInvoice(invoice: PrintableInvoice) {
             line-height: 1.7;
             white-space: pre-line;
           }
+          .signatures {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 80px;
+            padding: 0 10px 10px;
+          }
+          .signature-block {
+            text-align: center;
+          }
+          .signature-line {
+            border-top: 1px solid #374151;
+            width: 180px;
+            margin-bottom: 8px;
+          }
+          .signature-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #111827;
+          }
+          .signature-subtitle {
+            font-size: 12px;
+            color: #4b5563;
+            margin-top: 4px;
+          }
           @media print {
             body { background: white; padding: 0; }
             .page {
@@ -383,6 +407,18 @@ export function printInvoice(invoice: PrintableInvoice) {
             <div class="summary-row"><span>Subtotal:</span><strong>${formatMoney(invoice.subtotal)}</strong></div>
             <div class="summary-row"><span>Discount:</span><strong>${formatMoney(invoice.discount_total)}</strong></div>
             <div class="summary-row summary-total"><span>Grand Total:</span><strong>${formatMoney(invoice.grand_total)}</strong></div>
+          </div>
+
+          <div class="signatures">
+            <div class="signature-block">
+              <div class="signature-line"></div>
+              <div class="signature-title">Customer Signature</div>
+            </div>
+            <div class="signature-block">
+              <div class="signature-line"></div>
+              <div class="signature-title">Authorized Signatory</div>
+              <div class="signature-subtitle">For ${escapeHtml(invoice.shop_name_snapshot)}</div>
+            </div>
           </div>
 
           <div class="footer">${escapeHtml(invoice.invoice_footer_snapshot ?? "Goods once sold will not be taken back without original bill.")}</div>

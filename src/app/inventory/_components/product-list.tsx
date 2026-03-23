@@ -133,7 +133,7 @@ export function ProductList({
               No matching products found in this tab.
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               {searchResults.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -266,7 +266,7 @@ function CatalogSection({
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         {previewProducts.map((product) => (
           <ProductCard
             key={product.id}
@@ -307,63 +307,45 @@ function ProductCard({
       onMouseEnter={() => onProductHover?.(product.id)}
       onFocus={() => onProductHover?.(product.id)}
       onTouchStart={() => onProductHover?.(product.id)}
-      className={`group min-w-0 cursor-pointer overflow-hidden rounded-[1.2rem] border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        layout === "grid" ? "h-full" : ""
-      }`}
+      className="group flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-4 border-b border-stone-200 cursor-pointer bg-white transition hover:bg-stone-50 px-2 sm:px-4"
     >
-      <div className="relative aspect-square overflow-hidden bg-stone-100">
-        {product.image_url ? (
-          <img src={product.image_url} alt={product.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-stone-400">
-            <PackageOpen className="h-10 w-10" />
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[13px] font-medium text-stone-500 uppercase tracking-widest">{product.brand?.name || product.category?.name || "Product"}</span>
+        </div>
+        
+        <div className="truncate text-base font-bold text-stone-900">{product.name}</div>
+        
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Stock</span>
+            <span className="text-sm font-semibold text-stone-900">{product.total_quantity}</span>
           </div>
-        )}
-        <div className="absolute left-2 right-2 top-2 flex items-start justify-between gap-2">
-          {product.category?.name ? (
-            <span className="inline-flex h-8 items-center rounded-full bg-white/90 px-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600">
-              {product.category.name}
-            </span>
-          ) : null}
-          <div onClick={(event) => event.stopPropagation()}>
-            {deletingProductId === product.id ? (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-stone-600">
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-              </div>
-            ) : (
-              <ProductActionsMenu
-                compact
-                onEdit={() => onProductEdit?.(product.id)}
-                onDelete={() => onProductDelete?.(product.id)}
-              />
-            )}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Purchase</span>
+            <span className="text-sm font-semibold text-stone-900">₹{product.base_purchase_price}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Selling</span>
+            <span className="text-sm font-semibold text-emerald-600">₹{product.base_selling_price}</span>
           </div>
         </div>
       </div>
 
-      <div className="space-y-3 p-3">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-stone-950">{product.name}</div>
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-stone-500">{product.brand?.name || "Brand"}</p>
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Stock</p>
-            <p className="mt-0.5 text-sm font-semibold text-stone-950">{product.total_quantity}</p>
+      <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto" onClick={(event) => event.stopPropagation()}>
+        {deletingProductId === product.id ? (
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-600">
+            <LoaderCircle className="h-4 w-4 animate-spin" />
           </div>
-        </div>
-
-        <div className="flex items-end justify-between gap-2">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Purchase</p>
-            <p className="mt-0.5 text-sm font-semibold text-stone-950">₹{product.base_purchase_price}</p>
+        ) : (
+          <div className="relative z-10">
+            <ProductActionsMenu
+              compact
+              onEdit={() => onProductEdit?.(product.id)}
+              onDelete={() => onProductDelete?.(product.id)}
+            />
           </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Selling</p>
-            <p className="mt-0.5 text-sm font-semibold text-emerald-600">₹{product.base_selling_price}</p>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

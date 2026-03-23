@@ -33,18 +33,42 @@ export function BarcodeScanner({
         )?.deviceId || videoInputDevices[0].deviceId;
 
         if (videoRef.current) {
-          codeReader.decodeFromVideoDevice(
-            deviceId,
-            videoRef.current,
-            (result, error) => {
-              if (result) {
-                onScan(result.getText());
+          try {
+            await codeReader.decodeFromConstraints(
+              {
+                video: {
+                  deviceId: deviceId ? { exact: deviceId } : undefined,
+                  facingMode: "environment",
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 },
+                  advanced: [{ focusMode: "continuous" }] as any,
+                },
+              },
+              videoRef.current,
+              (result, error) => {
+                if (result) {
+                  onScan(result.getText());
+                }
+                if (error && !(error instanceof NotFoundException)) {
+                  console.error("Scanner Error:", error);
+                }
               }
-              if (error && !(error instanceof NotFoundException)) {
-                console.error("Scanner Error:", error);
+            );
+          } catch (err) {
+            // Fallback to default device usage if constraints are unsupported
+            codeReader.decodeFromVideoDevice(
+              deviceId,
+              videoRef.current,
+              (result, error) => {
+                if (result) {
+                  onScan(result.getText());
+                }
+                if (error && !(error instanceof NotFoundException)) {
+                  console.error("Scanner Error:", error);
+                }
               }
-            }
-          );
+            );
+          }
         }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to start camera.");
