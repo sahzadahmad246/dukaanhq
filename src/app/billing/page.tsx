@@ -2,8 +2,13 @@ import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { loadBillingData } from "./load-billing-data";
 import { BillingManager } from "./_components/billing-manager";
 
-export default async function BillingPage() {
-  const { user, profile, shop, products, invoices } = await loadBillingData();
+type PageProps = {
+  searchParams: Promise<{ q?: string; period?: string }>;
+};
+
+export default async function BillingPage({ searchParams }: PageProps) {
+  const query = await searchParams;
+  const { user, profile, shop, products, invoices } = await loadBillingData(query);
 
   return (
     <WorkspaceShell

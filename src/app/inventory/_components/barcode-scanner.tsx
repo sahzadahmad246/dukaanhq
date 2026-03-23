@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library";
+import { BrowserMultiFormatReader, NotFoundException, DecodeHintType } from "@zxing/library";
 import { X } from "lucide-react";
 
 export function BarcodeScanner({
@@ -19,7 +19,9 @@ export function BarcodeScanner({
 
     async function startScanner() {
       try {
-        codeReader = new BrowserMultiFormatReader();
+        const hints = new Map();
+        hints.set(DecodeHintType.TRY_HARDER, true);
+        codeReader = new BrowserMultiFormatReader(hints);
         const videoInputDevices = await codeReader.listVideoInputDevices();
         
         if (videoInputDevices.length === 0) {
@@ -113,7 +115,7 @@ export function BarcodeScanner({
             />
             {/* Scanner Overlay Guide */}
             <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <div className="h-48 w-64 rounded-xl border-2 border-white/40 shadow-[0_0_0_999px_rgba(0,0,0,0.5)]">
+              <div className="h-32 w-72 sm:w-80 rounded-xl border-2 border-white/40 shadow-[0_0_0_999px_rgba(0,0,0,0.5)]">
                 <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse" />
               </div>
             </div>

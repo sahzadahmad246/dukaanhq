@@ -319,10 +319,12 @@ export function printInvoice(invoice: PrintableInvoice) {
             margin-top: 4px;
           }
           @media print {
-            body { background: white; padding: 0; }
+            body { background: white; padding: 0; margin: 0; }
             .page {
-              width: auto;
+              width: 100%;
+              max-width: none;
               margin: 0;
+              padding: 24px 28px 28px;
               border: none;
               box-shadow: none;
             }

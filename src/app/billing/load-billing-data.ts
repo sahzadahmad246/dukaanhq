@@ -35,7 +35,7 @@ export type BillingInvoiceSummary = {
   }>;
 };
 
-export async function loadBillingData() {
+export async function loadBillingData(searchParams?: { q?: string; period?: string }) {
   const workspace = await getWorkspaceData();
   const inventory = await loadInventoryData();
   const supabase = await createSupabaseServerClient();
@@ -43,7 +43,7 @@ export async function loadBillingData() {
   let invoices: BillingInvoiceSummary[] = [];
 
   if (workspace.shop) {
-    const { data } = await supabase
+    let query = supabase
       .from("invoices")
       .select(`
         id,
@@ -77,10 +77,37 @@ export async function loadBillingData() {
           line_total
         )
       `)
-      .eq("shop_id", workspace.shop.id)
-      .order("invoice_date", { ascending: false })
-      .limit(20);
+      .eq("shop_id", workspace.shop.id);
 
+    if (searchParams?.q) {
+      query = query.or(`invoice_number.ilike.%${searchParams.q}%,customer_name.ilike.%${searchParams.q}%,customer_mobile.ilike.%${searchParams.q}%`);
+    }
+
+    if (searchParams?.period) {
+      const now = new Date();
+      let startDate: Date | null = null;
+      
+      switch (searchParams.period) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          const day = now.getDay() || 7; 
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1);
+          break;
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+      }
+      
+      if (startDate) {
+        query = query.gte("invoice_date", startDate.toISOString());
+      }
+    }
+
+    query = query.order("invoice_date", { ascending: false }).limit(100);
+
+    const { data } = await query;
     invoices = data ?? [];
   }
 
