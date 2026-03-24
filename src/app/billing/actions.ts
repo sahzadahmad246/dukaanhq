@@ -20,6 +20,30 @@ function parseJsonField<T>(value: FormDataEntryValue | null, schema: z.ZodSchema
   }
 }
 
+const ERROR_MAP: Array<[RegExp | string, string]> = [
+  ["record \"v_inventory_item\" is not assigned yet", "Could not process item — please select a valid stock unit for serialized products."],
+  [/not assigned yet/i, "Something went wrong processing your items. Please try again."],
+  [/Selected inventory unit is not available/i, "The selected stock unit is no longer available. It may have been sold already."],
+  [/Insufficient stock/i, "Not enough stock to complete this sale. Please check quantities."],
+  [/Quantity-based products require a variant/i, "Please select a variant for quantity-based products."],
+  [/Serialized products must have quantity 1/i, "Serialized products can only be sold one at a time."],
+  [/Serialized products require an inventory unit/i, "Please select a specific stock unit (IMEI/Serial) for this product."],
+  [/Product not found/i, "One of the selected products was not found. It may have been removed."],
+  [/Customer name is required/i, "Please enter the customer name."],
+  [/Customer mobile is required/i, "Please enter the customer mobile number."],
+  [/Billing address is required/i, "Please enter the billing address."],
+  [/At least one invoice item/i, "Please add at least one product to the bill."],
+];
+
+function mapInvoiceError(raw: string): string {
+  for (const [pattern, friendly] of ERROR_MAP) {
+    if (typeof pattern === "string" ? raw.includes(pattern) : pattern.test(raw)) {
+      return `${friendly} [${raw}]`;
+    }
+  }
+  return `Something went wrong while creating the bill. Please try again. [${raw}]`;
+}
+
 export async function createInvoiceAction(
   _prevState: ActionResponse,
   formData: FormData
@@ -50,7 +74,9 @@ export async function createInvoiceAction(
   });
 
   if (error || !invoiceId) {
-    return { status: "error", message: error?.message || "Failed to create invoice." };
+    const raw = error?.message || "Failed to create invoice.";
+    const friendly = mapInvoiceError(raw);
+    return { status: "error", message: friendly };
   }
 
   const { data: invoice } = await supabase

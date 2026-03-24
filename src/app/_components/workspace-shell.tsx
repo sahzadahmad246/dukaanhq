@@ -138,7 +138,7 @@ export function WorkspaceShell({
           </header>
         ) : null}
 
-        <div className={`mx-auto flex w-full max-w-lg flex-col px-3 pb-28 ${hideHeader ? "pt-3" : "pt-20"}`}>
+        <div className={`mx-auto flex w-full max-w-lg flex-col px-3 pb-28 ${hideHeader ? "pt-0" : "pt-20"}`}>
           {children}
         </div>
 

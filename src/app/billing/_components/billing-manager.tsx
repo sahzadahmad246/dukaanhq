@@ -222,8 +222,8 @@ export function BillingManager({
         .bm-stat-blob {
           position: absolute;
           border-radius: 50%;
-          bottom: -16px; right: -16px;
-          width: 58px; height: 58px;
+          bottom: -12px; right: -12px;
+          width: 44px; height: 44px;
           opacity: 0.3;
         }
 
@@ -326,13 +326,13 @@ export function BillingManager({
         .bm-fab:hover { transform: scale(1.08); }
       `}</style>
 
-      <div className="bm-root">
+      <div className="bm-root -mx-3 px-1">
         {/* ── Sticky top bar ── */}
         <div
-          className={`fixed inset-x-0 top-0 z-40 bm-topbar transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full"
+          className={`fixed left-1/2 -translate-x-1/2 w-full max-w-lg top-0 z-40 bm-topbar transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full -translate-x-1/2"
             }`}
         >
-          <div className="mx-auto w-full max-w-lg px-3 py-3">
+          <div className="mx-auto w-full max-w-lg px-1 py-3">
             <InventoryTopBar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -344,7 +344,7 @@ export function BillingManager({
 
         <div className="h-16" />
 
-        <section className="mx-auto w-full max-w-lg pb-28 px-3 pt-4">
+        <section className="w-full px-1 pt-2">
 
           {/* ── Filter Chips ── */}
           <div className="relative mb-5">
