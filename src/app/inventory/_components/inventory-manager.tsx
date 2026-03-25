@@ -10,6 +10,8 @@ import { Brand, Category, Product } from "@/lib/types/inventory";
 import { ProductList } from "./product-list";
 import { AddProductModal } from "./add-product-modal";
 import { ProductDetailsDrawer } from "./product-details-drawer";
+import { RecordSaleModal } from "./record-sale-modal";
+import { AddStockModal } from "./add-stock-modal";
 import { productDetailsQueryOptions } from "../queries";
 import { deleteProductAction } from "../actions";
 import { InventoryTopBar } from "./inventory-top-bar";
@@ -30,6 +32,8 @@ export function InventoryManager({
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [saleProductId, setSaleProductId] = useState<string | null>(null);
+  const [stockProductId, setStockProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,8 +77,18 @@ export function InventoryManager({
     setIsAddProductOpen(true);
   }
 
+  function handleRecordSale(productId: string) {
+    prefetchProduct(productId);
+    setSaleProductId(productId);
+  }
+
   function handleDelete(productId: string) {
     setConfirmDeleteProductId(productId);
+  }
+
+  function handleAddStock(productId: string) {
+    prefetchProduct(productId);
+    setStockProductId(productId);
   }
 
   function confirmDelete() {
@@ -126,6 +140,7 @@ export function InventoryManager({
         onProductHover={prefetchProduct}
         onProductEdit={handleProductEdit}
         onProductDelete={handleDelete}
+        onAddStock={handleAddStock}
         deletingProductId={isDeleting ? deletingProductId : null}
       />
 
@@ -134,6 +149,9 @@ export function InventoryManager({
           open={isAddProductOpen}
           productId={editingProductId}
           mode={editingProductId ? "edit" : "create"}
+          onSaved={async () => {
+            router.refresh();
+          }}
           onClose={() => {
             setIsAddProductOpen(false);
             setEditingProductId(null);
@@ -148,7 +166,34 @@ export function InventoryManager({
         productId={selectedProductId}
         onEdit={handleProductEdit}
         onDelete={handleDelete}
+        onRecordSale={handleRecordSale}
         onClose={() => setSelectedProductId(null)}
+      />
+
+      <RecordSaleModal
+        key={saleProductId ?? "sale-idle"}
+        open={Boolean(saleProductId)}
+        productId={saleProductId}
+        onClose={() => setSaleProductId(null)}
+        onRecorded={async () => {
+          router.refresh();
+          if (saleProductId) {
+            await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", saleProductId] });
+          }
+        }}
+      />
+
+      <AddStockModal
+        key={stockProductId ?? "stock-idle"}
+        open={Boolean(stockProductId)}
+        productId={stockProductId}
+        onClose={() => setStockProductId(null)}
+        onSaved={async () => {
+          router.refresh();
+          if (stockProductId) {
+            await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", stockProductId] });
+          }
+        }}
       />
 
       {confirmDeleteProductId ? (

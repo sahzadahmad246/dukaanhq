@@ -50,7 +50,7 @@ export function ProductActionsMenu({
       {open ? (
         <div
           className={cn(
-            "absolute top-[calc(100%+0.5rem)] z-30 min-w-36 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-xl",
+            "absolute bottom-[calc(100%+0.5rem)] z-[90] min-w-36 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-xl",
             align === "right" ? "right-0" : "left-0"
           )}
         >

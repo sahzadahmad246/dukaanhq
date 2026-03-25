@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
 import { createInvoiceAction } from "../actions";
-import { fetchProductDetails, productDetailsQueryKey } from "@/app/inventory/queries";
+import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "@/app/inventory/queries";
 import type { ActionResponse } from "@/app/inventory/actions";
 import { printInvoice } from "./invoice-print";
 
@@ -101,6 +101,18 @@ function Stepper({
 
 function buildVariantLabel(variant: { name?: string | null; color?: string | null; storage_label?: string | null }) {
   return [variant.name, variant.color, variant.storage_label].filter(Boolean).join(" / ") || "Default";
+}
+
+function buildInventoryItemLabel(item: NonNullable<ProductDetails["inventory_items"]>[number]) {
+  if (item.identifiers && item.identifiers.length > 0) {
+    return item.identifiers
+      .slice()
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((identifier) => identifier.identifier_value)
+      .join(" / ");
+  }
+
+  return item.serial_number;
 }
 
 function computeLineTotal({
@@ -205,7 +217,7 @@ function LineEditor({
               const unit = availableUnits.find((item) => item.id === event.target.value);
               onChange({
                 inventory_item_id: event.target.value,
-                identifier_value: unit?.serial_number ?? "",
+                identifier_value: unit ? buildInventoryItemLabel(unit) : "",
                 quantity: "1",
               });
             }}
@@ -213,7 +225,7 @@ function LineEditor({
             <option value="">Select stock unit</option>
             {availableUnits.map((unit) => (
               <option key={unit.id} value={unit.id}>
-                {unit.serial_number}
+                {buildInventoryItemLabel(unit)}
               </option>
             ))}
           </Select>

@@ -9,6 +9,38 @@ import {
 } from "@zxing/library";
 import { X, Zap, ZapOff } from "lucide-react";
 
+type DetectedBarcode = {
+  rawValue?: string;
+};
+
+type ExtendedMediaTrackCapabilities = MediaTrackCapabilities & {
+  torch?: boolean;
+  zoom?: {
+    min?: number;
+    max?: number;
+  };
+};
+
+type TorchConstraintTrack = MediaStreamTrack & {
+  applyConstraints: (constraints: MediaTrackConstraints) => Promise<void>;
+  getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean; zoom?: { min?: number; max?: number } };
+};
+
+function normalizeScannedValue(value: string) {
+  const trimmed = value.trim();
+  const imeiMatch = trimmed.match(/(?:IMEI\d?\s*[:\-]?\s*)?(\d{15})/i);
+  if (imeiMatch?.[1]) {
+    return imeiMatch[1];
+  }
+
+  const serialMatch = trimmed.match(/(?:S\/?N\s*[:\-]?\s*)([A-Z0-9\-\/]+)/i);
+  if (serialMatch?.[1]) {
+    return serialMatch[1];
+  }
+
+  return trimmed.replace(/\s+/g, " ");
+}
+
 export function BarcodeScanner({
   onScan,
   onClose,
@@ -21,20 +53,25 @@ export function BarcodeScanner({
   const [error, setError] = useState<string | null>(null);
   const [torchOn, setTorchOn] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
+  const frameRef = useRef<number | null>(null);
+  const lastScanAtRef = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Stabilize the onScan callback so the effect doesn't re-fire
   const onScanRef = useRef(onScan);
-  onScanRef.current = onScan;
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
 
   const toggleTorch = useCallback(async () => {
     const stream = streamRef.current;
     if (!stream) return;
-    const track = stream.getVideoTracks()[0];
+    const track = stream.getVideoTracks()[0] as TorchConstraintTrack | undefined;
     if (!track) return;
     try {
       const newState = !torchOn;
-      await (track as any).applyConstraints({
-        advanced: [{ torch: newState }] as any,
+      await track.applyConstraints({
+        advanced: [{ torch: newState } as MediaTrackConstraintSet],
       });
       setTorchOn(newState);
     } catch {
@@ -45,6 +82,73 @@ export function BarcodeScanner({
   useEffect(() => {
     let codeReader: BrowserMultiFormatReader;
     let cancelled = false;
+    let detector: { detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]> } | null = null;
+
+    const emitScan = (rawValue: string) => {
+      const now = Date.now();
+      if (now - lastScanAtRef.current < 900) return;
+      lastScanAtRef.current = now;
+      onScanRef.current(normalizeScannedValue(rawValue));
+    };
+
+    const scanWithDetector = async () => {
+      if (
+        cancelled ||
+        !detector ||
+        !videoRef.current ||
+        videoRef.current.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA
+      ) {
+        frameRef.current = window.requestAnimationFrame(() => {
+          void scanWithDetector();
+        });
+        return;
+      }
+
+      const video = videoRef.current;
+      const canvas = canvasRef.current ?? document.createElement("canvas");
+      canvasRef.current = canvas;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+
+      if (!context || video.videoWidth === 0 || video.videoHeight === 0) {
+        frameRef.current = window.requestAnimationFrame(() => {
+          void scanWithDetector();
+        });
+        return;
+      }
+
+      const regions = [
+        { x: 0.14, y: 0.34, width: 0.76, height: 0.14 },
+        { x: 0.14, y: 0.48, width: 0.76, height: 0.14 },
+        { x: 0.08, y: 0.28, width: 0.84, height: 0.44 },
+        { x: 0, y: 0, width: 1, height: 1 },
+      ];
+
+      for (const region of regions) {
+        const sx = Math.floor(video.videoWidth * region.x);
+        const sy = Math.floor(video.videoHeight * region.y);
+        const sw = Math.floor(video.videoWidth * region.width);
+        const sh = Math.floor(video.videoHeight * region.height);
+
+        canvas.width = sw;
+        canvas.height = sh;
+        context.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+
+        try {
+          const barcodes = await detector.detect(canvas);
+          const detected = barcodes.find((barcode) => barcode.rawValue?.trim());
+          if (detected?.rawValue) {
+            emitScan(detected.rawValue);
+            break;
+          }
+        } catch {
+          // Ignore frame-level detector errors and keep scanning.
+        }
+      }
+
+      frameRef.current = window.setTimeout(() => {
+        void scanWithDetector();
+      }, 120) as unknown as number;
+    };
 
     async function startScanner() {
       try {
@@ -64,7 +168,7 @@ export function BarcodeScanner({
         ]);
         hints.set(DecodeHintType.TRY_HARDER, true);
 
-        codeReader = new BrowserMultiFormatReader(hints, 300); // scan every 300ms
+        codeReader = new BrowserMultiFormatReader(hints, 120);
 
         const videoInputDevices = await codeReader.listVideoInputDevices();
 
@@ -85,18 +189,23 @@ export function BarcodeScanner({
         if (!videoRef.current || cancelled) return;
 
         // Use high resolution constraints for reading dense barcodes like IMEI
+        const advancedVideoConstraints: MediaTrackConstraints & {
+          focusMode?: { ideal: string };
+          focusDistance?: { ideal: number };
+        } = {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          facingMode: "environment",
+          width: { ideal: 3840, min: 1280 },
+          height: { ideal: 2160, min: 720 },
+          frameRate: { ideal: 30 },
+          focusMode: { ideal: "continuous" },
+          focusDistance: { ideal: 0 },
+        };
+
         const constraints: MediaStreamConstraints = {
           video: {
-            deviceId: deviceId ? { exact: deviceId } : undefined,
-            facingMode: "environment",
-            width: { ideal: 3840, min: 1280 },
-            height: { ideal: 2160, min: 720 },
-            frameRate: { ideal: 30 },
-            // @ts-ignore – focusMode is not in the TS types
-            focusMode: { ideal: "continuous" },
-            // @ts-ignore
-            focusDistance: { ideal: 0 },
-          } as MediaTrackConstraints,
+            ...advancedVideoConstraints,
+          },
         };
 
         try {
@@ -105,7 +214,7 @@ export function BarcodeScanner({
             videoRef.current,
             (result, error) => {
               if (result) {
-                onScanRef.current(result.getText());
+                emitScan(result.getText());
               }
               if (error && !(error instanceof NotFoundException)) {
                 console.error("Scanner Error:", error);
@@ -127,7 +236,7 @@ export function BarcodeScanner({
             videoRef.current!,
             (result, error) => {
               if (result) {
-                onScanRef.current(result.getText());
+                emitScan(result.getText());
               }
               if (error && !(error instanceof NotFoundException)) {
                 console.error("Scanner Error:", error);
@@ -140,13 +249,36 @@ export function BarcodeScanner({
         if (videoRef.current?.srcObject) {
           const stream = videoRef.current.srcObject as MediaStream;
           streamRef.current = stream;
-          const track = stream.getVideoTracks()[0];
+          const track = stream.getVideoTracks()[0] as TorchConstraintTrack | undefined;
           if (track) {
-            const capabilities = track.getCapabilities?.() as any;
+            const capabilities = track.getCapabilities?.() as ExtendedMediaTrackCapabilities | undefined;
             if (capabilities?.torch) {
               setTorchAvailable(true);
             }
+            if (capabilities?.zoom) {
+              try {
+                const zoomValue = Math.min(capabilities.zoom.max ?? 2, Math.max(capabilities.zoom.min ?? 1, 2));
+                await track.applyConstraints({
+                  advanced: [{ zoom: zoomValue } as MediaTrackConstraintSet],
+                });
+              } catch {
+                // zoom not supported well enough
+              }
+            }
           }
+        }
+
+        const DetectorCtor = (window as Window & {
+          BarcodeDetector?: new (options?: { formats?: string[] }) => {
+            detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]>;
+          };
+        }).BarcodeDetector;
+
+        if (DetectorCtor) {
+          detector = new DetectorCtor({
+            formats: ["code_128", "code_39", "itf", "codabar", "ean_13", "ean_8", "upc_a", "upc_e"],
+          });
+          void scanWithDetector();
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -161,11 +293,14 @@ export function BarcodeScanner({
 
     return () => {
       cancelled = true;
+      if (frameRef.current) {
+        window.clearTimeout(frameRef.current);
+        window.cancelAnimationFrame(frameRef.current);
+      }
       if (codeReader) {
         codeReader.reset();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

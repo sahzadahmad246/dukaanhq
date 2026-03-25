@@ -33,7 +33,7 @@ import { BarcodeScanner } from "./barcode-scanner";
 import { fetchProductDetails, productDetailsQueryKey } from "../queries";
 import { matchesSearch } from "../inventory-utils";
 
-type StepId = "basics" | "variants" | "stock" | "preview";
+type StepId = "basics" | "options" | "stock" | "preview";
 type SearchableOption = { value: string; label: string };
 type InventoryProductSummary = {
   id: string;
@@ -61,9 +61,14 @@ type IdentifierField = {
   value: string;
 };
 
-type VariantDraft = {
+type HighlightDraft = {
   id: string;
   label: string;
+  value: string;
+};
+
+type VariantDraft = {
+  id: string;
   color: string;
   storage: string;
   quantity: string;
@@ -73,6 +78,7 @@ type VariantDraft = {
 type SelectedImage = {
   id: string;
   previewUrl: string;
+  variantKey: string | null;
 } & (
   | {
       kind: "new";
@@ -95,10 +101,83 @@ function createIdentifierField(value = ""): IdentifierField {
   return { id: crypto.randomUUID(), value };
 }
 
-function createVariant(productKind: ProductKind): VariantDraft {
+function createHighlight(label = "", value = ""): HighlightDraft {
   return {
     id: crypto.randomUUID(),
-    label: productKind === "QUANTITY_BASED" ? "Default" : "",
+    label,
+    value,
+  };
+}
+
+type ProductDraftPayload = {
+  selectedProfile: ProductKind | null;
+  currentStep: StepId;
+  name: string;
+  description: string;
+  purchasePrice: string;
+  sellingPrice: string;
+  lowStockThreshold: string;
+  categoryMode: "existing" | "new";
+  brandMode: "existing" | "new";
+  selectedCategoryId: string;
+  selectedBrandId: string;
+  newCategoryName: string;
+  newBrandName: string;
+  identifierType: IdentifierType;
+  variants: VariantDraft[];
+  highlights: HighlightDraft[];
+  selectedImages: DraftSelectedImage[];
+};
+
+const PRODUCT_DRAFT_STORAGE_KEY = "inventory-add-product-draft-v1";
+
+type DraftSelectedImage =
+  | {
+      id: string;
+      kind: "existing";
+      previewUrl: string;
+      variantKey: string | null;
+      imageUrl: string;
+      publicId: string;
+    }
+  | {
+      id: string;
+      kind: "new";
+      previewUrl: string;
+      variantKey: string | null;
+      fileName: string;
+      fileType: string;
+      fileDataUrl: string;
+    };
+
+function createHighlightDraft() {
+  return {
+    label: "",
+    value: "",
+  };
+}
+
+function parseHighlightText(input: string) {
+  return input
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex === -1) return null;
+
+      const label = line.slice(0, separatorIndex).trim();
+      const value = line.slice(separatorIndex + 1).trim();
+      if (!label || !value) return null;
+
+      return { label, value };
+    })
+    .filter((item): item is { label: string; value: string } => Boolean(item));
+}
+
+function createVariant(): VariantDraft {
+  return {
+    id: crypto.randomUUID(),
     color: "",
     storage: "",
     quantity: "0",
@@ -107,12 +186,6 @@ function createVariant(productKind: ProductKind): VariantDraft {
 }
 
 const MOBILE_IMEI_DELIMITER = " | ";
-
-function splitMobileIdentifierValue(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return [];
-  return trimmed.split(MOBILE_IMEI_DELIMITER).map((item) => item.trim()).filter(Boolean);
-}
 
 function toMobileUnits(variants: VariantDraft[], identifierType: IdentifierType) {
   return variants.flatMap((variant) => {
@@ -125,6 +198,8 @@ function toMobileUnits(variants: VariantDraft[], identifierType: IdentifierType)
       units.push({
         variant_temp_key: variant.id,
         identifier_type: identifierType,
+        imei_1: pair[0] ?? null,
+        imei_2: pair[1] ?? null,
         identifier_value: pair.join(MOBILE_IMEI_DELIMITER),
       });
     }
@@ -153,19 +228,55 @@ async function cloneTemplateImage(url: string, name: string) {
   return {
     id: crypto.randomUUID(),
     previewUrl: URL.createObjectURL(file),
+    variantKey: null,
+    kind: "new" as const,
+    file,
+  };
+}
+
+async function createDroppedImage(url: string, index: number) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Could not load dropped image.");
+  }
+
+  const blob = await response.blob();
+  const extension = blob.type.split("/")[1] || "jpg";
+  const file = new File([blob], `dropped-image-${index + 1}.${extension}`, { type: blob.type || "image/jpeg" });
+
+  return {
+    id: crypto.randomUUID(),
+    previewUrl: URL.createObjectURL(file),
+    variantKey: null,
     kind: "new" as const,
     file,
   };
 }
 
 function buildVariantName(variant: VariantDraft) {
-  const parts = [variant.label.trim(), variant.storage.trim(), variant.color.trim()].filter(Boolean);
+  const parts = [variant.storage.trim(), variant.color.trim()].filter(Boolean);
   return parts.length > 0 ? parts.join(" / ") : "Default";
+}
+
+async function fileToDataUrl(file: File) {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("Could not read image file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataUrlToFile(dataUrl: string, fileName: string, fileType: string) {
+  const parts = dataUrl.split(",");
+  const base64 = parts[1] ?? "";
+  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+  return new File([bytes], fileName, { type: fileType || "image/jpeg" });
 }
 
 function getStepsForProfile(productKind: ProductKind | null): StepId[] {
   if (!productKind) return [];
-  return productKind === "QUANTITY_BASED" ? ["basics", "stock", "preview"] : ["basics", "variants", "stock", "preview"];
+  return productKind === "QUANTITY_BASED" ? ["basics", "stock", "preview"] : ["basics", "options", "stock", "preview"];
 }
 
 function getProfileCopy(productKind: ProductKind | null) {
@@ -348,7 +459,7 @@ function SearchableSelect({
         </button>
 
         {open ? (
-          <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
+          <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search options" className="pl-9" />
@@ -418,6 +529,7 @@ export function AddProductModal({
   mode,
   productId,
   onClose,
+  onSaved,
   categories,
   brands,
   products,
@@ -426,6 +538,7 @@ export function AddProductModal({
   mode: "create" | "edit";
   productId: string | null;
   onClose: () => void;
+  onSaved?: () => void | Promise<void>;
   categories: Category[];
   brands: Brand[];
   products: InventoryProductSummary[];
@@ -452,7 +565,12 @@ export function AddProductModal({
   const [newBrandName, setNewBrandName] = useState("");
   const [identifierType, setIdentifierType] = useState<IdentifierType>("SERIAL_NUMBER");
   const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [highlights, setHighlights] = useState<HighlightDraft[]>([]);
+  const [highlightDraft, setHighlightDraft] = useState(createHighlightDraft());
+  const [editingHighlightId, setEditingHighlightId] = useState<string | null>(null);
+  const [draftRestoreCandidate, setDraftRestoreCandidate] = useState<ProductDraftPayload | null>(null);
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
+  const [imageTargetVariantKey, setImageTargetVariantKey] = useState<string | null>(null);
   const [fullscreenImageId, setFullscreenImageId] = useState<string | null>(null);
   const [scanningTarget, setScanningTarget] = useState<{ variantId: string; fieldId: string } | null>(null);
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState<string | null>(null);
@@ -460,6 +578,7 @@ export function AddProductModal({
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedEditProductRef = useRef<string | null>(null);
+  const hasLoadedDraftRef = useRef(false);
   const isEditMode = mode === "edit" && Boolean(productId);
   const { data: editingProduct, isLoading: isLoadingEditProduct } = useQuery({
     queryKey: productId ? productDetailsQueryKey(productId) : ["inventory", "product-details", "edit-idle"],
@@ -470,16 +589,20 @@ export function AddProductModal({
 
   useEffect(() => {
     if (state.status === "success" && state.message) {
+      if (!isEditMode) {
+        window.localStorage.removeItem(PRODUCT_DRAFT_STORAGE_KEY);
+      }
       toast.success(state.message);
       router.refresh();
       if (productId) {
         void queryClient.invalidateQueries({ queryKey: productDetailsQueryKey(productId) });
       }
+      void onSaved?.();
       onClose();
     } else if (state.status === "error" && state.message) {
       toast.error(state.message);
     }
-  }, [state, onClose, productId, queryClient, router]);
+  }, [isEditMode, onClose, onSaved, productId, queryClient, router, state]);
 
   const steps = getStepsForProfile(selectedProfile);
   const stepIndex = steps.indexOf(currentStep);
@@ -506,7 +629,7 @@ export function AddProductModal({
     selectedProfile === "MOBILE" && name.trim().length > 0 && mobileTemplateOptions.length > 0;
 
   const payload = useMemo(() => {
-    const activeVariants = selectedProfile === "QUANTITY_BASED" ? variants.slice(0, 1) : variants;
+    const activeVariants = variants.slice(0, 1);
     return JSON.stringify({
       variants: activeVariants.map((variant) => ({
         temp_key: variant.id,
@@ -526,27 +649,36 @@ export function AddProductModal({
                 variant.identifiers
                   .map((field) => field.value.trim())
                   .filter(Boolean)
-                  .map((value) => ({
+              .map((value) => ({
                     variant_temp_key: variant.id,
                     identifier_type: resolvedIdentifierType,
+                    serial_number: resolvedIdentifierType === "SERIAL_NUMBER" ? value : null,
+                    unique_identifier: resolvedIdentifierType === "UNIQUE_ID" ? value : null,
                     identifier_value: value,
                   }))
               ),
+      highlights: highlights
+        .map((highlight, index) => ({
+          label: highlight.label.trim(),
+          value: highlight.value.trim(),
+          sort_order: index,
+        }))
+        .filter((highlight) => highlight.label && highlight.value),
     });
-  }, [resolvedIdentifierType, selectedProfile, variants]);
+  }, [highlights, resolvedIdentifierType, selectedProfile, variants]);
 
   const totalUnits = useMemo(() => {
     if (selectedProfile === "QUANTITY_BASED") {
       return Number.parseInt(variants[0]?.quantity || "0", 10) || 0;
     }
     if (selectedProfile === "MOBILE") {
-      const imeiCount = variants.reduce(
+      const imeiCount = variants.slice(0, 1).reduce(
         (sum, variant) => sum + variant.identifiers.filter((field) => field.value.trim().length > 0).length,
         0
       );
       return Math.ceil(imeiCount / 2);
     }
-    return variants.reduce(
+    return variants.slice(0, 1).reduce(
       (sum, variant) => sum + variant.identifiers.filter((field) => field.value.trim().length > 0).length,
       0
     );
@@ -572,7 +704,7 @@ export function AddProductModal({
       setSelectedProfile(editingProduct.product_kind);
       setCurrentStep("basics");
       setName(editingProduct.name ?? "");
-      setDescription(editingProduct.description ?? "");
+      setDescription(editingProduct.short_description ?? editingProduct.description ?? "");
       setPurchasePrice(String(editingProduct.base_purchase_price ?? ""));
       setSellingPrice(String(editingProduct.base_selling_price ?? ""));
       setLowStockThreshold(String(editingProduct.low_stock_threshold ?? 0));
@@ -598,6 +730,7 @@ export function AddProductModal({
           id: `existing-primary-${editingProduct.image_public_id}`,
           kind: "existing",
           previewUrl: editingProduct.image_url,
+          variantKey: null,
           imageUrl: editingProduct.image_url,
           publicId: editingProduct.image_public_id,
         });
@@ -609,6 +742,7 @@ export function AddProductModal({
           id: image.id,
           kind: "existing",
           previewUrl: image.image_url,
+          variantKey: image.variant_id ?? null,
           imageUrl: image.image_url,
           publicId: image.image_public_id,
         });
@@ -618,13 +752,12 @@ export function AddProductModal({
 
       const variantSource =
         editingProduct.variants && editingProduct.variants.length > 0
-          ? editingProduct.variants
+          ? editingProduct.variants.slice(0, 1)
           : [{ id: crypto.randomUUID(), name: "Default", color: null, storage_label: null, quantity: 0 }];
 
       setVariants(
         variantSource.map((variant) => ({
           id: variant.id,
-          label: variant.color || variant.storage_label ? "" : variant.name,
           color: variant.color ?? "",
           storage: variant.storage_label ?? "",
           quantity: String(variant.quantity ?? 0),
@@ -636,7 +769,9 @@ export function AddProductModal({
                     ?.filter((item) => item.variant_id === variant.id)
                     .flatMap((item) =>
                       editingProduct.product_kind === "MOBILE"
-                        ? splitMobileIdentifierValue(item.serial_number).map((value) => createIdentifierField(value))
+                        ? [item.imei_1, item.imei_2]
+                            .filter((value): value is string => Boolean(value?.trim()))
+                            .map((value) => createIdentifierField(value))
                         : [createIdentifierField(item.serial_number)]
                     ) ?? []
                 ).length > 0
@@ -645,13 +780,24 @@ export function AddProductModal({
                       ?.filter((item) => item.variant_id === variant.id)
                       .flatMap((item) =>
                         editingProduct.product_kind === "MOBILE"
-                          ? splitMobileIdentifierValue(item.serial_number).map((value) => createIdentifierField(value))
+                          ? [item.imei_1, item.imei_2]
+                              .filter((value): value is string => Boolean(value?.trim()))
+                              .map((value) => createIdentifierField(value))
                           : [createIdentifierField(item.serial_number)]
                       ) ?? []
                   )
                 : [createIdentifierField()],
         }))
       );
+      setHighlights(
+        editingProduct.highlights && editingProduct.highlights.length > 0
+          ? editingProduct.highlights.map((highlight) => createHighlight(highlight.label, highlight.value))
+          : []
+      );
+      setHighlightDraft(createHighlightDraft());
+      setEditingHighlightId(null);
+      setDraftRestoreCandidate(null);
+      hasLoadedDraftRef.current = true;
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -660,16 +806,181 @@ export function AddProductModal({
   useEffect(() => {
     if (!open) {
       hasLoadedEditProductRef.current = null;
+      hasLoadedDraftRef.current = false;
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open || isEditMode || hasLoadedDraftRef.current) return;
+
+    const rawDraft = window.localStorage.getItem(PRODUCT_DRAFT_STORAGE_KEY);
+    if (!rawDraft) {
+      hasLoadedDraftRef.current = true;
+      return;
+    }
+
+    try {
+      const restoreDraft = async () => {
+        const draft = JSON.parse(rawDraft) as ProductDraftPayload;
+        setDraftRestoreCandidate(draft);
+        hasLoadedDraftRef.current = true;
+      };
+
+      void restoreDraft();
+      return;
+    } catch {
+      window.localStorage.removeItem(PRODUCT_DRAFT_STORAGE_KEY);
+      hasLoadedDraftRef.current = true;
+    }
+  }, [categories, isEditMode, open]);
+
+  useEffect(() => {
+    if (!open || isEditMode || !hasLoadedDraftRef.current || !selectedProfile) return;
+
+    let cancelled = false;
+
+    const persistDraft = async () => {
+      const draftImages = await Promise.all(
+        selectedImages.map(async (image) => {
+          if (image.kind === "existing") {
+            return {
+              id: image.id,
+              kind: "existing" as const,
+              previewUrl: image.previewUrl,
+              variantKey: image.variantKey,
+              imageUrl: image.imageUrl,
+              publicId: image.publicId,
+            };
+          }
+
+          return {
+            id: image.id,
+            kind: "new" as const,
+            previewUrl: image.previewUrl,
+            variantKey: image.variantKey,
+            fileName: image.file.name,
+            fileType: image.file.type,
+            fileDataUrl: await fileToDataUrl(image.file),
+          };
+        })
+      );
+
+      if (cancelled) return;
+
+      const draftPayload: ProductDraftPayload = {
+        selectedProfile,
+        currentStep,
+        name,
+        description,
+        purchasePrice,
+        sellingPrice,
+        lowStockThreshold,
+        categoryMode,
+        brandMode,
+        selectedCategoryId,
+        selectedBrandId,
+        newCategoryName,
+        newBrandName,
+        identifierType,
+        variants: variants.slice(0, 1),
+        highlights,
+        selectedImages: draftImages,
+      };
+
+      try {
+        window.localStorage.setItem(PRODUCT_DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+      } catch {
+        toast.error("Draft is too large to save completely. Try using fewer images.");
+      }
+    };
+
+    void persistDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    isEditMode,
+    selectedProfile,
+    currentStep,
+    name,
+    description,
+    purchasePrice,
+    sellingPrice,
+    lowStockThreshold,
+    categoryMode,
+    brandMode,
+    selectedCategoryId,
+    selectedBrandId,
+    newCategoryName,
+    newBrandName,
+    identifierType,
+    variants,
+    highlights,
+    selectedImages,
+  ]);
+
   if (!open) return null;
+
+  function applySavedDraft(draft: ProductDraftPayload) {
+    const draftProfile = draft.selectedProfile;
+    const draftSteps = getStepsForProfile(draftProfile);
+    setSelectedProfile(draftProfile);
+    setCurrentStep(draftSteps.includes(draft.currentStep) ? draft.currentStep : "basics");
+    setName(draft.name ?? "");
+    setDescription(draft.description ?? "");
+    setPurchasePrice(draft.purchasePrice ?? "");
+    setSellingPrice(draft.sellingPrice ?? "");
+    setLowStockThreshold(draft.lowStockThreshold ?? "5");
+    setCategoryMode(draft.categoryMode ?? "existing");
+    setBrandMode(draft.brandMode ?? "existing");
+    setSelectedCategoryId(draft.selectedCategoryId ?? categories[0]?.id ?? "");
+    setSelectedBrandId(draft.selectedBrandId ?? "");
+    setNewCategoryName(draft.newCategoryName ?? "");
+    setNewBrandName(draft.newBrandName ?? "");
+    setIdentifierType(draft.identifierType ?? "SERIAL_NUMBER");
+    setVariants(draft.variants?.length ? draft.variants.slice(0, 1) : [createVariant()]);
+    setHighlights(draft.highlights ?? []);
+    setHighlightDraft(createHighlightDraft());
+    setEditingHighlightId(null);
+    setSelectedImages(
+      (draft.selectedImages ?? []).map((image) =>
+        image.kind === "existing"
+          ? {
+              id: image.id,
+              kind: "existing" as const,
+              previewUrl: image.previewUrl,
+              variantKey: image.variantKey,
+              imageUrl: image.imageUrl,
+              publicId: image.publicId,
+            }
+          : {
+              id: image.id,
+              kind: "new" as const,
+              previewUrl: image.previewUrl,
+              variantKey: image.variantKey,
+              file: dataUrlToFile(image.fileDataUrl, image.fileName, image.fileType),
+            }
+      )
+    );
+    setDraftRestoreCandidate(null);
+  }
+
+  function dismissSavedDraft() {
+    window.localStorage.removeItem(PRODUCT_DRAFT_STORAGE_KEY);
+    setDraftRestoreCandidate(null);
+  }
 
   function chooseProfile(profile: ProductKind) {
     setSelectedProfile(profile);
     setCurrentStep("basics");
     setIdentifierType(profile === "SERIALIZED" ? "SERIAL_NUMBER" : "IMEI");
-    setVariants([createVariant(profile)]);
+    setVariants([createVariant()]);
+    setHighlights([]);
+    setHighlightDraft(createHighlightDraft());
+    setEditingHighlightId(null);
+    setDraftRestoreCandidate(null);
     setSelectedImages([]);
     setFullscreenImageId(null);
     setClientErrors({});
@@ -691,16 +1002,45 @@ export function AddProductModal({
     });
   }
 
-  function addImages(files: FileList | null) {
+  function addImages(files: FileList | null, variantKey: string | null = null) {
     if (!files || files.length === 0) return;
     const next = Array.from(files).map((file) => ({
       id: crypto.randomUUID(),
       previewUrl: URL.createObjectURL(file),
+      variantKey,
       kind: "new" as const,
       file,
     }));
     setSelectedImages((current) => [...current, ...next]);
     clearClientError(["images"]);
+  }
+
+  async function addDroppedImages(dataTransfer: DataTransfer, variantKey: string | null = null) {
+    const fileEntries = Array.from(dataTransfer.files).filter((file) => file.type.startsWith("image/"));
+    if (fileEntries.length > 0) {
+      const next = fileEntries.map((file) => ({
+        id: crypto.randomUUID(),
+        previewUrl: URL.createObjectURL(file),
+        variantKey,
+        kind: "new" as const,
+        file,
+      }));
+      setSelectedImages((current) => [...current, ...next]);
+      clearClientError(["images"]);
+      return;
+    }
+
+    const droppedUrl = dataTransfer.getData("text/uri-list") || dataTransfer.getData("text/plain");
+    if (!droppedUrl) return;
+
+    try {
+      const image = await createDroppedImage(droppedUrl.trim(), selectedImages.length);
+      setSelectedImages((current) => [...current, { ...image, variantKey }]);
+      clearClientError(["images"]);
+      toast.success("Dropped image added.");
+    } catch {
+      toast.error("Could not import that dragged image. Direct file drop works, but some websites block image download.");
+    }
   }
 
   function removeImage(imageId: string) {
@@ -715,10 +1055,8 @@ export function AddProductModal({
     }
   }
 
-  function setVariantField(variantId: string, key: "label" | "color" | "storage" | "quantity", value: string) {
-    setVariants((current) =>
-      current.map((variant) => (variant.id === variantId ? { ...variant, [key]: value } : variant))
-    );
+  function setVariantField(variantId: string, key: "color" | "storage" | "quantity", value: string) {
+    setVariants((current) => current.map((variant) => (variant.id === variantId ? { ...variant, [key]: value } : variant)).slice(0, 1));
     if (key === "quantity") {
       clearClientError(["stock"]);
     }
@@ -735,7 +1073,7 @@ export function AddProductModal({
               ),
             }
           : variant
-      )
+      ).slice(0, 1)
     );
     clearClientError(["stock"]);
   }
@@ -746,7 +1084,7 @@ export function AddProductModal({
         variant.id === variantId
           ? { ...variant, identifiers: [...variant.identifiers, createIdentifierField()] }
           : variant
-      )
+      ).slice(0, 1)
     );
     clearClientError(["stock"]);
   }
@@ -763,9 +1101,80 @@ export function AddProductModal({
                   : variant.identifiers,
             }
           : variant
-      )
+      ).slice(0, 1)
     );
     clearClientError(["stock"]);
+  }
+
+  function setHighlightDraftField(key: "label" | "value", value: string) {
+    setHighlightDraft((current) => ({ ...current, [key]: value }));
+    clearClientError(["highlights"]);
+  }
+
+  function addHighlight() {
+    const label = highlightDraft.label.trim();
+    const value = highlightDraft.value.trim();
+
+    if (!label || !value) {
+      setClientErrors((current) => ({
+        ...current,
+        highlights: "Add both a highlight name and value before saving it to the list.",
+      }));
+      return;
+    }
+
+    if (editingHighlightId) {
+      setHighlights((current) =>
+        current.map((highlight) =>
+          highlight.id === editingHighlightId ? { ...highlight, label, value } : highlight
+        )
+      );
+    } else {
+      setHighlights((current) => [...current, createHighlight(label, value)]);
+    }
+    setHighlightDraft(createHighlightDraft());
+    setEditingHighlightId(null);
+    clearClientError(["highlights"]);
+  }
+
+  function addBulkHighlights(input: string) {
+    const parsedHighlights = parseHighlightText(input);
+
+    if (parsedHighlights.length === 0) {
+      setClientErrors((current) => ({
+        ...current,
+        highlights: "Paste one highlight per line using the format Key: Value.",
+      }));
+      return;
+    }
+
+    setHighlights((current) => [
+      ...current,
+      ...parsedHighlights.map((highlight) => createHighlight(highlight.label, highlight.value)),
+    ]);
+    clearClientError(["highlights"]);
+    toast.success(`${parsedHighlights.length} highlight${parsedHighlights.length > 1 ? "s" : ""} added.`);
+  }
+
+  function editHighlight(highlightId: string) {
+    const highlight = highlights.find((item) => item.id === highlightId);
+    if (!highlight) return;
+
+    setHighlightDraft({
+      label: highlight.label,
+      value: highlight.value,
+    });
+    setEditingHighlightId(highlightId);
+    clearClientError(["highlights"]);
+  }
+
+  function removeHighlight(highlightId: string) {
+    setHighlights((current) => current.filter((highlight) => highlight.id !== highlightId));
+    if (editingHighlightId === highlightId) {
+      setHighlightDraft(createHighlightDraft());
+      setEditingHighlightId(null);
+    }
+    clearClientError(["highlights"]);
   }
 
   function validateStep(step: StepId) {
@@ -795,16 +1204,15 @@ export function AddProductModal({
       if (brandMode === "new" && !newBrandName.trim()) errors.brand = "Brand name is required.";
     }
 
-    if (step === "variants" && selectedProfile !== "QUANTITY_BASED") {
-      const invalidVariant = variants.find(
-        (variant) =>
-          !variant.label.trim() &&
-          !variant.color.trim() &&
-          !variant.storage.trim()
-      );
+    if (step === "options" && selectedProfile !== "QUANTITY_BASED") {
+      const activeVariant = variants[0];
+      const invalidVariant =
+        activeVariant &&
+        !activeVariant.color.trim() &&
+        !activeVariant.storage.trim();
 
       if (invalidVariant) {
-        errors.variants = "Each variant needs at least a label, color, or storage value.";
+        errors.options = "Add at least one option like color or storage.";
       }
     }
 
@@ -816,9 +1224,7 @@ export function AddProductModal({
           errors.stock = "Opening quantity must be 0 or more.";
         }
       } else {
-        const identifiers = variants.flatMap((variant) =>
-          variant.identifiers.map((field) => field.value.trim()).filter(Boolean)
-        );
+        const identifiers = (variants[0]?.identifiers ?? []).map((field) => field.value.trim()).filter(Boolean);
         if (identifiers.length === 0) {
           errors.stock = `Add at least one ${resolvedIdentifierType === "IMEI" ? "IMEI" : "identifier"}.`;
         }
@@ -877,7 +1283,21 @@ export function AddProductModal({
             image_url: image.imageUrl,
             image_public_id: image.publicId,
             sort_order: index,
+            variant_id: image.variantKey && /^[0-9a-f-]{36}$/i.test(image.variantKey) ? image.variantKey : null,
+            variant_temp_key: image.variantKey && !/^[0-9a-f-]{36}$/i.test(image.variantKey) ? image.variantKey : null,
           }))
+      )
+    );
+    formData.set(
+      "image_assignments",
+      JSON.stringify(
+        selectedImages.map((image, index) => ({
+          id: image.id,
+          kind: image.kind,
+          sort_order: index,
+          variant_id: image.variantKey && /^[0-9a-f-]{36}$/i.test(image.variantKey) ? image.variantKey : null,
+          variant_temp_key: image.variantKey && !/^[0-9a-f-]{36}$/i.test(image.variantKey) ? image.variantKey : null,
+        }))
       )
     );
     if (productId) {
@@ -908,7 +1328,7 @@ export function AddProductModal({
         return copiedImages;
       });
       setName(template.name ?? "");
-      setDescription(template.description ?? "");
+      setDescription(template.short_description ?? template.description ?? "");
       setPurchasePrice(String(template.base_purchase_price ?? ""));
       setSellingPrice(String(template.base_selling_price ?? ""));
       setLowStockThreshold(String(template.low_stock_threshold ?? 0));
@@ -918,17 +1338,22 @@ export function AddProductModal({
       setSelectedBrandId(template.brand_id ?? "");
       setNewCategoryName(template.category_id ? "" : template.category?.name ?? "");
       setNewBrandName(template.brand_id ? "" : template.brand?.name ?? "");
-      setVariants(
-        (template.variants ?? [{ id: crypto.randomUUID(), name: "Default", color: null, storage_label: null, quantity: 0 }]).map(
-          (variant) => ({
-            id: crypto.randomUUID(),
-            label: variant.color || variant.storage_label ? "" : variant.name,
-            color: variant.color ?? "",
-            storage: variant.storage_label ?? "",
-            quantity: "0",
-            identifiers: [createIdentifierField(), createIdentifierField()],
-          })
-        )
+      const templateVariant = (template.variants ?? [
+        { id: crypto.randomUUID(), name: "Default", color: null, storage_label: null, quantity: 0 },
+      ])[0];
+      setVariants([
+        {
+          id: crypto.randomUUID(),
+          color: templateVariant.color ?? "",
+          storage: templateVariant.storage_label ?? "",
+          quantity: "0",
+          identifiers: [createIdentifierField(), createIdentifierField()],
+        },
+      ]);
+      setHighlights(
+        template.highlights && template.highlights.length > 0
+          ? template.highlights.map((highlight) => createHighlight(highlight.label, highlight.value))
+          : []
       );
       setClientErrors({});
       toast.success("Phone details and images filled from existing product. Add this phone's IMEI numbers to continue.");
@@ -1025,7 +1450,7 @@ export function AddProductModal({
                         required
                       />
                       {shouldShowMobileSuggestions ? (
-                        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
+                        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
                           <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
                             Matching phones
                           </p>
@@ -1060,43 +1485,51 @@ export function AddProductModal({
                     ) : null}
                   </Field>
 
+                  {selectedProfile === "QUANTITY_BASED" ? (
                   <Field label="Product Images" error={clientErrors.images}>
                     <div className="space-y-3">
-                      <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white text-stone-400 transition hover:border-teal-700 hover:text-teal-700"
-                        >
-                          <ImagePlus className="h-6 w-6" />
-                        </button>
+                      <div
+                        className="rounded-2xl border border-dashed border-stone-300 bg-white p-3"
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          void addDroppedImages(event.dataTransfer, null);
+                        }}
+                      >
+                        <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImageTargetVariantKey(null);
+                              fileInputRef.current?.click();
+                            }}
+                            className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white text-stone-400 transition hover:border-teal-700 hover:text-teal-700"
+                          >
+                            <ImagePlus className="h-6 w-6" />
+                          </button>
 
-                        {selectedImages.map((image) => (
-                          <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
-                            <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
-                              <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeImage(image.id)}
-                              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-stone-950/80 text-white"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
+                          {selectedImages.map((image) => (
+                            <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                              <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
+                                <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeImage(image.id)}
+                                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-stone-950/80 text-white"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-xs text-stone-500">
+                          Click to choose files, drag image files here, or try dropping an image from another website. Web-image drop works only when that source allows it.
+                        </p>
                       </div>
-
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(event) => addImages(event.target.files)}
-                      />
                     </div>
                   </Field>
+                  ) : null}
 
                   <Field label="Description" required error={clientErrors.description || state.fieldErrors?.description}>
                     <Textarea
@@ -1106,8 +1539,103 @@ export function AddProductModal({
                         setDescription(event.target.value);
                         clearClientError(["description"]);
                       }}
-                      placeholder="Describe the product, condition, specs, and what the customer should know."
+                      placeholder="Short product description for inventory and ecommerce."
+                      rows={4}
+                      maxLength={280}
                     />
+                    <p className="text-xs text-stone-500">{description.length}/280 characters</p>
+                  </Field>
+
+                  <Field label="Highlights / Specs" error={clientErrors.highlights}>
+                    <div className="space-y-3">
+                      <div className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                              Key
+                            </Label>
+                            <Input
+                              value={highlightDraft.label}
+                              onChange={(event) => setHighlightDraftField("label", event.target.value)}
+                              onPaste={(event) => {
+                                const pastedText = event.clipboardData.getData("text");
+                                if (!pastedText.includes(":") || !pastedText.includes("\n")) return;
+                                event.preventDefault();
+                                addBulkHighlights(pastedText);
+                              }}
+                              placeholder="Display Type"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                              Value
+                            </Label>
+                            <Textarea
+                              value={highlightDraft.value}
+                              onChange={(event) => setHighlightDraftField("value", event.target.value)}
+                              onPaste={(event) => {
+                                const pastedText = event.clipboardData.getData("text");
+                                if (!pastedText.includes(":") || !pastedText.includes("\n")) return;
+                                event.preventDefault();
+                                addBulkHighlights(pastedText);
+                              }}
+                              placeholder="Super Retina XDR OLED"
+                              rows={2}
+                              className="mt-2"
+                            />
+                          </div>
+                          <Button type="button" variant="secondary" onClick={addHighlight} className="w-full sm:w-auto">
+                            <Plus className="h-4 w-4" />
+                            {editingHighlightId ? "Update Highlight" : "Add Highlight"}
+                          </Button>
+                        </div>
+                        <p className="mt-3 text-xs text-stone-500">
+                          Optional. Paste multiple lines in `Key: Value` format here and we&apos;ll split them into separate highlights automatically.
+                        </p>
+                      </div>
+
+                      {highlights.length > 0 ? (
+                        <div>
+                          <p className="mb-2 text-sm font-semibold text-stone-900">Highlights</p>
+                          <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
+                          {highlights.map((highlight, index) => (
+                            <div
+                              key={highlight.id}
+                              className={cn(
+                                "flex items-start justify-between gap-3 px-4 py-3",
+                                index > 0 ? "border-t border-stone-200" : ""
+                              )}
+                            >
+                              <div className="min-w-0 pr-3 text-sm leading-6 text-stone-700">
+                                <span className="font-semibold text-stone-900">{highlight.label}:</span> {highlight.value}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="h-8 px-2 text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+                                  onClick={() => editHighlight(highlight.id)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="h-8 px-2 text-rose-600 hover:bg-rose-50"
+                                  onClick={() => removeHighlight(highlight.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-stone-500">No highlights added yet.</p>
+                      )}
+                    </div>
                   </Field>
 
                   <ChooserField
@@ -1219,52 +1747,65 @@ export function AddProductModal({
                 </section>
               ) : null}
 
-              {currentStep === "variants" ? (
+              {currentStep === "options" ? (
                 <section className="space-y-4 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <StepTitle step={stepIndex + 1} title="Variants" />
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setVariants((current) => [...current, createVariant(selectedProfile ?? "SERIALIZED")]);
-                        clearClientError(["variants"]);
-                      }}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Variant
-                    </Button>
-                  </div>
-                  {clientErrors.variants ? <p className="text-sm text-rose-600">{clientErrors.variants}</p> : null}
+                  <StepTitle step={stepIndex + 1} title="Options" />
+                  {clientErrors.options ? <p className="text-sm text-rose-600">{clientErrors.options}</p> : null}
 
-                  {variants.map((variant, index) => (
-                    <div key={variant.id} className="space-y-3 border-b border-stone-200 pb-4 last:border-b-0">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-stone-900">Variant {index + 1}</p>
-                        {variants.length > 1 ? (
-                          <Button
-                            variant="ghost"
-                            className="h-8 px-2 text-rose-600 hover:bg-rose-50"
-                            onClick={() => setVariants((current) => current.filter((item) => item.id !== variant.id))}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
-
-                      <Field label="Label">
-                        <Input value={variant.label} onChange={(event) => setVariantField(variant.id, "label", event.target.value)} placeholder="Standard" />
-                      </Field>
-                      <p className="text-xs text-stone-500">
-                        Label is the easy name for this variant, like Standard, Pro, or Box Pack. If color or storage already makes it clear, you can leave label empty.
-                      </p>
+                  {variants[0] ? (
+                    <div className="space-y-3">
                       <Field label="Color">
-                        <Input value={variant.color} onChange={(event) => setVariantField(variant.id, "color", event.target.value)} placeholder="Black" />
+                        <Input value={variants[0].color} onChange={(event) => setVariantField(variants[0].id, "color", event.target.value)} placeholder="Black" />
                       </Field>
-                      <Field label={selectedProfile === "MOBILE" ? "Storage" : "Size / Storage"}>
-                        <Input value={variant.storage} onChange={(event) => setVariantField(variant.id, "storage", event.target.value)} placeholder={selectedProfile === "MOBILE" ? "128GB" : "Optional"} />
+                      <Field label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}>
+                        <Input value={variants[0].storage} onChange={(event) => setVariantField(variants[0].id, "storage", event.target.value)} placeholder={selectedProfile === "MOBILE" ? "8GB / 128GB" : "Optional"} />
+                      </Field>
+
+                      <Field label="Option Images (Optional)">
+                        <div
+                          className="rounded-2xl border border-dashed border-stone-300 bg-white p-3"
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            void addDroppedImages(event.dataTransfer, variants[0].id);
+                          }}
+                        >
+                          <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setImageTargetVariantKey(variants[0].id);
+                                fileInputRef.current?.click();
+                              }}
+                              className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white text-stone-400 transition hover:border-teal-700 hover:text-teal-700"
+                            >
+                              <ImagePlus className="h-6 w-6" />
+                            </button>
+
+                            {selectedImages
+                              .filter((image) => image.variantKey === variants[0].id)
+                              .map((image) => (
+                                <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                                  <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
+                                    <img src={image.previewUrl} alt="Selected variant" className="h-full w-full object-cover" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeImage(image.id)}
+                                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-stone-950/80 text-white"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                          </div>
+                          <p className="mt-3 text-xs text-stone-500">
+                            Images added here are automatically saved for {buildVariantName(variants[0])}.
+                          </p>
+                        </div>
                       </Field>
                     </div>
-                  ))}
+                  ) : null}
                 </section>
               ) : null}
 
@@ -1275,10 +1816,10 @@ export function AddProductModal({
                   {clientErrors.stock ? <p className="text-sm text-rose-600">{clientErrors.stock}</p> : null}
                   {state.fieldErrors?.product_payload ? <p className="text-sm text-rose-600">{state.fieldErrors.product_payload}</p> : null}
 
-                  {(selectedProfile === "QUANTITY_BASED" ? variants.slice(0, 1) : variants).map((variant, index) => (
+                  {variants.slice(0, 1).map((variant) => (
                     <div key={variant.id} className="space-y-3 border-b border-stone-200 pb-4 last:border-b-0">
                       <div>
-                        <p className="text-sm font-semibold text-stone-900">{selectedProfile === "QUANTITY_BASED" ? "Stock" : `Variant ${index + 1}`}</p>
+                        <p className="text-sm font-semibold text-stone-900">{selectedProfile === "QUANTITY_BASED" ? "Stock" : "Option"}</p>
                         <p className="text-sm text-stone-500">{selectedProfile === "QUANTITY_BASED" ? "Opening quantity for this product" : buildVariantName(variant)}</p>
                       </div>
 
@@ -1349,6 +1890,26 @@ export function AddProductModal({
                     onEdit={handleStepChange}
                   />
                   <PreviewField
+                    label="Highlights"
+                    value={
+                      highlights.some((highlight) => highlight.label.trim() && highlight.value.trim()) ? (
+                        <div className="space-y-2">
+                          {highlights
+                            .filter((highlight) => highlight.label.trim() && highlight.value.trim())
+                            .map((highlight) => (
+                              <div key={highlight.id} className="text-sm text-stone-900">
+                                <span className="font-semibold">{highlight.label.trim()}:</span> {highlight.value.trim()}
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        "No highlights added"
+                      )
+                    }
+                    step="basics"
+                    onEdit={handleStepChange}
+                  />
+                  <PreviewField
                     label="Category"
                     value={
                       categoryMode === "existing"
@@ -1411,17 +1972,9 @@ export function AddProductModal({
                   />
                   {selectedProfile !== "QUANTITY_BASED" ? (
                     <PreviewField
-                      label="Variants"
-                      value={
-                        <div className="space-y-2">
-                          {variants.map((variant, index) => (
-                            <div key={variant.id} className="text-sm text-stone-900">
-                              {index + 1}. {buildVariantName(variant)}
-                            </div>
-                          ))}
-                        </div>
-                      }
-                      step="variants"
+                      label="Option"
+                      value={buildVariantName(variants[0] ?? createVariant())}
+                      step="options"
                       onEdit={handleStepChange}
                     />
                   ) : null}
@@ -1432,7 +1985,7 @@ export function AddProductModal({
                         variants[0]?.quantity || "0"
                       ) : (
                         <div className="space-y-3">
-                          {variants.map((variant) => {
+                          {variants.slice(0, 1).map((variant) => {
                             const values = variant.identifiers
                               .map((field) => field.value.trim())
                               .filter(Boolean);
@@ -1465,6 +2018,18 @@ export function AddProductModal({
                 </section>
               ) : null}
             </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                addImages(event.target.files, imageTargetVariantKey);
+                event.currentTarget.value = "";
+              }}
+            />
 
             <input type="hidden" name="name" value={name} />
             <input type="hidden" name="description" value={description} />
@@ -1503,6 +2068,33 @@ export function AddProductModal({
           </form>
         )}
       </div>
+
+      {draftRestoreCandidate ? (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-stone-950/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[1.75rem] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+            <h3 className="text-lg font-semibold text-stone-950">Restore Draft</h3>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              A saved product draft was found on this device. Do you want to restore it and continue where you left off?
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={dismissSavedDraft}
+                className="rounded-xl bg-stone-100 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-200"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={() => applySavedDraft(draftRestoreCandidate)}
+                className="rounded-xl bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
+              >
+                Restore Draft
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {scanningTarget ? (
         <BarcodeScanner

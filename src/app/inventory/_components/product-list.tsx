@@ -133,7 +133,7 @@ export function ProductList({
               No matching products found.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm">
+            <div className="overflow-visible rounded-2xl border border-stone-100 bg-white shadow-sm">
               {searchResults.map((product, index) => (
                 <ProductCard key={product.id} product={product} isLast={index === searchResults.length - 1} {...sharedProps} />
               ))}
@@ -211,7 +211,7 @@ function CatalogSection({
           View All <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm">
+      <div className="overflow-visible rounded-2xl border border-stone-100 bg-white shadow-sm">
         {previewProducts.map((product, index) => (
           <ProductCard key={product.id} product={product} isLast={index === previewProducts.length - 1} {...sharedProps} />
         ))}
@@ -331,10 +331,7 @@ function ProductCard({
               <LoaderCircle className="h-3.5 w-3.5 animate-spin text-stone-400" />
             </div>
           ) : (
-            <div
-              className={`transition-opacity duration-150 ${isOutOfStock ? "opacity-60" : "opacity-0 group-hover:opacity-100"
-                }`}
-            >
+            <div className={`transition-opacity duration-150 ${isOutOfStock ? "opacity-60" : "opacity-100"}`}>
               <ProductActionsMenu
                 compact
                 onEdit={() => onProductEdit?.(product.id)}

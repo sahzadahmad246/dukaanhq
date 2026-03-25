@@ -34,6 +34,7 @@ export const ProductSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   slug: z.string().min(1, "Product slug is required"),
   description: z.string().nullable(),
+  short_description: z.string().nullable().optional(),
   image_url: z.string().url().nullable(),
   image_public_id: z.string().nullable().optional(),
   tracking_type: TrackingTypeSchema,
@@ -52,12 +53,25 @@ export const ProductImageSchema = z.object({
   id: z.string().uuid(),
   shop_id: z.string().uuid(),
   product_id: z.string().uuid(),
+  variant_id: z.string().uuid().nullable().optional(),
   image_url: z.string().url(),
   image_public_id: z.string().min(1),
   sort_order: z.coerce.number().int(),
   created_at: z.string(),
 });
 export type ProductImage = z.infer<typeof ProductImageSchema>;
+
+export const ProductHighlightSchema = z.object({
+  id: z.string().uuid(),
+  shop_id: z.string().uuid(),
+  product_id: z.string().uuid(),
+  label: z.string().min(1, "Highlight label is required"),
+  value: z.string().min(1, "Highlight value is required"),
+  sort_order: z.coerce.number().int().min(0),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type ProductHighlight = z.infer<typeof ProductHighlightSchema>;
 
 export const ProductVariantSchema = z.object({
   id: z.string().uuid(),
@@ -88,6 +102,9 @@ export const InventoryItemSchema = z.object({
   variant_id: z.string().uuid().nullable(),
   serial_number: z.string().min(1, "Serial number is required"),
   identifier_type: IdentifierTypeSchema.default("SERIAL_NUMBER"),
+  imei_1: z.string().nullable().optional(),
+  imei_2: z.string().nullable().optional(),
+  unique_identifier: z.string().nullable().optional(),
   purchase_price: z.coerce.number().min(0),
   status: InventoryItemStatusSchema,
   added_at: z.string(),
@@ -96,6 +113,17 @@ export const InventoryItemSchema = z.object({
   updated_at: z.string(),
 });
 export type InventoryItem = z.infer<typeof InventoryItemSchema>;
+
+export const InventoryItemIdentifierSchema = z.object({
+  id: z.string().uuid(),
+  shop_id: z.string().uuid(),
+  inventory_item_id: z.string().uuid(),
+  identifier_type: IdentifierTypeSchema,
+  identifier_value: z.string().min(1, "Identifier value is required"),
+  sort_order: z.coerce.number().int().min(0),
+  created_at: z.string(),
+});
+export type InventoryItemIdentifier = z.infer<typeof InventoryItemIdentifierSchema>;
 
 export const StockMovementTypeSchema = z.enum(["PURCHASE", "SALE", "ADJUSTMENT_ADD", "ADJUSTMENT_REMOVE", "RETURN", "DAMAGE"]);
 export type StockMovementType = z.infer<typeof StockMovementTypeSchema>;
@@ -117,7 +145,7 @@ export type StockMovement = z.infer<typeof StockMovementSchema>;
 // Form schemas (omitting generated fields like id, dates)
 export const ProductFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  description: z.string().min(1, "Description is required"),
+  description: z.string().min(1, "Description is required").max(280, "Description must be 280 characters or fewer."),
   category_name: z.string().optional().nullable(),
   category_id: z.string().uuid().optional().nullable(),
   brand_name: z.string().optional().nullable(),
@@ -134,6 +162,13 @@ export const ProductFormSchema = z.object({
 });
 export type ProductFormValues = z.infer<typeof ProductFormSchema>;
 
+export const ProductHighlightDraftSchema = z.object({
+  label: z.string().min(1),
+  value: z.string().min(1),
+  sort_order: z.coerce.number().int().min(0).default(0),
+});
+export type ProductHighlightDraft = z.infer<typeof ProductHighlightDraftSchema>;
+
 export const ProductVariantDraftSchema = z.object({
   temp_key: z.string().min(1),
   name: z.string().min(1),
@@ -148,6 +183,10 @@ export type ProductVariantDraft = z.infer<typeof ProductVariantDraftSchema>;
 export const InventoryUnitDraftSchema = z.object({
   variant_temp_key: z.string().min(1),
   identifier_type: IdentifierTypeSchema,
-  identifier_value: z.string().min(1),
+  identifier_value: z.string().min(1).optional(),
+  imei_1: z.string().optional().nullable(),
+  imei_2: z.string().optional().nullable(),
+  serial_number: z.string().optional().nullable(),
+  unique_identifier: z.string().optional().nullable(),
 });
 export type InventoryUnitDraft = z.infer<typeof InventoryUnitDraftSchema>;

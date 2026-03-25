@@ -9,7 +9,6 @@ type InventoryItemLike = {
 };
 
 export function computeInventoryQuantity({
-  productKind,
   trackingType,
   variants,
   inventoryItems,
@@ -24,12 +23,6 @@ export function computeInventoryQuantity({
   }
 
   const inStockCount = (inventoryItems ?? []).filter((item) => item.status === "IN_STOCK").length;
-
-  // Mobile phones can carry two IMEI numbers for the same physical unit.
-  if (productKind === "MOBILE") {
-    return Math.ceil(inStockCount / 2);
-  }
-
   return inStockCount;
 }
 

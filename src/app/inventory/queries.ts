@@ -6,6 +6,7 @@ export type ProductDetails = {
   id: string;
   name: string;
   description: string | null;
+  short_description?: string | null;
   category_id?: string | null;
   brand_id?: string | null;
   image_url: string | null;
@@ -24,11 +25,31 @@ export type ProductDetails = {
     variant_id?: string | null;
     serial_number: string;
     identifier_type: string;
+    imei_1?: string | null;
+    imei_2?: string | null;
+    unique_identifier?: string | null;
     status: string;
     added_at: string;
+    identifiers?: Array<{
+      id: string;
+      identifier_type: string;
+      identifier_value: string;
+      sort_order: number;
+    }> | null;
+  }> | null;
+  highlights?: Array<{
+    id: string;
+    shop_id: string;
+    product_id: string;
+    label: string;
+    value: string;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
   }> | null;
   product_images?: Array<{
     id: string;
+    variant_id?: string | null;
     image_url: string;
     image_public_id: string;
     sort_order: number;
