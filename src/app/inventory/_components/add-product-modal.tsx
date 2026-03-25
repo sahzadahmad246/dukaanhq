@@ -2098,6 +2098,7 @@ export function AddProductModal({
 
       {scanningTarget ? (
         <BarcodeScanner
+          expectedType={resolvedIdentifierType === "IMEI" ? "IMEI" : "SERIAL"}
           onScan={(result) => {
             setIdentifierValue(scanningTarget.variantId, scanningTarget.fieldId, result);
             setScanningTarget(null);

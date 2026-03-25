@@ -15,18 +15,16 @@ type DetectedBarcode = {
 
 type ExtendedMediaTrackCapabilities = MediaTrackCapabilities & {
   torch?: boolean;
-  zoom?: {
-    min?: number;
-    max?: number;
-  };
 };
 
 type TorchConstraintTrack = MediaStreamTrack & {
   applyConstraints: (constraints: MediaTrackConstraints) => Promise<void>;
-  getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean; zoom?: { min?: number; max?: number } };
+  getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean };
 };
 
-function normalizeScannedValue(value: string) {
+type ScannerExpectedType = "IMEI" | "SERIAL" | "ANY";
+
+function normalizeScannedValue(value: string, expectedType: ScannerExpectedType) {
   const trimmed = value.trim();
   const imeiMatch = trimmed.match(/(?:IMEI\d?\s*[:\-]?\s*)?(\d{15})/i);
   if (imeiMatch?.[1]) {
@@ -38,15 +36,30 @@ function normalizeScannedValue(value: string) {
     return serialMatch[1];
   }
 
+  if (expectedType === "IMEI") {
+    const compactDigits = trimmed.replace(/\D/g, "");
+    if (compactDigits.length >= 15) {
+      return compactDigits.slice(0, 15);
+    }
+    return "";
+  }
+
+  if (expectedType === "SERIAL") {
+    const compact = trimmed.replace(/\s+/g, " ");
+    return compact.length > 0 ? compact : "";
+  }
+
   return trimmed.replace(/\s+/g, " ");
 }
 
 export function BarcodeScanner({
   onScan,
   onClose,
+  expectedType = "ANY",
 }: {
   onScan: (result: string) => void;
   onClose: () => void;
+  expectedType?: ScannerExpectedType;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -55,6 +68,7 @@ export function BarcodeScanner({
   const [torchAvailable, setTorchAvailable] = useState(false);
   const frameRef = useRef<number | null>(null);
   const lastScanAtRef = useRef(0);
+  const lastDetectorScanAtRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Stabilize the onScan callback so the effect doesn't re-fire
@@ -85,10 +99,12 @@ export function BarcodeScanner({
     let detector: { detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]> } | null = null;
 
     const emitScan = (rawValue: string) => {
+      const normalized = normalizeScannedValue(rawValue, expectedType);
+      if (!normalized) return;
       const now = Date.now();
       if (now - lastScanAtRef.current < 900) return;
       lastScanAtRef.current = now;
-      onScanRef.current(normalizeScannedValue(rawValue));
+      onScanRef.current(normalized);
     };
 
     const scanWithDetector = async () => {
@@ -116,12 +132,30 @@ export function BarcodeScanner({
         return;
       }
 
-      const regions = [
-        { x: 0.14, y: 0.34, width: 0.76, height: 0.14 },
-        { x: 0.14, y: 0.48, width: 0.76, height: 0.14 },
-        { x: 0.08, y: 0.28, width: 0.84, height: 0.44 },
-        { x: 0, y: 0, width: 1, height: 1 },
-      ];
+      const now = Date.now();
+      if (now - lastDetectorScanAtRef.current < 180) {
+        frameRef.current = window.requestAnimationFrame(() => {
+          void scanWithDetector();
+        });
+        return;
+      }
+      lastDetectorScanAtRef.current = now;
+
+      const regions =
+        expectedType === "IMEI"
+          ? [
+              { x: 0.14, y: 0.35, width: 0.76, height: 0.09 },
+              { x: 0.14, y: 0.47, width: 0.76, height: 0.09 },
+            ]
+          : expectedType === "SERIAL"
+            ? [
+                { x: 0.10, y: 0.70, width: 0.82, height: 0.12 },
+              ]
+            : [
+                { x: 0.12, y: 0.34, width: 0.80, height: 0.10 },
+                { x: 0.12, y: 0.46, width: 0.80, height: 0.10 },
+                { x: 0.10, y: 0.68, width: 0.82, height: 0.12 },
+              ];
 
       for (const region of regions) {
         const sx = Math.floor(video.videoWidth * region.x);
@@ -155,20 +189,26 @@ export function BarcodeScanner({
         // Specify the barcode formats we care about — this is the KEY fix.
         // IMEI barcodes on mobile boxes are almost always Code128, sometimes Code39 or ITF.
         const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.ITF,
-          BarcodeFormat.CODABAR,
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.QR_CODE,
-        ]);
+        hints.set(
+          DecodeHintType.POSSIBLE_FORMATS,
+          expectedType === "IMEI"
+            ? [BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF, BarcodeFormat.CODABAR]
+            : expectedType === "SERIAL"
+              ? [BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF, BarcodeFormat.CODABAR]
+              : [
+                  BarcodeFormat.CODE_128,
+                  BarcodeFormat.CODE_39,
+                  BarcodeFormat.ITF,
+                  BarcodeFormat.CODABAR,
+                  BarcodeFormat.EAN_13,
+                  BarcodeFormat.EAN_8,
+                  BarcodeFormat.UPC_A,
+                  BarcodeFormat.UPC_E,
+                ]
+        );
         hints.set(DecodeHintType.TRY_HARDER, true);
 
-        codeReader = new BrowserMultiFormatReader(hints, 120);
+        codeReader = new BrowserMultiFormatReader(hints, 90);
 
         const videoInputDevices = await codeReader.listVideoInputDevices();
 
@@ -188,16 +228,16 @@ export function BarcodeScanner({
 
         if (!videoRef.current || cancelled) return;
 
-        // Use high resolution constraints for reading dense barcodes like IMEI
+        // Keep the feed light so lower-end phones stay responsive.
         const advancedVideoConstraints: MediaTrackConstraints & {
           focusMode?: { ideal: string };
           focusDistance?: { ideal: number };
         } = {
           deviceId: deviceId ? { exact: deviceId } : undefined,
           facingMode: "environment",
-          width: { ideal: 3840, min: 1280 },
-          height: { ideal: 2160, min: 720 },
-          frameRate: { ideal: 30 },
+          width: { ideal: 960, min: 640 },
+          height: { ideal: 540, min: 480 },
+          frameRate: { ideal: 18, max: 24 },
           focusMode: { ideal: "continuous" },
           focusDistance: { ideal: 0 },
         };
@@ -229,8 +269,8 @@ export function BarcodeScanner({
               video: {
                 deviceId: deviceId ? { exact: deviceId } : undefined,
                 facingMode: "environment",
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
+                width: { ideal: 960 },
+                height: { ideal: 540 },
               },
             },
             videoRef.current!,
@@ -255,16 +295,6 @@ export function BarcodeScanner({
             if (capabilities?.torch) {
               setTorchAvailable(true);
             }
-            if (capabilities?.zoom) {
-              try {
-                const zoomValue = Math.min(capabilities.zoom.max ?? 2, Math.max(capabilities.zoom.min ?? 1, 2));
-                await track.applyConstraints({
-                  advanced: [{ zoom: zoomValue } as MediaTrackConstraintSet],
-                });
-              } catch {
-                // zoom not supported well enough
-              }
-            }
           }
         }
 
@@ -276,7 +306,10 @@ export function BarcodeScanner({
 
         if (DetectorCtor) {
           detector = new DetectorCtor({
-            formats: ["code_128", "code_39", "itf", "codabar", "ean_13", "ean_8", "upc_a", "upc_e"],
+            formats:
+              expectedType === "IMEI" || expectedType === "SERIAL"
+                ? ["code_128", "code_39", "itf", "codabar"]
+                : ["code_128", "code_39", "itf", "codabar", "ean_13", "ean_8", "upc_a", "upc_e"],
           });
           void scanWithDetector();
         }
@@ -301,14 +334,14 @@ export function BarcodeScanner({
         codeReader.reset();
       }
     };
-  }, []);
+  }, [expectedType]);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
         <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4">
           <p className="font-medium text-white shadow-black drop-shadow-md">
-            Scan Barcode / QR
+            {expectedType === "IMEI" ? "Scan IMEI Barcode" : expectedType === "SERIAL" ? "Scan Serial Barcode" : "Scan Barcode"}
           </p>
           <div className="flex items-center gap-2">
             {torchAvailable && (
@@ -347,16 +380,20 @@ export function BarcodeScanner({
               playsInline
               muted
             />
-            {/* Scanner Overlay Guide — wider area for IMEI barcodes */}
+            {/* Narrow guide works better for the slim IMEI/serial barcodes on boxes. */}
             <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <div className="h-28 w-[90%] rounded-xl border-2 border-white/50 shadow-[0_0_0_999px_rgba(0,0,0,0.45)]">
+              <div className="h-16 w-[88%] rounded-xl border-2 border-white/50 shadow-[0_0_0_999px_rgba(0,0,0,0.45)]">
                 <div className="absolute top-1/2 left-3 right-3 h-0.5 bg-red-500/60 shadow-[0_0_12px_rgba(239,68,68,0.9)] animate-pulse" />
               </div>
             </div>
             {/* Hint text */}
             <div className="absolute bottom-6 left-0 right-0 z-10 text-center pointer-events-none">
               <p className="text-xs text-white/70 font-medium drop-shadow-md">
-                Align barcode inside the box · Hold steady
+                {expectedType === "IMEI"
+                  ? "Align one IMEI barcode inside the strip and hold steady"
+                  : expectedType === "SERIAL"
+                    ? "Align the serial barcode inside the strip and hold steady"
+                    : "Align barcode inside the strip and hold steady"}
               </p>
             </div>
           </div>

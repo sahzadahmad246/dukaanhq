@@ -306,6 +306,7 @@ export function AddStockModal({
 
       {scanningTarget ? (
         <BarcodeScanner
+          expectedType={scanningTarget.type === "serial" ? "SERIAL" : "IMEI"}
           onScan={(result) => {
             if (scanningTarget.type === "serial") {
               setSerialUnits((current) => current.map((unit) => unit.id === scanningTarget.unitId ? { ...unit, value: result } : unit));
