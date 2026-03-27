@@ -8,9 +8,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { buildVariantLabel, getStoragePresetOptions } from "@/lib/inventory-labels";
 import { addInventoryStockAction } from "../actions";
 import { fetchProductDetails, productDetailsQueryKey } from "../queries";
 import { BarcodeScanner } from "./barcode-scanner";
+import { StoragePresetPicker } from "./storage-preset-picker";
 
 type MobileUnitDraft = {
   id: string;
@@ -35,15 +37,6 @@ function createMobileUnit(): MobileUnitDraft {
 
 function createSerialUnit(): SerialUnitDraft {
   return { id: crypto.randomUUID(), value: "" };
-}
-
-function buildVariantLabel(variant: { name?: string | null; color?: string | null; storage_label?: string | null }) {
-  const parts = [variant.storage_label, variant.color].filter(Boolean);
-  const normalizedName = (variant.name ?? "").trim();
-  if (normalizedName && normalizedName.toLowerCase() !== "default") {
-    parts.push(normalizedName);
-  }
-  return parts.length > 0 ? parts.join(" / ") : null;
 }
 
 function OptionCard({
@@ -113,6 +106,14 @@ export function AddStockModal({
 
   const isQuantityBased = product?.tracking_type === "QUANTITY_BASED";
   const isMobile = product?.product_kind === "MOBILE";
+  const storagePresets = useMemo(
+    () =>
+      getStoragePresetOptions({
+        productKind: product?.product_kind ?? null,
+        brandName: product?.brand?.name,
+      }),
+    [product?.brand?.name, product?.product_kind]
+  );
   const resolvedVariantId = selectedVariantId || product?.variants?.[0]?.id || "";
   const variantStockMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -253,12 +254,14 @@ export function AddStockModal({
                     <Label className="text-xs uppercase tracking-[0.12em] text-stone-500">
                       {product.product_kind === "MOBILE" ? "Storage / RAM" : "Storage / Spec"}
                     </Label>
-                    <Input
+                    <div className="mt-2">
+                      <StoragePresetPicker
                       value={storageLabel}
-                      onChange={(event) => setStorageLabel(event.target.value)}
-                      className="mt-2"
-                      placeholder={product.product_kind === "MOBILE" ? "8GB / 128GB" : "Optional"}
-                    />
+                        onChange={setStorageLabel}
+                        presets={storagePresets}
+                        placeholder={product.product_kind === "MOBILE" ? "Select or type storage" : "Select or type size / storage"}
+                      />
+                    </div>
                   </div>
                 </div>
               ) : existingVariants.length > 0 ? (

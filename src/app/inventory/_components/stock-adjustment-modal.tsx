@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { buildVariantLabel } from "@/lib/inventory-labels";
 import { fetchProductDetails, productDetailsQueryKey } from "../queries";
 import { adjustInventoryStockAction } from "../actions";
 
@@ -20,15 +21,6 @@ type AdjustmentType =
   | "DAMAGE"
   | "RESTORE_RETURNED"
   | "RESTORE_DAMAGED";
-
-function buildVariantLabel(variant: { name?: string | null; color?: string | null; storage_label?: string | null }) {
-  const parts = [variant.storage_label, variant.color].filter(Boolean);
-  const normalizedName = (variant.name ?? "").trim();
-  if (normalizedName && normalizedName.toLowerCase() !== "default") {
-    parts.push(normalizedName);
-  }
-  return parts.length > 0 ? parts.join(" / ") : null;
-}
 
 function buildInventoryItemLabel(item: {
   serial_number: string;

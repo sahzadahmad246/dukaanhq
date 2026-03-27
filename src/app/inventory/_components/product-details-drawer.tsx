@@ -7,20 +7,13 @@ import { format } from "date-fns";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "../queries";
 import { ProductActionsMenu } from "./product-actions-menu";
 import { Button } from "@/components/ui/button";
+import { buildVariantLabel } from "@/lib/inventory-labels";
 import { downloadQrSheetPdf } from "@/lib/qr-pdf";
 import { stringifyQrPayload } from "@/lib/qr";
 
 type InventoryItem = NonNullable<ProductDetails["inventory_items"]>[number];
 type StockMovement = NonNullable<ProductDetails["stock_movements"]>[number];
 type ProductHighlight = NonNullable<ProductDetails["highlights"]>[number];
-function buildVariantLabel(variant: { name?: string | null; color?: string | null; storage_label?: string | null }) {
-  const parts = [variant.storage_label, variant.color].filter(Boolean);
-  const normalizedName = (variant.name ?? "").trim();
-  if (normalizedName && normalizedName.toLowerCase() !== "default") {
-    parts.push(normalizedName);
-  }
-  return parts.length > 0 ? parts.join(" / ") : null;
-}
 
 function resolveVariantSellingPrice(product: ProductDetails, variant?: NonNullable<ProductDetails["variants"]>[number] | null) {
   return Number(variant?.selling_price_override ?? product.base_selling_price ?? 0);

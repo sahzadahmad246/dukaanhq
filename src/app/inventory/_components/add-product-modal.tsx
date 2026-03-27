@@ -27,11 +27,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { buildVariantLabel, getStoragePresetOptions } from "@/lib/inventory-labels";
 import { cn } from "@/lib/utils";
 import { ActionResponse, createProductAction, updateProductAction } from "../actions";
 import { BarcodeScanner } from "./barcode-scanner";
 import { fetchProductDetails, productDetailsQueryKey } from "../queries";
 import { matchesSearch } from "../inventory-utils";
+import { StoragePresetPicker } from "./storage-preset-picker";
 
 type StepId = "basics" | "options" | "stock" | "preview";
 type SearchableOption = { value: string; label: string };
@@ -254,8 +256,11 @@ async function createDroppedImage(url: string, index: number) {
 }
 
 function buildVariantName(variant: VariantDraft) {
-  const parts = [variant.storage.trim(), variant.color.trim()].filter(Boolean);
-  return parts.length > 0 ? parts.join(" / ") : "Default";
+  return buildVariantLabel({
+    storage_label: variant.storage.trim(),
+    color: variant.color.trim(),
+    name: "Default",
+  }) ?? "Default";
 }
 
 async function fileToDataUrl(file: File) {
@@ -612,6 +617,18 @@ export function AddProductModal({
   const selectedProfileMeta = profiles.find((profile) => profile.id === selectedProfile) ?? profiles[0];
   const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }));
   const brandOptions = brands.map((brand) => ({ value: brand.id, label: brand.name }));
+  const selectedBrandName =
+    brandMode === "existing"
+      ? brands.find((brand) => brand.id === selectedBrandId)?.name ?? ""
+      : newBrandName;
+  const storagePresets = useMemo(
+    () =>
+      getStoragePresetOptions({
+        productKind: selectedProfile,
+        brandName: selectedBrandName,
+      }),
+    [selectedBrandName, selectedProfile]
+  );
   const mobileTemplateOptions = useMemo(
     () =>
       products.filter(
@@ -1758,7 +1775,12 @@ export function AddProductModal({
                         <Input value={variants[0].color} onChange={(event) => setVariantField(variants[0].id, "color", event.target.value)} placeholder="Black" />
                       </Field>
                       <Field label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}>
-                        <Input value={variants[0].storage} onChange={(event) => setVariantField(variants[0].id, "storage", event.target.value)} placeholder={selectedProfile === "MOBILE" ? "8GB / 128GB" : "Optional"} />
+                        <StoragePresetPicker
+                          value={variants[0].storage}
+                          onChange={(nextValue) => setVariantField(variants[0].id, "storage", nextValue)}
+                          presets={storagePresets}
+                          placeholder={selectedProfile === "MOBILE" ? "Select or type storage" : "Select or type size / storage"}
+                        />
                       </Field>
 
                       <Field label="Option Images (Optional)">

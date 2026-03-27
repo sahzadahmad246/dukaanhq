@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Loader2, Package2, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { buildVariantLabel } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
 import { createInvoiceAction, resolveBillingQrAction } from "../actions";
@@ -108,20 +109,22 @@ function Stepper({
   );
 }
 
-function buildVariantLabel(variant: { name?: string | null; color?: string | null; storage_label?: string | null }) {
-  const parts = [variant.storage_label, variant.color].filter(Boolean);
-  const normalizedName = (variant.name ?? "").trim();
-
-  if (normalizedName && normalizedName.toLowerCase() !== "default") {
-    parts.push(normalizedName);
-  }
-
-  return parts.length > 0 ? parts.join(" / ") : null;
-}
-
 function buildLineMeta(parts: Array<string | null | undefined>) {
   const filtered = parts.filter(Boolean);
   return filtered.length > 0 ? filtered.join(" • ") : null;
+}
+
+function isLineComplete(line: BillingLineDraft, products: ProductSummary[]) {
+  const product = products.find((item) => item.id === line.product_id);
+  if (!product) return false;
+  if (getProductSaleBlockReason(product)) return false;
+  if (!line.variant_id) return false;
+
+  if (product.tracking_type === "SERIALIZED") {
+    return Boolean(line.inventory_item_id);
+  }
+
+  return (Number.parseInt(line.quantity || "0", 10) || 0) > 0;
 }
 
 function getProductSaleBlockReason(product: ProductSummary | null) {
@@ -392,12 +395,14 @@ function LineEditor({
   products,
   onChange,
   onRemove,
+  mode = "inline",
 }: {
   line: BillingLineDraft;
   index: number;
   products: ProductSummary[];
   onChange: (next: Partial<BillingLineDraft>) => void;
   onRemove: () => void;
+  mode?: "inline" | "dialog";
 }) {
   const selectedProduct = products.find((product) => product.id === line.product_id) ?? null;
   const { data: productDetails } = useQuery({
@@ -582,9 +587,11 @@ function LineEditor({
   return (
     <div className="space-y-4 rounded-[1.75rem] border border-stone-200/80 bg-gradient-to-b from-white to-[#f9f5ee] p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <Button type="button" variant="ghost" className="h-8 px-2 text-rose-600 hover:bg-rose-50" onClick={onRemove}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {mode === "inline" ? (
+          <Button type="button" variant="ghost" className="h-8 px-2 text-rose-600 hover:bg-rose-50" onClick={onRemove}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ) : <div className="h-8 w-8" />}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-stone-900 px-2 text-xs font-semibold text-white">
@@ -782,10 +789,14 @@ export function AddBillModal({
   const [customer, setCustomer] = useState<CustomerDraft>({ name: "", mobile: "", billing_address: "", gst_number: "" });
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "CARD" | "UPI" | "BANK_TRANSFER" | "OTHER">("CASH");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<BillingLineDraft[]>([createLine()]);
+  const [lines, setLines] = useState<BillingLineDraft[]>([]);
   const [clientError, setClientError] = useState("");
   const [state, setState] = useState<ActionResponse>({ status: "success", message: "" });
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [draftLine, setDraftLine] = useState<BillingLineDraft | null>(null);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [scanLoadingCount, setScanLoadingCount] = useState(0);
   const steps: StepId[] = ["customer", "products", "preview"];
   const stepIndex = steps.indexOf(currentStep);
   const productsRef = useRef(products);
@@ -834,6 +845,46 @@ export function AddBillModal({
     { subtotal: 0, discount: 0, tax: 0, total: 0 }
   );
 
+  function openNewProductDialog() {
+    setDraftLine(createLine());
+    setEditingLineId(null);
+    setClientError("");
+    setIsProductDialogOpen(true);
+  }
+
+  function openEditProductDialog(lineId: string) {
+    const existing = lines.find((line) => line.id === lineId);
+    if (!existing) return;
+    setDraftLine({ ...existing });
+    setEditingLineId(lineId);
+    setClientError("");
+    setIsProductDialogOpen(true);
+  }
+
+  function closeProductDialog() {
+    setDraftLine(null);
+    setEditingLineId(null);
+    setIsProductDialogOpen(false);
+  }
+
+  function saveDraftLine() {
+    if (!draftLine) return;
+    if (!isLineComplete(draftLine, products)) {
+      setClientError("Select the product and complete its sale details before adding it to the bill.");
+      return;
+    }
+
+    setLines((current) => {
+      if (editingLineId) {
+        return current.map((line) => (line.id === editingLineId ? draftLine : line));
+      }
+      return [...current, draftLine];
+    });
+
+    setClientError("");
+    closeProductDialog();
+  }
+
   function validateStep(step: StepId) {
     if (step === "customer") {
       if (!customer.name.trim()) {
@@ -856,16 +907,7 @@ export function AddBillModal({
         return false;
       }
 
-      const hasInvalidLine = lines.some((line) => {
-        const product = products.find((item) => item.id === line.product_id);
-        if (!product) return true;
-        if (getProductSaleBlockReason(product)) return true;
-        if (!line.variant_id) return true;
-        if (product.tracking_type === "SERIALIZED") {
-          return !line.inventory_item_id;
-        }
-        return !line.quantity || (Number.parseInt(line.quantity || "0", 10) || 0) <= 0;
-      });
+      const hasInvalidLine = lines.some((line) => !isLineComplete(line, products));
 
       if (hasInvalidLine) {
         setClientError("Complete each product line by selecting the option and stock details.");
@@ -1022,7 +1064,7 @@ export function AddBillModal({
                     <ScanBarcode className="h-4 w-4" />
                     Scan QR
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setLines((current) => [...current, createLine()])}>
+                  <Button type="button" variant="secondary" onClick={openNewProductDialog}>
                     <Plus className="h-4 w-4" />
                     Add Product
                   </Button>
@@ -1053,18 +1095,82 @@ export function AddBillModal({
                 </div>
               </div>
 
-              {lines.map((line) => (
-                <LineEditor
-                  key={line.id}
-                  index={lines.findIndex((item) => item.id === line.id)}
-                  line={line}
-                  products={products}
-                  onChange={(next) =>
-                    setLines((current) => current.map((item) => (item.id === line.id ? { ...item, ...next } : item)))
-                  }
-                  onRemove={() => setLines((current) => (current.length > 1 ? current.filter((item) => item.id !== line.id) : current))}
-                />
-              ))}
+              {scanLoadingCount > 0 ? (
+                <div className="space-y-3">
+                  {Array.from({ length: scanLoadingCount }).map((_, index) => (
+                    <div key={`scan-skeleton-${index}`} className="rounded-[1.75rem] border border-stone-200/80 bg-white p-4">
+                      <div className="animate-pulse space-y-3">
+                        <div className="h-4 w-28 rounded-full bg-stone-200" />
+                        <div className="h-5 w-2/3 rounded-full bg-stone-200" />
+                        <div className="h-4 w-1/2 rounded-full bg-stone-100" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {lines.length > 0 ? (
+                <div className="overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-white shadow-sm">
+                  {lines.map((line, index) => {
+                    const product = products.find((item) => item.id === line.product_id) ?? null;
+                    const variant = product?.variants?.find((item) => item.id === line.variant_id) ?? null;
+                    const quantity = product?.tracking_type === "SERIALIZED" ? 1 : Number.parseInt(line.quantity || "1", 10) || 1;
+                    const unitPrice = Number.parseFloat(line.unit_price || "0") || 0;
+                    const discountAmount = Number.parseFloat(line.discount_amount || "0") || 0;
+                    const lineTotal = computeLineTotal({ quantity, unitPrice, discountAmount });
+
+                    return (
+                      <div key={line.id} className={cn("px-4 py-4", index < lines.length - 1 ? "border-b border-stone-100" : "")}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start gap-3">
+                              <span className="mt-0.5 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-stone-900 px-2 text-xs font-semibold text-white">
+                                {index + 1}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold leading-5 text-stone-900">{product?.name ?? "Incomplete item"}</p>
+                                {buildLineMeta([variant ? buildVariantLabel(variant) : null, line.identifier_value]) ? (
+                                  <p className="mt-1 text-xs text-stone-500">
+                                    {buildLineMeta([variant ? buildVariantLabel(variant) : null, line.identifier_value])}
+                                  </p>
+                                ) : null}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-700">Qty {quantity}</span>
+                                  <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">Rate {money(unitPrice)}</span>
+                                  {discountAmount > 0 ? (
+                                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                                      Discount {money(discountAmount)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-start gap-1">
+                            <div className="min-w-[92px] pt-1 text-right text-sm font-semibold text-stone-900">{money(lineTotal)}</div>
+                            <Button type="button" variant="ghost" className="h-9 px-2 text-stone-600" onClick={() => openEditProductDialog(line.id)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="h-9 px-2 text-rose-600 hover:bg-rose-50"
+                              onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : scanLoadingCount === 0 ? (
+                <div className="rounded-[1.75rem] border border-dashed border-stone-300 bg-white/70 px-4 py-8 text-center">
+                  <p className="text-sm font-medium text-stone-700">No products added yet.</p>
+                  <p className="mt-1 text-xs text-stone-500">Scan a QR or add a product manually to build the bill.</p>
+                </div>
+              ) : null}
 
               <Field label="Notes">
                 <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
@@ -1144,8 +1250,10 @@ export function AddBillModal({
           onClose={() => setIsQrScannerOpen(false)}
           onScan={(result) => {
             setIsQrScannerOpen(false);
+            setScanLoadingCount((current) => current + 1);
             startTransition(async () => {
               const resolved = await resolveBillingQrAction(result);
+              setScanLoadingCount((current) => Math.max(current - 1, 0));
 
               if (resolved.status === "error" || !resolved.data) {
                 setClientError(resolved.message);
@@ -1166,6 +1274,43 @@ export function AddBillModal({
             });
           }}
         />
+      ) : null}
+
+      {isProductDialogOpen && draftLine ? (
+        <div className="fixed inset-0 z-[60] bg-stone-950/50 px-4 py-6 backdrop-blur-sm">
+          <div className="mx-auto flex h-full max-w-[460px] flex-col overflow-hidden rounded-[2rem] bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.22)]">
+            <div className="flex items-center justify-between border-b border-stone-200/80 bg-[#fffdf9] px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-stone-950">{editingLineId ? "Edit Product" : "Add Product"}</h3>
+                <p className="mt-1 text-xs text-stone-500">Choose the product once, then save it into the bill list.</p>
+              </div>
+              <button type="button" onClick={closeProductDialog} className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <LineEditor
+                key={draftLine.id}
+                index={editingLineId ? Math.max(lines.findIndex((item) => item.id === editingLineId), 0) : lines.length}
+                line={draftLine}
+                products={products}
+                mode="dialog"
+                onChange={(next) => setDraftLine((current) => (current ? { ...current, ...next } : current))}
+                onRemove={closeProductDialog}
+              />
+            </div>
+
+            <div className="flex items-center justify-between border-t border-stone-200/80 bg-[#fffdf9] px-4 py-4">
+              <Button type="button" variant="ghost" onClick={closeProductDialog}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={saveDraftLine}>
+                {editingLineId ? "Update Product" : "Add To Bill"}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
