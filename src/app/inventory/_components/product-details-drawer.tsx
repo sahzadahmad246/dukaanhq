@@ -7,6 +7,8 @@ import { format } from "date-fns";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "../queries";
 import { ProductActionsMenu } from "./product-actions-menu";
 import { Button } from "@/components/ui/button";
+import { downloadQrSheetPdf } from "@/lib/qr-pdf";
+import { stringifyQrPayload } from "@/lib/qr";
 
 type InventoryItem = NonNullable<ProductDetails["inventory_items"]>[number];
 type StockMovement = NonNullable<ProductDetails["stock_movements"]>[number];
@@ -90,6 +92,8 @@ export function ProductDetailsDrawer({
         label: buildVariantLabel(variant) ?? product.name,
         sellingPrice: resolveVariantSellingPrice(product, variant),
         purchasePrice: resolveVariantPurchasePrice(product, variant),
+        labelCode: variant.label_code ?? null,
+        qrPayload: variant.qr_payload ?? null,
       };
     });
   }, [product, variants]);
@@ -209,7 +213,7 @@ export function ProductDetailsDrawer({
                   <div>
                     <h3 className="text-sm font-extrabold text-stone-900">Variant Inventory</h3>
                     <div className="mt-3 space-y-3">
-                      {variantSummaries.map(({ variant, label, sellable, damaged, returned, sellingPrice, purchasePrice }) => (
+                      {variantSummaries.map(({ variant, label, sellable, damaged, returned, sellingPrice, purchasePrice, labelCode, qrPayload }) => (
                         <div key={variant.id} className="rounded-[1.35rem] border border-stone-200 bg-white p-4 shadow-sm">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -240,6 +244,21 @@ export function ProductDetailsDrawer({
                               <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">{returned} returned</span>
                             ) : null}
                           </div>
+                          {labelCode ? <p className="mt-3 text-[11px] font-semibold text-stone-500">{labelCode}</p> : null}
+                          {labelCode && qrPayload ? (
+                            <Button
+                              variant="outline"
+                              className="mt-3 w-full"
+                              onClick={() =>
+                                void downloadQrSheetPdf(
+                                  [{ labelCode, payload: stringifyQrPayload(qrPayload) }],
+                                  `${labelCode.toLowerCase()}-qr.pdf`
+                                )
+                              }
+                            >
+                              Download QR
+                            </Button>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -249,6 +268,33 @@ export function ProductDetailsDrawer({
 
               {onRecordSale || onAdjustStock ? (
                 <div className="mx-5 mt-4 grid gap-3">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      const entries =
+                        product.tracking_type === "QUANTITY_BASED"
+                          ? variantSummaries
+                              .filter((entry) => entry.labelCode && entry.qrPayload)
+                              .map((entry) => ({
+                                labelCode: entry.labelCode as string,
+                                payload: stringifyQrPayload(entry.qrPayload!),
+                              }))
+                          : (product.inventory_items ?? [])
+                              .filter((item) => item.label_code && item.qr_payload)
+                              .map((item) => ({
+                                labelCode: item.label_code as string,
+                                payload: stringifyQrPayload(item.qr_payload!),
+                              }));
+
+                      void downloadQrSheetPdf(
+                        entries,
+                        `${product.name.trim().replace(/\s+/g, "-").toLowerCase()}-qr-labels.pdf`
+                      );
+                    }}
+                  >
+                    Download All QR
+                  </Button>
                   {onRecordSale ? (
                     <Button
                       variant="outline"
@@ -284,6 +330,21 @@ export function ProductDetailsDrawer({
                             {buildVariantLabel(variants.find((variant) => variant.id === item.variant_id) ?? {}) ?? product.name}
                           </p>
                           <p className="mt-1 text-xs font-mono text-stone-600">{buildInventoryItemLabel(item)}</p>
+                          {item.label_code ? <p className="mt-2 text-[11px] font-semibold text-stone-500">{item.label_code}</p> : null}
+                          {item.label_code && item.qr_payload ? (
+                            <Button
+                              variant="outline"
+                              className="mt-3 w-full"
+                              onClick={() =>
+                                void downloadQrSheetPdf(
+                                  [{ labelCode: item.label_code as string, payload: stringifyQrPayload(item.qr_payload!) }],
+                                  `${(item.label_code as string).toLowerCase()}-qr.pdf`
+                                )
+                              }
+                            >
+                              Download QR
+                            </Button>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -300,6 +361,7 @@ export function ProductDetailsDrawer({
                             {buildVariantLabel(variants.find((variant) => variant.id === item.variant_id) ?? {}) ?? product.name}
                           </p>
                           <p className="mt-1 text-xs font-mono text-rose-700">{buildInventoryItemLabel(item)}</p>
+                          {item.label_code ? <p className="mt-2 text-[11px] font-semibold text-rose-700">{item.label_code}</p> : null}
                         </div>
                       ))}
                     </div>
@@ -316,6 +378,7 @@ export function ProductDetailsDrawer({
                             {buildVariantLabel(variants.find((variant) => variant.id === item.variant_id) ?? {}) ?? product.name}
                           </p>
                           <p className="mt-1 text-xs font-mono text-blue-700">{buildInventoryItemLabel(item)}</p>
+                          {item.label_code ? <p className="mt-2 text-[11px] font-semibold text-blue-700">{item.label_code}</p> : null}
                         </div>
                       ))}
                     </div>

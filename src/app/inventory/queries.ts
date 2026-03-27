@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 
+import type { QrPayload } from "@/lib/qr";
 import { getProductDetailsAction } from "./actions";
 
 export type ProductDetails = {
@@ -27,6 +28,8 @@ export type ProductDetails = {
     storage_label?: string | null;
     purchase_price_override?: number | null;
     selling_price_override?: number | null;
+    label_code?: string | null;
+    qr_payload?: QrPayload | null;
   }> | null;
   inventory_items?: Array<{
     id: string;
@@ -36,6 +39,8 @@ export type ProductDetails = {
     imei_1?: string | null;
     imei_2?: string | null;
     unique_identifier?: string | null;
+    label_code?: string | null;
+    qr_payload?: QrPayload | null;
     status: string;
     added_at: string;
     identifiers?: Array<{

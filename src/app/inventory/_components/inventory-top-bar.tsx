@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowLeft, Plus, Search, X } from "lucide-react";
+import { ArrowLeft, Plus, QrCode, Search, X } from "lucide-react";
 
 export function InventoryTopBar({
   searchQuery,
   onSearchChange,
   onBack,
   onAdd,
+  onQrExport,
   userAvatarUrl,
   avatarFallback,
 }: {
@@ -15,6 +16,7 @@ export function InventoryTopBar({
   onSearchChange: (value: string) => void;
   onBack: () => void;
   onAdd?: () => void;
+  onQrExport?: () => void;
   userAvatarUrl?: string | null;
   avatarFallback?: string;
 }) {
@@ -47,7 +49,28 @@ export function InventoryTopBar({
           </button>
         ) : null}
       </div>
-      {userAvatarUrl || avatarFallback ? (
+      {onQrExport ? (
+        <button
+          type="button"
+          onClick={onQrExport}
+          title="Export QR"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-700 shadow-sm transition hover:bg-stone-200"
+          aria-label="Export QR"
+        >
+          <QrCode className="h-4 w-4" />
+        </button>
+      ) : null}
+      {onAdd ? (
+        <button
+          type="button"
+          onClick={onAdd}
+          title="Add Product"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-950 text-white shadow-sm transition hover:bg-stone-800"
+          aria-label="Add Product"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      ) : userAvatarUrl || avatarFallback ? (
         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-stone-900 text-sm font-semibold text-white">
           {userAvatarUrl ? (
             <Image
@@ -61,16 +84,6 @@ export function InventoryTopBar({
             <span>{avatarFallback}</span>
           )}
         </div>
-      ) : onAdd ? (
-        <button
-          type="button"
-          onClick={onAdd}
-          title="Add Product"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-950 text-white shadow-sm transition hover:bg-stone-800"
-          aria-label="Add Product"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
       ) : null}
     </div>
   );

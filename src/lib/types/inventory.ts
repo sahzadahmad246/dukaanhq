@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { QrPayloadSchema } from "@/lib/qr";
+
 export const CategorySchema = z.object({
   id: z.string().uuid(),
   shop_id: z.string().uuid(),
@@ -83,6 +85,8 @@ export const ProductVariantSchema = z.object({
   sku: z.string().nullable(),
   purchase_price_override: z.coerce.number().min(0).nullable(),
   selling_price_override: z.coerce.number().min(0).nullable(),
+  label_code: z.string().nullable().optional(),
+  qr_payload: QrPayloadSchema.nullable().optional(),
   quantity: z.coerce.number().int().min(0),
   created_at: z.string(),
   updated_at: z.string(),
@@ -105,6 +109,8 @@ export const InventoryItemSchema = z.object({
   imei_1: z.string().nullable().optional(),
   imei_2: z.string().nullable().optional(),
   unique_identifier: z.string().nullable().optional(),
+  label_code: z.string().nullable().optional(),
+  qr_payload: QrPayloadSchema.nullable().optional(),
   purchase_price: z.coerce.number().min(0),
   status: InventoryItemStatusSchema,
   added_at: z.string(),

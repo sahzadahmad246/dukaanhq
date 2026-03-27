@@ -22,7 +22,7 @@ type TorchConstraintTrack = MediaStreamTrack & {
   getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean };
 };
 
-type ScannerExpectedType = "IMEI" | "SERIAL" | "ANY";
+type ScannerExpectedType = "IMEI" | "SERIAL" | "ANY" | "QR";
 
 function normalizeScannedValue(value: string, expectedType: ScannerExpectedType) {
   const trimmed = value.trim();
@@ -47,6 +47,10 @@ function normalizeScannedValue(value: string, expectedType: ScannerExpectedType)
   if (expectedType === "SERIAL") {
     const compact = trimmed.replace(/\s+/g, " ");
     return compact.length > 0 ? compact : "";
+  }
+
+  if (expectedType === "QR") {
+    return trimmed;
   }
 
   return trimmed.replace(/\s+/g, " ");
@@ -151,6 +155,10 @@ export function BarcodeScanner({
             ? [
                 { x: 0.10, y: 0.70, width: 0.82, height: 0.12 },
               ]
+            : expectedType === "QR"
+              ? [
+                  { x: 0.18, y: 0.18, width: 0.64, height: 0.64 },
+                ]
             : [
                 { x: 0.12, y: 0.34, width: 0.80, height: 0.10 },
                 { x: 0.12, y: 0.46, width: 0.80, height: 0.10 },
@@ -195,6 +203,8 @@ export function BarcodeScanner({
             ? [BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF, BarcodeFormat.CODABAR]
             : expectedType === "SERIAL"
               ? [BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF, BarcodeFormat.CODABAR]
+              : expectedType === "QR"
+                ? [BarcodeFormat.QR_CODE]
               : [
                   BarcodeFormat.CODE_128,
                   BarcodeFormat.CODE_39,
@@ -204,6 +214,7 @@ export function BarcodeScanner({
                   BarcodeFormat.EAN_8,
                   BarcodeFormat.UPC_A,
                   BarcodeFormat.UPC_E,
+                  BarcodeFormat.QR_CODE,
                 ]
         );
         hints.set(DecodeHintType.TRY_HARDER, true);
@@ -309,6 +320,8 @@ export function BarcodeScanner({
             formats:
               expectedType === "IMEI" || expectedType === "SERIAL"
                 ? ["code_128", "code_39", "itf", "codabar"]
+                : expectedType === "QR"
+                  ? ["qr_code"]
                 : ["code_128", "code_39", "itf", "codabar", "ean_13", "ean_8", "upc_a", "upc_e"],
           });
           void scanWithDetector();
@@ -341,7 +354,7 @@ export function BarcodeScanner({
       <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
         <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4">
           <p className="font-medium text-white shadow-black drop-shadow-md">
-            {expectedType === "IMEI" ? "Scan IMEI Barcode" : expectedType === "SERIAL" ? "Scan Serial Barcode" : "Scan Barcode"}
+            {expectedType === "IMEI" ? "Scan IMEI Barcode" : expectedType === "SERIAL" ? "Scan Serial Barcode" : expectedType === "QR" ? "Scan Billing QR" : "Scan Barcode"}
           </p>
           <div className="flex items-center gap-2">
             {torchAvailable && (
@@ -393,6 +406,8 @@ export function BarcodeScanner({
                   ? "Align one IMEI barcode inside the strip and hold steady"
                   : expectedType === "SERIAL"
                     ? "Align the serial barcode inside the strip and hold steady"
+                    : expectedType === "QR"
+                      ? "Align the QR code inside the guide and hold steady"
                     : "Align barcode inside the strip and hold steady"}
               </p>
             </div>

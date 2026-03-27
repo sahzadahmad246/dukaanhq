@@ -13,6 +13,7 @@ import { ProductDetailsDrawer } from "./product-details-drawer";
 import { RecordSaleModal } from "./record-sale-modal";
 import { AddStockModal } from "./add-stock-modal";
 import { StockAdjustmentModal } from "./stock-adjustment-modal";
+import { QrExportModal } from "./qr-export-modal";
 import { productDetailsQueryOptions } from "../queries";
 import { deleteProductAction } from "../actions";
 import { InventoryTopBar } from "./inventory-top-bar";
@@ -42,6 +43,7 @@ export function InventoryManager({
   const [adjustmentProductId, setAdjustmentProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
+  const [isQrExportOpen, setIsQrExportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED" | "DAMAGED" | "RETURNED">("ALL");
   const [showHeader, setShowHeader] = useState(true);
@@ -136,6 +138,7 @@ export function InventoryManager({
             onSearchChange={setSearchQuery}
             onBack={() => router.back()}
             onAdd={handleAddOpen}
+            onQrExport={() => setIsQrExportOpen(true)}
           />
         </div>
       </div>
@@ -219,6 +222,14 @@ export function InventoryManager({
             await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", adjustmentProductId] });
           }
         }}
+      />
+
+      <QrExportModal
+        open={isQrExportOpen}
+        onClose={() => setIsQrExportOpen(false)}
+        products={products.map((product) => ({ id: product.id, name: product.name }))}
+        brands={brands.map((brand) => ({ id: brand.id, name: brand.name }))}
+        categories={categories.map((category) => ({ id: category.id, name: category.name }))}
       />
 
       {confirmDeleteProductId ? (

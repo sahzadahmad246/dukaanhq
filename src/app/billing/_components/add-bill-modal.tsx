@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Loader2, Package2, Plus, Search, Smartphone, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Loader2, Package2, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,11 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
-import { createInvoiceAction } from "../actions";
+import { createInvoiceAction, resolveBillingQrAction } from "../actions";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "@/app/inventory/queries";
 import type { ActionResponse } from "@/app/inventory/actions";
 import { printInvoice } from "./invoice-print";
+import { QrScanner } from "./qr-scanner";
 
 type StepId = "customer" | "products" | "preview";
 
@@ -784,6 +785,7 @@ export function AddBillModal({
   const [lines, setLines] = useState<BillingLineDraft[]>([createLine()]);
   const [clientError, setClientError] = useState("");
   const [state, setState] = useState<ActionResponse>({ status: "success", message: "" });
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const steps: StepId[] = ["customer", "products", "preview"];
   const stepIndex = steps.indexOf(currentStep);
   const productsRef = useRef(products);
@@ -928,6 +930,56 @@ export function AddBillModal({
     });
   }
 
+  function applyResolvedQrLine(resolved: {
+    kind: "UNIT" | "QTY";
+    product_id: string;
+    variant_id: string;
+    inventory_item_id: string | null;
+    identifier_value: string | null;
+    unit_price: number;
+  }) {
+    setLines((current) => {
+      if (resolved.kind === "QTY") {
+        const existingIndex = current.findIndex(
+          (line) =>
+            line.product_id === resolved.product_id &&
+            line.variant_id === resolved.variant_id &&
+            !line.inventory_item_id
+        );
+
+        if (existingIndex >= 0) {
+          return current.map((line, index) =>
+            index === existingIndex
+              ? {
+                  ...line,
+                  quantity: String((Number.parseInt(line.quantity || "1", 10) || 1) + 1),
+                  unit_price: String(resolved.unit_price),
+                }
+              : line
+          );
+        }
+      }
+
+      const emptyIndex = current.findIndex((line) => !line.product_id);
+      const nextLine: BillingLineDraft = {
+        id: emptyIndex >= 0 ? current[emptyIndex].id : crypto.randomUUID(),
+        product_id: resolved.product_id,
+        variant_id: resolved.variant_id,
+        inventory_item_id: resolved.inventory_item_id ?? "",
+        identifier_value: resolved.identifier_value ?? "",
+        quantity: "1",
+        unit_price: String(resolved.unit_price),
+        discount_amount: "0",
+      };
+
+      if (emptyIndex >= 0) {
+        return current.map((line, index) => (index === emptyIndex ? nextLine : line));
+      }
+
+      return [...current, nextLine];
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-stone-950/55 backdrop-blur-sm">
       <div className="fixed inset-x-0 bottom-0 top-8 mx-auto flex max-w-[450px] flex-col overflow-hidden rounded-t-[2rem] bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.18)] sm:bottom-6 sm:top-6 sm:rounded-[2rem]">
@@ -965,10 +1017,16 @@ export function AddBillModal({
             <section className="space-y-4 py-2">
               <div className="flex items-center justify-between gap-3">
                 <StepTitle step={2} title="Products" />
-                <Button type="button" variant="secondary" onClick={() => setLines((current) => [...current, createLine()])}>
-                  <Plus className="h-4 w-4" />
-                  Add Product
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsQrScannerOpen(true)}>
+                    <ScanBarcode className="h-4 w-4" />
+                    Scan QR
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setLines((current) => [...current, createLine()])}>
+                    <Plus className="h-4 w-4" />
+                    Add Product
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 rounded-[1.75rem] border border-stone-200/80 bg-white/70 p-4">
@@ -1080,6 +1138,35 @@ export function AddBillModal({
           </div>
         </div>
       </div>
+
+      {isQrScannerOpen ? (
+        <QrScanner
+          onClose={() => setIsQrScannerOpen(false)}
+          onScan={(result) => {
+            setIsQrScannerOpen(false);
+            startTransition(async () => {
+              const resolved = await resolveBillingQrAction(result);
+
+              if (resolved.status === "error" || !resolved.data) {
+                setClientError(resolved.message);
+                return;
+              }
+
+              if (
+                resolved.data.kind === "UNIT" &&
+                lines.some((line) => line.inventory_item_id && line.inventory_item_id === resolved.data?.inventory_item_id)
+              ) {
+                setClientError("This device is already added to the bill.");
+                return;
+              }
+
+              setClientError("");
+              applyResolvedQrLine(resolved.data);
+              setCurrentStep("products");
+            });
+          }}
+        />
+      ) : null}
     </div>
   );
 }
