@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { MarketingHeader } from "@/app/_components/marketing-header";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -31,30 +33,15 @@ export default async function Home() {
     <main className="relative min-h-screen w-full max-w-[645px] mx-auto overflow-x-hidden bg-[#080e1a] pt-[72px] text-white">
 
       {/* ── STICKY HEADER ── */}
-      <div className="fixed inset-x-0 top-0 z-50">
-        <header className="mx-auto flex w-full max-w-[645px] items-center justify-between border-b border-white/[0.06] bg-[#080e1a]/92 px-5 py-3.5 shadow-[0_12px_30px_rgba(3,7,18,0.35)] backdrop-blur-xl">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f5c542] text-[#080e1a] text-[10px] font-black tracking-tight">
-              DH
-            </div>
-            <span className="text-[14px] font-bold tracking-tight text-white">DukaanHQ</span>
-          </div>
-          <div className="flex items-center gap-3">
-            {user ? (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1a2540] border border-white/10 text-xs font-bold text-white">
-                {initials || "DH"}
-              </div>
-            ) : (
-              <Link
-                href="/auth/login"
-                className="flex h-9 items-center justify-center rounded-full bg-[#f5c542] px-4 text-[12px] font-black text-[#080e1a] transition hover:bg-[#f0bb2a]"
-              >
-                Sign in
-              </Link>
-            )}
-          </div>
-        </header>
-      </div>
+      <MarketingHeader
+        containerClassName="max-w-[645px]"
+        userInitials={user ? initials || "DH" : null}
+        userName={user ? displayName : null}
+        userEmail={user ? userEmail : null}
+        userAvatarUrl={profile?.avatar_url ?? user?.user_metadata.avatar_url ?? user?.user_metadata.picture ?? null}
+        actionHref="/auth/login"
+        actionLabel="Sign in"
+      />
 
       {/* ── HERO — dot grid bg ── */}
       <section

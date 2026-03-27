@@ -232,30 +232,75 @@ function SelectField({ id, name, value, onChange, options }: { id: string; name:
   );
 }
 
-function LogoPicker({ previewUrl, fileName, showPreview, onOpenPreview, onClosePreview, onFileChange, onRemove }: { previewUrl: string | null; fileName: string; showPreview: boolean; onOpenPreview: () => void; onClosePreview: () => void; onFileChange: (file: File | null) => void; onRemove: () => void; }) {
+function LogoPicker({
+  previewUrl,
+  fileName,
+  showPreview,
+  isUploading,
+  uploadProgress,
+  onOpenPreview,
+  onClosePreview,
+  onFileChange,
+  onRemove,
+}: {
+  previewUrl: string | null;
+  fileName: string;
+  showPreview: boolean;
+  isUploading: boolean;
+  uploadProgress: number;
+  onOpenPreview: () => void;
+  onClosePreview: () => void;
+  onFileChange: (file: File | null) => void;
+  onRemove: () => void;
+}) {
   return (
     <>
       <div className="grid gap-3">
         <div className="text-sm font-medium text-stone-900">Shop logo</div>
         <label className="flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[1.75rem] border border-dashed border-stone-300 bg-stone-50 p-4 transition hover:border-stone-400 hover:bg-white">
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-white">
+            {isUploading ? (
+              <div
+                className="pointer-events-none absolute inset-0 rounded-2xl p-[2px]"
+                style={{
+                  background: `conic-gradient(from -90deg, #22c55e 0deg ${Math.max(3, uploadProgress * 3.6)}deg, rgba(34,197,94,0.12) ${Math.max(3, uploadProgress * 3.6)}deg 360deg)`,
+                }}
+              >
+                <div className="h-full w-full rounded-[14px] bg-white" />
+              </div>
+            ) : null}
             {previewUrl ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previewUrl} alt="Logo preview" className="h-full w-full object-cover" onClick={(e)=>{e.preventDefault(); onOpenPreview();}} />
-                <button type="button" onClick={(e)=>{e.preventDefault(); onRemove();}} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-stone-700">
+                <img src={previewUrl} alt="Logo preview" className="relative z-[1] h-full w-full object-cover" onClick={(e)=>{e.preventDefault(); onOpenPreview();}} />
+                {isUploading ? (
+                  <div className="absolute inset-0 z-[2] flex items-center justify-center bg-white/78 backdrop-blur-[1px]">
+                    <div className="flex min-w-10 items-center justify-center rounded-full bg-stone-950 px-2 py-1 text-[11px] font-semibold text-white">
+                      {uploadProgress}%
+                    </div>
+                  </div>
+                ) : null}
+                <button type="button" onClick={(e)=>{e.preventDefault(); onRemove();}} className="absolute right-1 top-1 z-[3] flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-stone-700">
                   <X className="h-3.5 w-3.5" />
                 </button>
               </>
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-stone-400"><ImagePlus className="h-5 w-5" /></div>
+              <div className="relative z-[1] flex h-full w-full items-center justify-center text-stone-400">
+                {isUploading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
+              </div>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-stone-900">{fileName || "Select shop logo"}</p>
-            <p className="text-xs text-stone-500">PNG, JPG, or WebP</p>
+            <p className="truncate text-sm font-medium text-stone-900">
+              {isUploading ? `Uploading logo... ${uploadProgress}%` : fileName || "Select shop logo"}
+            </p>
+            <p className="text-xs text-stone-500">
+              {isUploading ? "Please wait while we upload the file" : "PNG, JPG, or WebP"}
+            </p>
           </div>
-          <div className="shrink-0 rounded-full bg-white px-3 py-2 text-xs font-medium text-stone-700">{fileName ? "Change" : "Upload"}</div>
+          <div className="shrink-0 rounded-full bg-white px-3 py-2 text-xs font-medium text-stone-700">
+            {isUploading ? `${uploadProgress}%` : fileName ? "Change" : "Upload"}
+          </div>
           <input type="file" name="logoFile" accept="image/*" className="hidden" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
         </label>
       </div>
@@ -351,6 +396,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
   const [logoPublicId, setLogoPublicId] = useState("");
   const [showLogoPreview, setShowLogoPreview] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoUploadProgress, setLogoUploadProgress] = useState(0);
   const [logoUploadError, setLogoUploadError] = useState("");
   const [slugState, setSlugState] = useState<SlugState>("idle");
   const [slugMessage, setSlugMessage] = useState("");
@@ -705,6 +751,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
     setLogoPublicId("");
     setShowLogoPreview(false);
     setIsUploadingLogo(false);
+    setLogoUploadProgress(0);
     setLogoUploadError("");
     setClientErrors({});
   }
@@ -858,6 +905,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
       setLogoFileName("");
       setLogoUrl("");
       setLogoPublicId("");
+      setLogoUploadProgress(0);
       setLogoUploadError("");
       return;
     }
@@ -870,22 +918,42 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
     setLogoFileName(file.name);
     setLogoUploadError("");
     setIsUploadingLogo(true);
+    setLogoUploadProgress(0);
 
     try {
       const uploadFormData = new FormData();
       uploadFormData.append("file", file);
-      const response = await fetch("/api/onboarding-draft/logo", {
-        method: "POST",
-        body: uploadFormData,
-      });
-      const result = (await response.json()) as {
+      const result = await new Promise<{
         secureUrl?: string;
         publicId?: string;
         originalFilename?: string;
         message?: string;
-      };
+        status: number;
+      }>((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open("POST", "/api/onboarding-draft/logo");
+        request.responseType = "json";
 
-      if (!response.ok || !result.secureUrl || !result.publicId) {
+        request.upload.onprogress = (event) => {
+          if (!event.lengthComputable) {
+            return;
+          }
+
+          setLogoUploadProgress(Math.min(99, Math.max(1, Math.round((event.loaded / event.total) * 100))));
+        };
+
+        request.onload = () => {
+          resolve({
+            ...(request.response ?? {}),
+            status: request.status,
+          });
+        };
+
+        request.onerror = () => reject(new Error("Upload failed"));
+        request.send(uploadFormData);
+      });
+
+      if (result.status < 200 || result.status >= 300 || !result.secureUrl || !result.publicId) {
         setLogoUploadError(result.message ?? "Could not upload logo right now.");
         return;
       }
@@ -901,6 +969,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
       setLogoUrl(result.secureUrl);
       setLogoPublicId(result.publicId);
       setLogoFileName(result.originalFilename ?? file.name);
+      setLogoUploadProgress(100);
     } catch {
       setLogoUploadError("Could not upload logo right now.");
     } finally {
@@ -934,8 +1003,10 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
             <FieldShell label="Shop slug" name="slug" required error={getError("slug")}>
               <TextInput id="slug" name="slug" value={slugValue} onChange={(value) => { const next = value.toLowerCase().replace(/\s+/g, "-"); setSlugManuallyEdited(true); setSlugInput(next); setError("slug", next.trim() ? "" : "Shop slug is required."); }} placeholder="soni-mobile-world" rightAdornment={slugState === "checking" ? <LoaderCircle className="h-4 w-4 animate-spin text-stone-400" /> : slugState === "available" ? <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Check className="h-3.5 w-3.5" /></span> : slugState === "taken" || slugState === "error" ? <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600"><X className="h-3.5 w-3.5" /></span> : null} />
             </FieldShell>
+            {slugState === "checking" ? <p className="text-xs text-stone-500">Checking slug...</p> : null}
+            {slugState === "taken" ? <p className="text-xs font-medium text-red-600">{slugMessage || "Slug is already taken."}</p> : null}
             {slugState === "error" && slugMessage ? <p className="text-xs text-amber-700">Slug check could not be verified right now. You can still continue, and final submit will validate it. {slugMessage}</p> : null}
-          <LogoPicker previewUrl={logoPreviewUrl} fileName={logoFileName} showPreview={showLogoPreview} onOpenPreview={() => setShowLogoPreview(true)} onClosePreview={() => setShowLogoPreview(false)} onFileChange={handleLogoChange} onRemove={() => { void handleLogoChange(null); setShowLogoPreview(false); }} />
+          <LogoPicker previewUrl={logoPreviewUrl} fileName={logoFileName} showPreview={showLogoPreview} isUploading={isUploadingLogo} uploadProgress={logoUploadProgress} onOpenPreview={() => setShowLogoPreview(true)} onClosePreview={() => setShowLogoPreview(false)} onFileChange={handleLogoChange} onRemove={() => { void handleLogoChange(null); setShowLogoPreview(false); }} />
             {isUploadingLogo ? <p className="text-xs text-stone-500">Uploading logo...</p> : null}
             {logoUploadError ? <p className="text-xs text-red-600">{logoUploadError}</p> : null}
           </div>

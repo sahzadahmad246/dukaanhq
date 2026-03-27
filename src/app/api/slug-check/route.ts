@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
@@ -12,7 +13,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ available: false, message: "Slug is required." }, { status: 400 });
   }
 
-  const supabase = await createSupabaseServerClient();
+  const adminSupabase = createSupabaseAdminClient();
+  const supabase = adminSupabase ?? await createSupabaseServerClient();
   const { data, error } = await supabase.from("shops").select("id").eq("slug", slug).maybeSingle();
 
   if (error) {

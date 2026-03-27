@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, LoaderCircle, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { LocationPicker } from "@/app/onboarding/_components/location-picker";
@@ -582,15 +582,20 @@ export function SettingsEditor({
                       editingField === "slug" ? "pr-12" : "",
                     ].join(" ")}
                   />
-                  {editingField === "slug" && slugState === "available" ? (
-                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-emerald-600">
-                      <Check className="h-5 w-5" />
+                  {editingField === "slug" ? (
+                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center">
+                      {slugState === "checking" ? <LoaderCircle className="h-5 w-5 animate-spin text-stone-400" /> : null}
+                      {slugState === "available" ? <Check className="h-5 w-5 text-emerald-600" /> : null}
+                      {slugState === "taken" ? <X className="h-5 w-5 text-rose-600" /> : null}
                     </span>
                   ) : null}
                 </div>
               )}
             </div>
 
+            {editingField === "slug" && slugState === "checking" ? (
+              <p className="mt-2 text-sm font-medium text-stone-500">Checking slug...</p>
+            ) : null}
             {editingField === "slug" && slugState === "taken" ? (
               <p className="mt-2 text-sm font-medium text-rose-600">{slugMessage}</p>
             ) : null}

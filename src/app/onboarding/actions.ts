@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import type { OnboardingActionState } from "@/app/onboarding/state";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const workingDayValues = [
@@ -121,7 +122,8 @@ export async function createShopAction(
     };
   }
 
-  const { data: existingSlug } = await supabase
+  const adminSupabase = createSupabaseAdminClient();
+  const { data: existingSlug } = await (adminSupabase ?? supabase)
     .from("shops")
     .select("id")
     .eq("slug", values.slug)
@@ -161,6 +163,14 @@ export async function createShopAction(
     .single();
 
   if (shopError || !shop) {
+    if (shopError?.code === "23505") {
+      return {
+        status: "error",
+        message: "This shop slug is already taken.",
+        fieldErrors: { slug: "Slug is already taken." },
+      };
+    }
+
     return {
       status: "error",
       message: shopError?.message ?? "Could not create the shop. Check SQL setup first.",

@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { ProfileMenu } from "@/app/_components/profile-menu";
 import { OnboardingForm } from "@/app/onboarding/_components/onboarding-form";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -18,10 +18,14 @@ export default async function OnboardingPage() {
     redirect("/dashboard?toast=already-has-shop");
   }
 
+  const displayName = profile?.full_name ?? user.user_metadata.full_name ?? user.email ?? "User";
+  const userEmail = profile?.email ?? user.email ?? "";
+  const userInitials = (displayName.slice(0, 1) || "U").toUpperCase();
+
   return (
     <main className="h-screen bg-stone-100 text-stone-950">
-      <div className="mx-auto flex h-screen w-full max-w-5xl flex-col overflow-y-auto bg-white px-4 py-4 md:px-6">
-        <header className="flex items-center justify-between gap-3 border-b border-stone-100 pb-4">
+      <div className="mx-auto flex h-screen w-full max-w-[645px] flex-col overflow-y-auto bg-white px-4 py-4 md:px-6">
+        <header className="relative z-[1200] flex items-center justify-between gap-3 border-b border-stone-100 pb-4">
           <div className="flex items-center gap-3">
             <Link
               href="/"
@@ -35,19 +39,13 @@ export default async function OnboardingPage() {
             <h1 className="text-xl font-semibold tracking-tight">Onboarding</h1>
           </div>
 
-          {profile?.avatar_url ? (
-            <Image
-              src={profile.avatar_url}
-              alt={profile.full_name ?? "Profile"}
-              width={44}
-              height={44}
-              className="h-11 w-11 rounded-full border border-stone-200 object-cover"
-            />
-          ) : (
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-stone-900 text-sm font-semibold text-white">
-              {(profile?.full_name ?? user.email ?? "U").slice(0, 1).toUpperCase()}
-            </div>
-          )}
+          <ProfileMenu
+            userInitials={userInitials}
+            userName={displayName}
+            userEmail={userEmail}
+            userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
+            theme="light"
+          />
         </header>
 
         {!profileSyncReady ? (

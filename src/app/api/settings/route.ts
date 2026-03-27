@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const workingDayValues = [
@@ -123,7 +124,8 @@ export async function PATCH(request: Request) {
   }
 
   if (parsed.data.field === "slug") {
-    const { data: existingSlug } = await supabase
+    const adminSupabase = createSupabaseAdminClient();
+    const { data: existingSlug } = await (adminSupabase ?? supabase)
       .from("shops")
       .select("id")
       .eq("slug", valueResult.data)
@@ -150,6 +152,10 @@ export async function PATCH(request: Request) {
       : await query.eq("shop_id", membership.shop_id);
 
   if (error) {
+    if (error.code === "23505" && parsed.data.field === "slug") {
+      return NextResponse.json({ message: "Slug is already taken." }, { status: 400 });
+    }
+
     return NextResponse.json({ message: error.message }, { status: 500 });
   }
 
