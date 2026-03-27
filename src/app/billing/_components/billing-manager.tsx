@@ -74,6 +74,7 @@ export function BillingManager({
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [liveProducts, setLiveProducts] = useState(products);
 
   const chipScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -85,6 +86,10 @@ export function BillingManager({
     setCanScrollLeft(el.scrollLeft > 2);
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
   }, []);
+
+  useEffect(() => {
+    setLiveProducts(products);
+  }, [products]);
 
   useEffect(() => {
     const el = chipScrollRef.current;
@@ -481,9 +486,36 @@ export function BillingManager({
         <AddBillModal
           open={isAddBillOpen}
           onClose={() => setIsAddBillOpen(false)}
-          products={products}
+          products={liveProducts}
           shopLogoUrl={shopLogoUrl}
-          onInvoiceCreated={() => router.refresh()}
+          onInvoiceCreated={(items) => {
+            setLiveProducts((current) =>
+              current.map((product) => {
+                const lineItems = items.filter((item) => item.product_id === product.id);
+                if (lineItems.length === 0) return product;
+
+                const soldQuantity = lineItems.reduce((sum, item) => sum + item.quantity, 0);
+                const nextVariants = product.variants?.map((variant) => {
+                  const variantSold = lineItems
+                    .filter((item) => item.variant_id === variant.id)
+                    .reduce((sum, item) => sum + item.quantity, 0);
+
+                  if (!variantSold) return variant;
+                  return {
+                    ...variant,
+                    quantity: Math.max((variant.quantity ?? 0) - variantSold, 0),
+                  };
+                });
+
+                return {
+                  ...product,
+                  total_quantity: Math.max((product.total_quantity ?? 0) - soldQuantity, 0),
+                  variants: nextVariants ?? product.variants,
+                };
+              })
+            );
+            router.refresh();
+          }}
         />
 
         <BillDetailsDrawer

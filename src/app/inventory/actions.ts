@@ -558,6 +558,37 @@ export async function recordInventorySaleAction(input: {
   return { status: "success", message: "Sale recorded and stock updated." };
 }
 
+export async function adjustInventoryStockAction(input: {
+  product_id: string;
+  adjustment_type: "ADJUSTMENT_ADD" | "ADJUSTMENT_REMOVE" | "RETURN" | "DAMAGE" | "RESTORE_RETURNED" | "RESTORE_DAMAGED";
+  variant_id?: string | null;
+  inventory_item_id?: string | null;
+  quantity?: number;
+  reason?: string | null;
+}): Promise<ActionResponse> {
+  const { shop } = await getWorkspaceData();
+  if (!shop) return { status: "error", message: "No active shop found." };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("adjust_inventory_stock", {
+    p_shop_id: shop.id,
+    p_product_id: input.product_id,
+    p_adjustment_type: input.adjustment_type,
+    p_variant_id: input.variant_id ?? null,
+    p_inventory_item_id: input.inventory_item_id ?? null,
+    p_quantity: input.quantity ?? 1,
+    p_reason: input.reason ?? null,
+  });
+
+  if (error) {
+    return { status: "error", message: error.message || "Failed to adjust stock." };
+  }
+
+  revalidatePath("/inventory");
+  revalidatePath("/billing");
+  return { status: "success", message: "Stock updated successfully." };
+}
+
 export async function addInventoryStockAction(formData: FormData): Promise<ActionResponse> {
   const { shop, user } = await getWorkspaceData();
   if (!shop) return { status: "error", message: "No active shop found." };
@@ -832,6 +863,8 @@ export async function getProductDetailsAction(productId: string): Promise<Action
     name: string;
     color: string | null;
     storage_label: string | null;
+    purchase_price_override: number | null;
+    selling_price_override: number | null;
   };
   type InventoryItemRow = {
     id: string;
@@ -890,7 +923,7 @@ export async function getProductDetailsAction(productId: string): Promise<Action
       : Promise.resolve({ data: null, error: null }),
     supabase
       .from("product_variants")
-      .select("id, quantity, name, color, storage_label")
+      .select("id, quantity, name, color, storage_label, purchase_price_override, selling_price_override")
       .eq("product_id", productId)
       .eq("shop_id", shop.id)
       .order("created_at"),

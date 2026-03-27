@@ -12,6 +12,7 @@ import { AddProductModal } from "./add-product-modal";
 import { ProductDetailsDrawer } from "./product-details-drawer";
 import { RecordSaleModal } from "./record-sale-modal";
 import { AddStockModal } from "./add-stock-modal";
+import { StockAdjustmentModal } from "./stock-adjustment-modal";
 import { productDetailsQueryOptions } from "../queries";
 import { deleteProductAction } from "../actions";
 import { InventoryTopBar } from "./inventory-top-bar";
@@ -25,6 +26,10 @@ export function InventoryManager({
     total_quantity: number;
     brand?: { name?: string | null } | null;
     category?: { name?: string | null } | null;
+    has_damaged_activity?: boolean;
+    has_return_activity?: boolean;
+    damaged_count?: number;
+    returned_count?: number;
   })[];
   categories: Category[];
   brands: Brand[];
@@ -34,10 +39,11 @@ export function InventoryManager({
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [saleProductId, setSaleProductId] = useState<string | null>(null);
   const [stockProductId, setStockProductId] = useState<string | null>(null);
+  const [adjustmentProductId, setAdjustmentProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED">("ALL");
+  const [activeTab, setActiveTab] = useState<"ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED" | "DAMAGED" | "RETURNED">("ALL");
   const [showHeader, setShowHeader] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -89,6 +95,11 @@ export function InventoryManager({
   function handleAddStock(productId: string) {
     prefetchProduct(productId);
     setStockProductId(productId);
+  }
+
+  function handleAdjustStock(productId: string) {
+    prefetchProduct(productId);
+    setAdjustmentProductId(productId);
   }
 
   function confirmDelete() {
@@ -167,6 +178,7 @@ export function InventoryManager({
         onEdit={handleProductEdit}
         onDelete={handleDelete}
         onRecordSale={handleRecordSale}
+        onAdjustStock={handleAdjustStock}
         onClose={() => setSelectedProductId(null)}
       />
 
@@ -192,6 +204,19 @@ export function InventoryManager({
           router.refresh();
           if (stockProductId) {
             await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", stockProductId] });
+          }
+        }}
+      />
+
+      <StockAdjustmentModal
+        key={adjustmentProductId ?? "adjust-idle"}
+        open={Boolean(adjustmentProductId)}
+        productId={adjustmentProductId}
+        onClose={() => setAdjustmentProductId(null)}
+        onAdjusted={async () => {
+          router.refresh();
+          if (adjustmentProductId) {
+            await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", adjustmentProductId] });
           }
         }}
       />

@@ -9,6 +9,8 @@ import {
   Package,
   PackagePlus,
   AlertTriangle,
+  RotateCcw,
+  ShieldAlert,
 } from "lucide-react";
 
 import { Product } from "@/lib/types/inventory";
@@ -19,15 +21,21 @@ type InventoryProduct = Product & {
   total_quantity: number;
   brand?: { name?: string | null } | null;
   category?: { name?: string | null } | null;
+  has_damaged_activity?: boolean;
+  has_return_activity?: boolean;
+  damaged_count?: number;
+  returned_count?: number;
 };
 
-type ProductTab = "ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED";
+type ProductTab = "ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED" | "DAMAGED" | "RETURNED";
 
 const tabs: Array<{ id: ProductTab; label: string }> = [
   { id: "ALL", label: "All" },
   { id: "MOBILE", label: "Mobile" },
   { id: "SERIALIZED", label: "Serialized" },
   { id: "QUANTITY_BASED", label: "Qty Based" },
+  { id: "DAMAGED", label: "Damaged" },
+  { id: "RETURNED", label: "Returned" },
 ];
 
 type SharedCardProps = {
@@ -62,6 +70,8 @@ export function ProductList({
 }) {
   const tabFilteredProducts = useMemo(() => {
     if (activeTab === "ALL") return products;
+    if (activeTab === "DAMAGED") return products.filter((p) => p.has_damaged_activity);
+    if (activeTab === "RETURNED") return products.filter((p) => p.has_return_activity);
     return products.filter((p) => p.product_kind === activeTab);
   }, [activeTab, products]);
 
@@ -236,6 +246,10 @@ function ProductCard({
 } & SharedCardProps) {
   const isOutOfStock = product.total_quantity === 0;
   const isLowStock = !isOutOfStock && product.total_quantity <= stockThreshold;
+  const damagedCount = product.damaged_count ?? 0;
+  const returnedCount = product.returned_count ?? 0;
+  const showUnavailableDamaged = isOutOfStock && damagedCount > 0;
+  const showUnavailableReturned = isOutOfStock && returnedCount > 0;
 
   const marginPct =
     product.base_purchase_price > 0
@@ -296,6 +310,17 @@ function ProductCard({
               {product.total_quantity} in stock
             </span>
 
+            {damagedCount > 0 || returnedCount > 0 ? (
+              <span className="text-[11px] font-medium text-stone-400">
+                {[
+                  damagedCount > 0 ? `${damagedCount} damaged` : null,
+                  returnedCount > 0 ? `${returnedCount} returned` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" • ")}
+              </span>
+            ) : null}
+
             <span className="text-stone-200 select-none">·</span>
 
             {/* Cost */}
@@ -321,6 +346,20 @@ function ProductCard({
                 {marginPct}%
               </span>
             )}
+
+            {showUnavailableDamaged ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">
+                <ShieldAlert className="h-2.5 w-2.5" />
+                Damaged
+              </span>
+            ) : null}
+
+            {showUnavailableReturned ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                <RotateCcw className="h-2.5 w-2.5" />
+                Returned
+              </span>
+            ) : null}
           </div>
         </div>
 

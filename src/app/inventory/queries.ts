@@ -19,7 +19,15 @@ export type ProductDetails = {
   total_quantity: number;
   category?: { name?: string | null } | null;
   brand?: { name?: string | null } | null;
-  variants?: Array<{ id: string; quantity: number | null; name: string; color?: string | null; storage_label?: string | null }> | null;
+  variants?: Array<{
+    id: string;
+    quantity: number | null;
+    name: string;
+    color?: string | null;
+    storage_label?: string | null;
+    purchase_price_override?: number | null;
+    selling_price_override?: number | null;
+  }> | null;
   inventory_items?: Array<{
     id: string;
     variant_id?: string | null;

@@ -14,6 +14,11 @@ function money(value: number) {
   return `Rs ${Number(value || 0).toFixed(2)}`;
 }
 
+function buildLineMeta(parts: Array<string | null | undefined>) {
+  const filtered = parts.filter(Boolean);
+  return filtered.length > 0 ? filtered.join(" • ") : null;
+}
+
 export function BillDetailsDrawer({
   invoice,
   open,
@@ -109,9 +114,11 @@ export function BillDetailsDrawer({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-stone-950">{item.product_name_snapshot}</div>
-                          <div className="mt-1 text-xs text-stone-500">
-                            {[item.brand_name_snapshot, item.variant_name_snapshot, item.identifier_snapshot].filter(Boolean).join(" • ") || "Standard item"}
-                          </div>
+                          {buildLineMeta([item.brand_name_snapshot, item.variant_name_snapshot, item.identifier_snapshot]) ? (
+                            <div className="mt-1 text-xs text-stone-500">
+                              {buildLineMeta([item.brand_name_snapshot, item.variant_name_snapshot, item.identifier_snapshot])}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="text-right text-sm font-semibold text-stone-950">{money(item.line_total)}</div>
                       </div>

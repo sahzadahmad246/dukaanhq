@@ -11,6 +11,10 @@ export async function loadInventoryData() {
     total_quantity: number;
     brand?: { name?: string | null } | null;
     category?: { name?: string | null } | null;
+    has_damaged_activity?: boolean;
+    has_return_activity?: boolean;
+    damaged_count?: number;
+    returned_count?: number;
   })[] = [];
   let categories: Category[] = [];
   let brands: Brand[] = [];
@@ -23,8 +27,11 @@ export async function loadInventoryData() {
         name: string | null;
         color: string | null;
         storage_label: string | null;
+        purchase_price_override: number | null;
+        selling_price_override: number | null;
       }> | null;
       inventory_items?: Array<{ status: string | null }> | null;
+      stock_movements?: Array<{ type: string | null }> | null;
       brand?: { name?: string | null } | null;
       category?: { name?: string | null } | null;
     };
@@ -35,8 +42,9 @@ export async function loadInventoryData() {
         *,
         brand:brands ( name ),
         category:categories ( name ),
-        variants:product_variants ( id, quantity, name, color, storage_label ),
-        inventory_items ( status )
+        variants:product_variants ( id, quantity, name, color, storage_label, purchase_price_override, selling_price_override ),
+        inventory_items ( status ),
+        stock_movements ( type )
       `)
       .eq("shop_id", shop.id)
       .order("created_at", { ascending: false });
@@ -58,6 +66,14 @@ export async function loadInventoryData() {
           variants: product.variants,
           inventoryItems: product.inventory_items,
         }),
+        damaged_count: (product.inventory_items ?? []).filter((item) => item.status === "DAMAGED").length,
+        returned_count: (product.inventory_items ?? []).filter((item) => item.status === "RETURNED").length,
+        has_damaged_activity:
+          (product.inventory_items ?? []).some((item) => item.status === "DAMAGED") ||
+          (product.stock_movements ?? []).some((movement) => movement.type === "DAMAGE"),
+        has_return_activity:
+          (product.inventory_items ?? []).some((item) => item.status === "RETURNED") ||
+          (product.stock_movements ?? []).some((movement) => movement.type === "RETURN"),
       }));
     }
   }

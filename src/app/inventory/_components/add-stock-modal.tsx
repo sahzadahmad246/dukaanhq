@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { ImagePlus, LoaderCircle, Plus, ScanBarcode, X } from "lucide-react";
+import { Check, ImagePlus, LoaderCircle, Plus, ScanBarcode, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,47 @@ function createSerialUnit(): SerialUnitDraft {
 }
 
 function buildVariantLabel(variant: { name?: string | null; color?: string | null; storage_label?: string | null }) {
-  return [variant.storage_label, variant.color, variant.name].filter(Boolean).join(" / ") || "Default";
+  const parts = [variant.storage_label, variant.color].filter(Boolean);
+  const normalizedName = (variant.name ?? "").trim();
+  if (normalizedName && normalizedName.toLowerCase() !== "default") {
+    parts.push(normalizedName);
+  }
+  return parts.length > 0 ? parts.join(" / ") : null;
+}
+
+function OptionCard({
+  active,
+  title,
+  subtitle,
+  meta,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  subtitle?: string | null;
+  meta?: string | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative rounded-2xl border p-4 text-left transition ${
+        active
+          ? "border-stone-950 bg-stone-950 text-white shadow-sm"
+          : "border-stone-200 bg-white text-stone-900 hover:border-stone-300"
+      }`}
+    >
+      {active ? (
+        <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-white/15">
+          <Check className="h-3.5 w-3.5" />
+        </span>
+      ) : null}
+      <p className="text-sm font-semibold">{title}</p>
+      {subtitle ? <p className={`mt-1 text-xs ${active ? "text-white/75" : "text-stone-500"}`}>{subtitle}</p> : null}
+      {meta ? <p className={`mt-3 text-[11px] font-semibold uppercase tracking-[0.12em] ${active ? "text-white/70" : "text-stone-400"}`}>{meta}</p> : null}
+    </button>
+  );
 }
 
 export function AddStockModal({
@@ -71,11 +111,32 @@ export function AddStockModal({
     staleTime: 5 * 60 * 1000,
   });
 
-  if (!open) return null;
-
   const isQuantityBased = product?.tracking_type === "QUANTITY_BASED";
   const isMobile = product?.product_kind === "MOBILE";
   const resolvedVariantId = selectedVariantId || product?.variants?.[0]?.id || "";
+  const variantStockMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!product) return map;
+
+    if (product.tracking_type === "QUANTITY_BASED") {
+      for (const variant of product.variants ?? []) {
+        map.set(variant.id, variant.quantity ?? 0);
+      }
+      return map;
+    }
+
+    for (const item of product.inventory_items ?? []) {
+      if (item.status !== "IN_STOCK" || !item.variant_id) continue;
+      map.set(item.variant_id, (map.get(item.variant_id) ?? 0) + 1);
+    }
+
+    return map;
+  }, [product]);
+
+  const existingVariants = product?.variants ?? [];
+  const activeVariant = existingVariants.find((variant) => variant.id === resolvedVariantId) ?? existingVariants[0] ?? null;
+
+  if (!open) return null;
 
   function submit() {
     if (!productId || !product) return;
@@ -145,8 +206,8 @@ export function AddStockModal({
 
   return (
     <div className="fixed inset-0 z-[72] flex items-center justify-center bg-stone-950/45 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-[1.75rem] bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-[1.75rem] bg-white shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+        <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-semibold text-stone-950">Add Stock</h3>
             <p className="text-sm text-stone-500">{product?.name ?? "Loading..."}</p>
@@ -161,46 +222,76 @@ export function AddStockModal({
             <LoaderCircle className="h-6 w-6 animate-spin text-stone-500" />
           </div>
         ) : (
-          <div className="mt-5 space-y-4">
-            {product.tracking_type === "SERIALIZED" ? (
-              <div className="space-y-3 rounded-2xl border border-stone-200 bg-stone-50 p-3">
-                <div className="flex items-center justify-between gap-3">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="space-y-4">
+            <div className="space-y-3 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
                   <Label className="text-sm font-medium text-stone-900">Option</Label>
-                  <button
-                    type="button"
-                    onClick={() => setCreateNewOption((current) => !current)}
-                    className="text-xs font-semibold text-teal-700"
-                  >
-                    {createNewOption ? "Use Existing" : "Create New"}
-                  </button>
+                  <p className="mt-1 text-xs text-stone-500">
+                    {createNewOption
+                      ? "Create a new storage/color option under this product."
+                      : "Select an existing option to refill quickly."}
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setCreateNewOption((current) => !current)}
+                  className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-teal-700 shadow-sm"
+                >
+                  {createNewOption ? "Use Existing" : "Create New"}
+                </button>
+              </div>
 
-                {createNewOption ? (
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-xs uppercase tracking-[0.12em] text-stone-500">Color</Label>
-                      <Input value={color} onChange={(event) => setColor(event.target.value)} className="mt-2" placeholder="Black" />
-                    </div>
-                    <div>
-                      <Label className="text-xs uppercase tracking-[0.12em] text-stone-500">Storage / RAM</Label>
-                      <Input value={storageLabel} onChange={(event) => setStorageLabel(event.target.value)} className="mt-2" placeholder="8GB / 128GB" />
-                    </div>
+              {createNewOption ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label className="text-xs uppercase tracking-[0.12em] text-stone-500">Color</Label>
+                    <Input value={color} onChange={(event) => setColor(event.target.value)} className="mt-2" placeholder="Black" />
                   </div>
-                ) : (
-                  <div className="rounded-xl border border-stone-200 bg-white">
-                    <select
-                      value={selectedVariantId}
-                      onChange={(event) => setSelectedVariantId(event.target.value)}
-                      className="h-11 w-full rounded-xl bg-white px-3 text-sm text-stone-900 outline-none"
-                    >
-                      {(product.variants ?? []).map((variant) => (
-                        <option key={variant.id} value={variant.id}>
-                          {buildVariantLabel(variant)}
-                        </option>
-                      ))}
-                    </select>
+                  <div>
+                    <Label className="text-xs uppercase tracking-[0.12em] text-stone-500">
+                      {product.product_kind === "MOBILE" ? "Storage / RAM" : "Storage / Spec"}
+                    </Label>
+                    <Input
+                      value={storageLabel}
+                      onChange={(event) => setStorageLabel(event.target.value)}
+                      className="mt-2"
+                      placeholder={product.product_kind === "MOBILE" ? "8GB / 128GB" : "Optional"}
+                    />
                   </div>
-                )}
+                </div>
+              ) : existingVariants.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {existingVariants.map((variant) => (
+                    <OptionCard
+                      key={variant.id}
+                      active={resolvedVariantId === variant.id}
+                      title={buildVariantLabel(variant) ?? product.name}
+                      subtitle={
+                        product.tracking_type === "QUANTITY_BASED"
+                          ? "Quantity based option"
+                          : product.product_kind === "MOBILE"
+                            ? "Serialized mobile option"
+                            : "Serialized option"
+                      }
+                      meta={`${variantStockMap.get(variant.id) ?? 0} in stock`}
+                      onClick={() => setSelectedVariantId(variant.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-stone-300 bg-white px-4 py-6 text-center text-sm text-stone-500">
+                  No existing option found yet. Create a new one below.
+                </div>
+              )}
+            </div>
+
+            {!createNewOption && activeVariant ? (
+              <div className="rounded-2xl border border-stone-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Selected Option</p>
+                <p className="mt-2 text-base font-semibold text-stone-950">{buildVariantLabel(activeVariant) ?? product.name}</p>
+                <p className="mt-1 text-sm text-stone-500">{variantStockMap.get(activeVariant.id) ?? 0} currently in stock</p>
               </div>
             ) : null}
 
@@ -213,7 +304,18 @@ export function AddStockModal({
               <div className="space-y-3">
                 {mobileUnits.map((unit, index) => (
                   <div key={unit.id} className="rounded-2xl border border-stone-200 p-3">
-                    <p className="mb-3 text-sm font-medium text-stone-900">Device {index + 1}</p>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-stone-900">Device {index + 1}</p>
+                      {mobileUnits.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => setMobileUnits((current) => current.filter((item) => item.id !== unit.id))}
+                          className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <Input value={unit.imei_1} onChange={(event) => setMobileUnits((current) => current.map((item) => item.id === unit.id ? { ...item, imei_1: event.target.value } : item))} placeholder="IMEI 1" />
@@ -243,6 +345,16 @@ export function AddStockModal({
                     <Button type="button" variant="ghost" className="h-11 w-11 px-0" onClick={() => setScanningTarget({ type: "serial", unitId: unit.id })}>
                       <ScanBarcode className="h-4 w-4" />
                     </Button>
+                    {serialUnits.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-11 w-11 px-0 text-stone-500"
+                        onClick={() => setSerialUnits((current) => current.filter((item) => item.id !== unit.id))}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    ) : null}
                   </div>
                 ))}
                 <Button type="button" variant="secondary" onClick={() => setSerialUnits((current) => [...current, createSerialUnit()])}>
@@ -300,6 +412,7 @@ export function AddStockModal({
                 Save Stock
               </Button>
             </div>
+          </div>
           </div>
         )}
       </div>
