@@ -334,10 +334,10 @@ export function BillingManager({
       <div className="bm-root -mx-3 px-1">
         {/* ── Sticky top bar ── */}
         <div
-          className={`fixed left-1/2 -translate-x-1/2 w-full max-w-lg top-0 z-40 bm-topbar transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full -translate-x-1/2"
+          className={`fixed left-1/2 -translate-x-1/2 w-full max-w-3xl top-0 z-40 bm-topbar transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full -translate-x-1/2"
             }`}
         >
-          <div className="mx-auto w-full max-w-lg px-1 py-3">
+          <div className="mx-auto w-full max-w-3xl px-1 py-3">
             <InventoryTopBar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}

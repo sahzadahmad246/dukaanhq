@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { syncAuthenticatedUserProfile } from "@/lib/auth/sync-user";
+import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -10,8 +10,9 @@ export async function GET(request: Request) {
   if (code) {
     const supabase = await createSupabaseServerClient();
     await supabase.auth.exchangeCodeForSession(code);
-    await syncAuthenticatedUserProfile(supabase);
+    const state = await getUserAppState(supabase);
+    return NextResponse.redirect(new URL(getSignedInLandingPath(state), requestUrl.origin));
   }
 
-  return NextResponse.redirect(new URL("/app", requestUrl.origin));
+  return NextResponse.redirect(new URL("/", requestUrl.origin));
 }

@@ -98,7 +98,7 @@ export function WorkspaceShell({
         userAvatarUrl={userAvatarUrl}
       />
 
-      <div className="mx-auto min-h-screen w-full max-w-lg bg-[#f7f8fb] shadow-[0_18px_80px_rgba(15,23,42,0.08)] lg:border-x lg:border-stone-200">
+      <div className="mx-auto min-h-screen w-full max-w-3xl bg-[#f7f8fb] shadow-[0_18px_80px_rgba(15,23,42,0.08)] lg:border-x lg:border-stone-200">
         {!hideHeader ? (
           <header
             className={[
@@ -106,7 +106,7 @@ export function WorkspaceShell({
               showHeader ? "translate-y-0" : "-translate-y-full",
             ].join(" ")}
           >
-            <div className="mx-auto flex w-full max-w-lg items-center justify-between border-b border-stone-200 bg-[#f7f8fb]/95 px-4 py-3 text-stone-950 backdrop-blur">
+            <div className="mx-auto flex w-full max-w-3xl items-center justify-between border-b border-stone-200 bg-[#f7f8fb]/95 px-4 py-3 text-stone-950 backdrop-blur">
               <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-stone-900 text-sm font-semibold text-white">
                 {shopLogoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -138,7 +138,7 @@ export function WorkspaceShell({
           </header>
         ) : null}
 
-        <div className={`mx-auto flex w-full max-w-lg flex-col px-3 pb-28 ${hideHeader ? "pt-0" : "pt-20"}`}>
+        <div className={`mx-auto flex w-full max-w-3xl flex-col px-3 pb-28 ${hideHeader ? "pt-0" : "pt-20"}`}>
           {children}
         </div>
 
@@ -148,7 +148,7 @@ export function WorkspaceShell({
             showBottomNav ? "translate-y-0" : "translate-y-full",
           ].join(" ")}
         >
-          <div className="mx-auto flex w-full max-w-lg items-center justify-around border-t border-stone-200 bg-white/96 px-3 py-3 backdrop-blur">
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-around border-t border-stone-200 bg-white/96 px-3 py-3 backdrop-blur">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = item.key === activeNav;

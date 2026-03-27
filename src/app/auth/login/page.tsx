@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function signInWithGoogle() {
@@ -32,17 +33,15 @@ async function signInWithGoogle() {
 
 export default async function LoginPage() {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const state = await getUserAppState(supabase);
 
-  if (user) {
-    redirect("/dashboard");
+  if (state.user) {
+    redirect(getSignedInLandingPath(state));
   }
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,_#f5f5f4,_#fff7ed)] px-4 py-6 text-stone-950">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-sm md:max-w-md lg:max-w-lg flex-col justify-between rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_24px_80px_rgba(146,64,14,0.12)]">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md md:max-w-2xl lg:max-w-3xl flex-col justify-between rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_24px_80px_rgba(146,64,14,0.12)]">
         <section className="space-y-5">
           <div className="flex items-center justify-between text-sm">
             <span className="rounded-full bg-amber-100 px-3 py-1 font-medium text-amber-900">

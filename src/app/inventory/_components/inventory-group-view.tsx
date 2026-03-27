@@ -121,7 +121,7 @@ export function InventoryGroupView({
           showHeader ? "translate-y-0" : "-translate-y-full"
         }`}
       >
-        <div className="mx-auto w-full max-w-lg border-b border-stone-200 bg-[#f7f8fb]/95 px-3 py-3 backdrop-blur">
+        <div className="mx-auto w-full max-w-3xl border-b border-stone-200 bg-[#f7f8fb]/95 px-3 py-3 backdrop-blur">
           <InventoryTopBar
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}

@@ -3,36 +3,30 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { OnboardingForm } from "@/app/onboarding/_components/onboarding-form";
-import { syncAuthenticatedUserProfile } from "@/lib/auth/sync-user";
+import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
-  const { user, profile, profileSyncReady } = await syncAuthenticatedUserProfile(supabase);
+  const { user, profile, profileSyncReady, isOwner, hasCompletedOnboarding } = await getUserAppState(supabase);
 
   if (!user) {
     redirect("/auth/login");
   }
 
-  const { data: existingMembership } = await supabase
-    .from("shop_members")
-    .select("shop_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (existingMembership) {
+  if (isOwner && hasCompletedOnboarding) {
     redirect("/dashboard?toast=already-has-shop");
   }
 
   return (
     <main className="h-screen bg-stone-100 text-stone-950">
-      <div className="mx-auto flex h-screen w-full max-w-2xl flex-col overflow-y-auto bg-white px-4 py-4 md:px-6">
+      <div className="mx-auto flex h-screen w-full max-w-5xl flex-col overflow-y-auto bg-white px-4 py-4 md:px-6">
         <header className="flex items-center justify-between gap-3 border-b border-stone-100 pb-4">
           <div className="flex items-center gap-3">
             <Link
-              href="/dashboard"
+              href="/"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-700 transition hover:bg-stone-50"
-              aria-label="Back to app"
+              aria-label="Back to home"
             >
               <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M12.5 15 7.5 10l5-5" strokeLinecap="round" strokeLinejoin="round" />
