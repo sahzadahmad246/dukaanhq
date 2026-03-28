@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { downloadQrSheetPdf } from "@/lib/qr-pdf";
 import { getQrExportEntriesAction } from "../actions";
 
@@ -83,13 +83,17 @@ export function QrExportModal({
 
           <div className="space-y-2">
             <Label>{scope === "product" ? "Select Product" : scope === "brand" ? "Select Brand" : "Select Category"}</Label>
-            <Select value={value} onChange={(event) => setValue(event.target.value)}>
-              <option value="">Select {scope}</option>
-              {scopeOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
+            <Select value={value} onValueChange={(val) => setValue(val)}>
+              <SelectTrigger>
+                <SelectValue placeholder={`Select ${scope}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {scopeOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
 

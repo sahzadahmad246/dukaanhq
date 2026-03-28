@@ -151,7 +151,9 @@ export type StockMovement = z.infer<typeof StockMovementSchema>;
 // Form schemas (omitting generated fields like id, dates)
 export const ProductFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  description: z.string().min(1, "Description is required").max(280, "Description must be 280 characters or fewer."),
+  description: z
+    .union([z.string().max(280, "Description must be 280 characters or fewer."), z.literal(""), z.null()])
+    .optional(),
   category_name: z.string().optional().nullable(),
   category_id: z.string().uuid().optional().nullable(),
   brand_name: z.string().optional().nullable(),
@@ -160,8 +162,8 @@ export const ProductFormSchema = z.object({
   image_public_id: z.string().optional().nullable(),
   product_kind: ProductKindSchema,
   tracking_type: TrackingTypeSchema,
-  base_purchase_price: z.coerce.number().min(0, "Price must be >= 0"),
-  base_selling_price: z.coerce.number().min(0, "Price must be >= 0"),
+  base_purchase_price: z.coerce.number().min(0, "Price must be >= 0").optional().default(0),
+  base_selling_price: z.coerce.number().min(0, "Price must be >= 0").optional().default(0),
   tax_rate: z.coerce.number().min(0).max(100),
   low_stock_threshold: z.coerce.number().int().min(0),
   is_active: z.boolean().default(true),

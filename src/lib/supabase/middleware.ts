@@ -1,6 +1,19 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
+const AUTH_SESSION_ERROR_CODES = new Set(["refresh_token_not_found", "session_not_found"]);
+
+function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
+  for (const cookie of request.cookies.getAll()) {
+    if (!cookie.name.startsWith("sb-") || !cookie.name.includes("-auth-token")) {
+      continue;
+    }
+
+    request.cookies.delete(cookie.name);
+    response.cookies.delete(cookie.name);
+  }
+}
+
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next({
     request,
@@ -27,7 +40,18 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error) {
+    if (error.code && AUTH_SESSION_ERROR_CODES.has(error.code)) {
+      clearSupabaseAuthCookies(request, response);
+      return response;
+    }
+
+    throw error;
+  }
 
   return response;
 }

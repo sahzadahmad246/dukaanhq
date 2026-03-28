@@ -1,18 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, ReceiptText, PackagePlus, QrCode } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 export function ProductActionsMenu({
   onEdit,
   onDelete,
+  onRecordSale,
+  onAdjustStock,
+  onDownloadQr,
   align = "right",
   compact = false,
 }: {
   onEdit: () => void;
   onDelete: () => void;
+  onRecordSale?: () => void;
+  onAdjustStock?: () => void;
+  onDownloadQr?: () => void;
   align?: "left" | "right";
   compact?: boolean;
 }) {
@@ -50,7 +56,7 @@ export function ProductActionsMenu({
       {open ? (
         <div
           className={cn(
-            "absolute bottom-[calc(100%+0.5rem)] z-[90] min-w-36 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-xl",
+            "absolute top-[calc(100%+0.5rem)] z-[90] min-w-44 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-xl",
             align === "right" ? "right-0" : "left-0"
           )}
         >
@@ -78,6 +84,51 @@ export function ProductActionsMenu({
             <Trash2 className="h-4 w-4" />
             Delete
           </button>
+          {onDownloadQr && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                onDownloadQr();
+              }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-stone-900 transition hover:bg-stone-100"
+            >
+              <QrCode className="h-4 w-4" />
+              Download QR
+            </button>
+          )}
+          {onRecordSale || onAdjustStock ? (
+            <div className="my-1 border-t border-stone-100" />
+          ) : null}
+          {onRecordSale && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                onRecordSale();
+              }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-stone-900 transition hover:bg-stone-100"
+            >
+              <ReceiptText className="h-4 w-4" />
+              Record Sale
+            </button>
+          )}
+          {onAdjustStock && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                onAdjustStock();
+              }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-stone-900 transition hover:bg-stone-100"
+            >
+              <PackagePlus className="h-4 w-4" />
+              Adjust Stock
+            </button>
+          )}
         </div>
       ) : null}
     </div>

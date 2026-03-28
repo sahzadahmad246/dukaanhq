@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { buildVariantLabel } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
@@ -184,7 +184,10 @@ function buildProductKindCopy(product: ProductSummary | null) {
   if (product.product_kind === "MOBILE") {
     return {
       title: "Mobile Device",
-      description: "Choose the exact storage and color, then select the in-stock device by IMEI.",
+      description:
+        product.tracking_type === "SERIALIZED"
+          ? "Choose the exact storage and color, then select the in-stock device by IMEI."
+          : "Choose the storage/color variant and enter how many units are being sold.",
       icon: Smartphone,
     };
   }
@@ -701,23 +704,26 @@ function LineEditor({
                 <Field label={selectedProduct.product_kind === "MOBILE" ? "Device / IMEI" : "Device / Serial"} required>
                   <Select
                     value={line.inventory_item_id}
-                    onChange={(event) => {
-                      const unit = availableUnits.find((item) => item.id === event.target.value);
+                    onValueChange={(val) => {
+                      const unit = availableUnits.find((item) => item.id === val);
                       onChange({
-                        inventory_item_id: event.target.value,
+                        inventory_item_id: val,
                         identifier_value: unit ? buildInventoryItemLabel(unit) : "",
                         quantity: "1",
                         variant_id: unit?.variant_id ?? line.variant_id,
                       });
                     }}
-                    className="rounded-2xl border-stone-200 bg-white"
                   >
-                    <option value="">Select stock unit</option>
-                    {availableUnits.map((unit) => (
-                      <option key={unit.id} value={unit.id}>
-                        {buildInventoryItemLabel(unit)}
-                      </option>
-                    ))}
+                    <SelectTrigger className="rounded-2xl border-stone-200 bg-white">
+                      <SelectValue placeholder="Select stock unit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableUnits.map((unit) => (
+                        <SelectItem key={unit.id} value={unit.id}>
+                          {buildInventoryItemLabel(unit)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                   {selectedUnit ? <p className="mt-2 text-xs text-stone-500">Selected device: {buildInventoryItemLabel(selectedUnit)}</p> : null}
                 </Field>
@@ -1075,14 +1081,18 @@ export function AddBillModal({
                 <Field label="Payment Method">
                   <Select
                     value={paymentMethod}
-                    className="rounded-2xl border-stone-200 bg-white"
-                    onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)}
+                    onValueChange={(val) => setPaymentMethod(val as typeof paymentMethod)}
                   >
-                    <option value="CASH">Cash</option>
-                    <option value="UPI">UPI</option>
-                    <option value="CARD">Card</option>
-                    <option value="BANK_TRANSFER">Bank Transfer</option>
-                    <option value="OTHER">Other</option>
+                    <SelectTrigger className="rounded-2xl border-stone-200 bg-white">
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">Cash</SelectItem>
+                      <SelectItem value="UPI">UPI</SelectItem>
+                      <SelectItem value="CARD">Card</SelectItem>
+                      <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
                   </Select>
                 </Field>
 

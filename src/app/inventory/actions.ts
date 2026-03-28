@@ -240,7 +240,9 @@ function parseProductInput(formData: FormData): ActionResponse<ParsedProductInpu
   const payload = payloadResult.data;
   const productKind = ProductKindSchema.parse(values.product_kind);
 
-  if (productKind !== "QUANTITY_BASED" && payload.units.length === 0) {
+  const requiresSerializedUnits = values.tracking_type === "SERIALIZED";
+
+  if (requiresSerializedUnits && payload.units.length === 0) {
     return {
       status: "error",
       message: "Add at least one inventory unit for serialized products.",
@@ -250,7 +252,7 @@ function parseProductInput(formData: FormData): ActionResponse<ParsedProductInpu
     };
   }
 
-  if (productKind === "MOBILE") {
+  if (requiresSerializedUnits && productKind === "MOBILE") {
     const nonImeiUnit = payload.units.find((unit) => unit.identifier_type !== "IMEI");
     if (nonImeiUnit) {
       return {
@@ -345,6 +347,7 @@ export async function createProductAction(
   }
 
   const { values, payload, productKind, normalizedUnits } = inputResult.data;
+  const rpcProductKind = productKind === "MOBILE" ? "QUANTITY_BASED" : productKind;
   const imageAssignmentsResult = parseJsonField(
     formData.get("image_assignments"),
     z.array(ProductImageAssignmentSchema).default([])
@@ -380,7 +383,7 @@ export async function createProductAction(
     p_short_description: values.description,
     p_image_url: primaryImage?.url ?? null,
     p_image_public_id: primaryImage?.public_id ?? null,
-    p_product_kind: productKind,
+    p_product_kind: rpcProductKind,
     p_base_purchase_price: values.base_purchase_price,
     p_base_selling_price: values.base_selling_price,
     p_tax_rate: values.tax_rate,
@@ -397,6 +400,21 @@ export async function createProductAction(
     }
     console.error("Product creation error:", error);
     return { status: "error", message: error.message || "Failed to create product." };
+  }
+
+  if (productId && productKind === "MOBILE") {
+    const { error: mobileKindError } = await supabase
+      .from("products")
+      .update({
+        product_kind: "MOBILE",
+        tracking_type: "QUANTITY_BASED",
+      })
+      .eq("id", productId)
+      .eq("shop_id", shop.id);
+
+    if (mobileKindError) {
+      return { status: "error", message: mobileKindError.message || "Product created, but mobile setup failed." };
+    }
   }
 
   if (primaryImage && uploadedImages.length > 1) {
@@ -465,6 +483,7 @@ export async function updateProductAction(
   }
 
   const { values, payload, productKind, normalizedUnits } = inputResult.data;
+  const rpcProductKind = productKind === "MOBILE" ? "QUANTITY_BASED" : productKind;
   const existingImagesResult = parseJsonField(
     formData.get("existing_images"),
     z.array(ExistingProductImageSchema).default([])
@@ -544,7 +563,7 @@ export async function updateProductAction(
     p_short_description: values.description,
     p_image_url: primaryImage?.url ?? null,
     p_image_public_id: primaryImage?.public_id ?? null,
-    p_product_kind: productKind,
+    p_product_kind: rpcProductKind,
     p_base_purchase_price: values.base_purchase_price,
     p_base_selling_price: values.base_selling_price,
     p_tax_rate: values.tax_rate,
@@ -561,6 +580,21 @@ export async function updateProductAction(
     }
     console.error("Product update error:", error);
     return { status: "error", message: error.message || "Failed to update product." };
+  }
+
+  if (productKind === "MOBILE") {
+    const { error: mobileKindError } = await supabase
+      .from("products")
+      .update({
+        product_kind: "MOBILE",
+        tracking_type: "QUANTITY_BASED",
+      })
+      .eq("id", productId)
+      .eq("shop_id", shop.id);
+
+    if (mobileKindError) {
+      return { status: "error", message: mobileKindError.message || "Product updated, but mobile setup failed." };
+    }
   }
 
   const oldPublicIds = new Set<string>();
@@ -1270,4 +1304,49 @@ export async function getQrExportEntriesAction(input: {
       fileName,
     },
   };
+}
+
+export async function createProductVariantAction(input: {
+  product_id: string;
+  color: string;
+  storage_label: string;
+  selling_price_override: number;
+}): Promise<ActionResponse<{ id: string }>> {
+  const { shop } = await getWorkspaceData();
+  if (!shop) return { status: "error", message: "No active shop found." };
+
+  const supabase = await createSupabaseServerClient();
+  const variantName = [input.storage_label, input.color].filter(Boolean).map(s => s.trim()).join(" / ") || "Default";
+
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id")
+    .eq("id", input.product_id)
+    .eq("shop_id", shop.id)
+    .single();
+
+  if (productError || !product) {
+    return { status: "error", message: "Product not found." };
+  }
+
+  const { data: newVariant, error } = await supabase
+    .from("product_variants")
+    .insert({
+      shop_id: shop.id,
+      product_id: input.product_id,
+      name: variantName,
+      color: input.color.trim() || null,
+      storage_label: input.storage_label.trim() || null,
+      selling_price_override: input.selling_price_override,
+      quantity: 0,
+    })
+    .select("id")
+    .single();
+
+  if (error || !newVariant) {
+    return { status: "error", message: error?.message || "Could not create variant." };
+  }
+
+  revalidatePath("/inventory");
+  return { status: "success", message: "New variant added.", data: { id: newVariant.id } };
 }

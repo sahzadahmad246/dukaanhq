@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { buildVariantLabel } from "@/lib/inventory-labels";
 import { fetchProductDetails, productDetailsQueryKey } from "../queries";
@@ -139,18 +139,22 @@ export function RecordSaleModal({
                   <Label>Variant</Label>
                   <Select
                     value={activeVariantId}
-                    onChange={(event) => {
-                      setVariantId(event.target.value);
+                    onValueChange={(val) => {
+                      setVariantId(val);
                       setInventoryItemId("");
                       setClientError("");
                     }}
                   >
-                    <option value="">Select variant</option>
-                    {product.variants.map((variant) => (
-                      <option key={variant.id} value={variant.id}>
-                        {buildVariantLabel(variant)}
-                      </option>
-                    ))}
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select variant" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {product.variants.map((variant) => (
+                        <SelectItem key={variant.id} value={variant.id}>
+                          {buildVariantLabel(variant)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
               ) : null}
@@ -160,23 +164,27 @@ export function RecordSaleModal({
                   <Label>{product.product_kind === "MOBILE" ? "Device / IMEI" : "Device / Serial"}</Label>
                   <Select
                     value={inventoryItemId}
-                    onChange={(event) => {
-                      setInventoryItemId(event.target.value);
+                    onValueChange={(val) => {
+                      setInventoryItemId(val);
                       setClientError("");
                     }}
                   >
-                    <option value="">Select stock unit</option>
-                    {availableUnits.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.identifiers && item.identifiers.length > 0
-                          ? item.identifiers
-                              .slice()
-                              .sort((a, b) => a.sort_order - b.sort_order)
-                              .map((identifier) => identifier.identifier_value)
-                              .join(" / ")
-                          : item.serial_number}
-                      </option>
-                    ))}
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select stock unit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableUnits.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.identifiers && item.identifiers.length > 0
+                            ? item.identifiers
+                                .slice()
+                                .sort((a, b) => a.sort_order - b.sort_order)
+                                .map((identifier) => identifier.identifier_value)
+                                .join(" / ")
+                            : item.serial_number}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
               ) : (

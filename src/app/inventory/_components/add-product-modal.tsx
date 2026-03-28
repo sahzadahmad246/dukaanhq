@@ -63,17 +63,12 @@ type IdentifierField = {
   value: string;
 };
 
-type HighlightDraft = {
-  id: string;
-  label: string;
-  value: string;
-};
-
 type VariantDraft = {
   id: string;
   color: string;
   storage: string;
   quantity: string;
+  sellingPrice: string;
   identifiers: IdentifierField[];
 };
 
@@ -94,21 +89,15 @@ type SelectedImage = {
 );
 
 const profiles: ProductProfile[] = [
-  { id: "MOBILE", title: "Mobile", subtitle: "IMEI tracked", icon: Smartphone },
+  { id: "MOBILE", title: "Mobile", subtitle: "Variant stock", icon: Smartphone },
   { id: "SERIALIZED", title: "Serialized", subtitle: "Laptop, watch, device", icon: Laptop },
-  { id: "QUANTITY_BASED", title: "Quantity", subtitle: "Charger, cable, accessory", icon: PackageOpen },
+  { id: "QUANTITY_BASED", title: "Accessory", subtitle: "Charger, cable, accessory", icon: PackageOpen },
 ];
+
+const createProfileChoices = profiles.filter((profile) => profile.id !== "SERIALIZED");
 
 function createIdentifierField(value = ""): IdentifierField {
   return { id: crypto.randomUUID(), value };
-}
-
-function createHighlight(label = "", value = ""): HighlightDraft {
-  return {
-    id: crypto.randomUUID(),
-    label,
-    value,
-  };
 }
 
 type ProductDraftPayload = {
@@ -127,7 +116,6 @@ type ProductDraftPayload = {
   newBrandName: string;
   identifierType: IdentifierType;
   variants: VariantDraft[];
-  highlights: HighlightDraft[];
   selectedImages: DraftSelectedImage[];
 };
 
@@ -152,62 +140,15 @@ type DraftSelectedImage =
       fileDataUrl: string;
     };
 
-function createHighlightDraft() {
-  return {
-    label: "",
-    value: "",
-  };
-}
-
-function parseHighlightText(input: string) {
-  return input
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const separatorIndex = line.indexOf(":");
-      if (separatorIndex === -1) return null;
-
-      const label = line.slice(0, separatorIndex).trim();
-      const value = line.slice(separatorIndex + 1).trim();
-      if (!label || !value) return null;
-
-      return { label, value };
-    })
-    .filter((item): item is { label: string; value: string } => Boolean(item));
-}
-
 function createVariant(): VariantDraft {
   return {
     id: crypto.randomUUID(),
     color: "",
     storage: "",
     quantity: "0",
+    sellingPrice: "",
     identifiers: [createIdentifierField()],
   };
-}
-
-const MOBILE_IMEI_DELIMITER = " | ";
-
-function toMobileUnits(variants: VariantDraft[], identifierType: IdentifierType) {
-  return variants.flatMap((variant) => {
-    const filledIdentifiers = variant.identifiers.map((field) => field.value.trim()).filter(Boolean);
-    const units = [];
-
-    for (let index = 0; index < filledIdentifiers.length; index += 2) {
-      const pair = filledIdentifiers.slice(index, index + 2);
-      if (pair.length === 0) continue;
-      units.push({
-        variant_temp_key: variant.id,
-        identifier_type: identifierType,
-        imei_1: pair[0] ?? null,
-        imei_2: pair[1] ?? null,
-        identifier_value: pair.join(MOBILE_IMEI_DELIMITER),
-      });
-    }
-
-    return units;
-  });
 }
 
 function revokeNewImagePreviews(images: SelectedImage[]) {
@@ -281,15 +222,17 @@ function dataUrlToFile(dataUrl: string, fileName: string, fileType: string) {
 
 function getStepsForProfile(productKind: ProductKind | null): StepId[] {
   if (!productKind) return [];
-  return productKind === "QUANTITY_BASED" ? ["basics", "stock", "preview"] : ["basics", "options", "stock", "preview"];
+  if (productKind === "MOBILE") return ["basics", "options", "preview"];
+  if (productKind === "SERIALIZED") return ["basics", "options", "stock", "preview"];
+  return ["basics", "stock", "preview"];
 }
 
 function getProfileCopy(productKind: ProductKind | null) {
   if (productKind === "MOBILE") {
     return {
-      namePlaceholder: "iPhone 16",
-      stockTitle: "IMEI Stock",
-      identifierLabel: "IMEI",
+      namePlaceholder: "iPhone 17",
+      stockTitle: "Variant Stock",
+      identifierLabel: "Quantity",
     };
   }
   if (productKind === "SERIALIZED") {
@@ -559,7 +502,7 @@ export function AddProductModal({
   const [currentStep, setCurrentStep] = useState<StepId>("basics");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [purchasePrice, setPurchasePrice] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("0");
   const [sellingPrice, setSellingPrice] = useState("");
   const [lowStockThreshold, setLowStockThreshold] = useState("5");
   const [categoryMode, setCategoryMode] = useState<"existing" | "new">("existing");
@@ -570,9 +513,6 @@ export function AddProductModal({
   const [newBrandName, setNewBrandName] = useState("");
   const [identifierType, setIdentifierType] = useState<IdentifierType>("SERIAL_NUMBER");
   const [variants, setVariants] = useState<VariantDraft[]>([]);
-  const [highlights, setHighlights] = useState<HighlightDraft[]>([]);
-  const [highlightDraft, setHighlightDraft] = useState(createHighlightDraft());
-  const [editingHighlightId, setEditingHighlightId] = useState<string | null>(null);
   const [draftRestoreCandidate, setDraftRestoreCandidate] = useState<ProductDraftPayload | null>(null);
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [imageTargetVariantKey, setImageTargetVariantKey] = useState<string | null>(null);
@@ -580,6 +520,7 @@ export function AddProductModal({
   const [scanningTarget, setScanningTarget] = useState<{ variantId: string; fieldId: string } | null>(null);
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState<string | null>(null);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedEditProductRef = useRef<string | null>(null);
@@ -612,7 +553,7 @@ export function AddProductModal({
   const steps = getStepsForProfile(selectedProfile);
   const stepIndex = steps.indexOf(currentStep);
   const profileCopy = getProfileCopy(selectedProfile);
-  const trackingType = selectedProfile === "QUANTITY_BASED" ? "QUANTITY_BASED" : "SERIALIZED";
+  const trackingType = selectedProfile === "SERIALIZED" ? "SERIALIZED" : "QUANTITY_BASED";
   const resolvedIdentifierType = selectedProfile === "MOBILE" ? "IMEI" : identifierType;
   const selectedProfileMeta = profiles.find((profile) => profile.id === selectedProfile) ?? profiles[0];
   const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }));
@@ -646,56 +587,41 @@ export function AddProductModal({
     selectedProfile === "MOBILE" && name.trim().length > 0 && mobileTemplateOptions.length > 0;
 
   const payload = useMemo(() => {
-    const activeVariants = variants.slice(0, 1);
+    const activeVariants = variants;
     return JSON.stringify({
       variants: activeVariants.map((variant) => ({
         temp_key: variant.id,
         name: buildVariantName(variant),
         color: variant.color.trim() || null,
         storage_label: variant.storage.trim() || null,
-        quantity: selectedProfile === "QUANTITY_BASED" ? Number.parseInt(variant.quantity || "0", 10) || 0 : 0,
+        quantity: selectedProfile === "SERIALIZED" ? 0 : Number.parseInt(variant.quantity || "0", 10) || 0,
         purchase_price_override: null,
-        selling_price_override: null,
+        selling_price_override: variant.sellingPrice.trim() ? Number(variant.sellingPrice) : null,
       })),
       units:
-        selectedProfile === "QUANTITY_BASED"
+        selectedProfile !== "SERIALIZED"
           ? []
-          : selectedProfile === "MOBILE"
-            ? toMobileUnits(activeVariants, resolvedIdentifierType)
-            : activeVariants.flatMap((variant) =>
-                variant.identifiers
-                  .map((field) => field.value.trim())
-                  .filter(Boolean)
-              .map((value) => ({
-                    variant_temp_key: variant.id,
-                    identifier_type: resolvedIdentifierType,
-                    serial_number: resolvedIdentifierType === "SERIAL_NUMBER" ? value : null,
-                    unique_identifier: resolvedIdentifierType === "UNIQUE_ID" ? value : null,
-                    identifier_value: value,
-                  }))
-              ),
-      highlights: highlights
-        .map((highlight, index) => ({
-          label: highlight.label.trim(),
-          value: highlight.value.trim(),
-          sort_order: index,
-        }))
-        .filter((highlight) => highlight.label && highlight.value),
+          : activeVariants.flatMap((variant) =>
+              variant.identifiers
+                .map((field) => field.value.trim())
+                .filter(Boolean)
+                .map((value) => ({
+                  variant_temp_key: variant.id,
+                  identifier_type: resolvedIdentifierType,
+                  serial_number: resolvedIdentifierType === "SERIAL_NUMBER" ? value : null,
+                  unique_identifier: resolvedIdentifierType === "UNIQUE_ID" ? value : null,
+                  identifier_value: value,
+                }))
+            ),
+      highlights: [],
     });
-  }, [highlights, resolvedIdentifierType, selectedProfile, variants]);
+  }, [resolvedIdentifierType, selectedProfile, variants]);
 
   const totalUnits = useMemo(() => {
-    if (selectedProfile === "QUANTITY_BASED") {
-      return Number.parseInt(variants[0]?.quantity || "0", 10) || 0;
+    if (selectedProfile !== "SERIALIZED") {
+      return variants.reduce((sum, variant) => sum + (Number.parseInt(variant.quantity || "0", 10) || 0), 0);
     }
-    if (selectedProfile === "MOBILE") {
-      const imeiCount = variants.slice(0, 1).reduce(
-        (sum, variant) => sum + variant.identifiers.filter((field) => field.value.trim().length > 0).length,
-        0
-      );
-      return Math.ceil(imeiCount / 2);
-    }
-    return variants.slice(0, 1).reduce(
+    return variants.reduce(
       (sum, variant) => sum + variant.identifiers.filter((field) => field.value.trim().length > 0).length,
       0
     );
@@ -704,13 +630,11 @@ export function AddProductModal({
   const canSubmit =
     currentStep === "preview" &&
     name.trim().length > 0 &&
-    description.trim().length > 0 &&
-    purchasePrice.trim().length > 0 &&
-    sellingPrice.trim().length > 0 &&
+    (selectedProfile === "MOBILE" || sellingPrice.trim().length > 0) &&
     lowStockThreshold.trim().length > 0 &&
     ((brandMode === "existing" && selectedBrandId.length > 0) || (brandMode === "new" && newBrandName.trim().length > 0)) &&
     ((categoryMode === "existing" && selectedCategoryId.length > 0) || (categoryMode === "new" && newCategoryName.trim().length > 0)) &&
-    (selectedProfile === "QUANTITY_BASED" ? totalUnits >= 0 : totalUnits > 0);
+    totalUnits >= 0;
 
   useEffect(() => {
     if (!open || !isEditMode || !editingProduct || !productId) return;
@@ -769,7 +693,7 @@ export function AddProductModal({
 
       const variantSource =
         editingProduct.variants && editingProduct.variants.length > 0
-          ? editingProduct.variants.slice(0, 1)
+          ? editingProduct.variants
           : [{ id: crypto.randomUUID(), name: "Default", color: null, storage_label: null, quantity: 0 }];
 
       setVariants(
@@ -778,6 +702,7 @@ export function AddProductModal({
           color: variant.color ?? "",
           storage: variant.storage_label ?? "",
           quantity: String(variant.quantity ?? 0),
+          sellingPrice: String(variant.selling_price_override ?? ""),
           identifiers:
             editingProduct.product_kind === "QUANTITY_BASED"
               ? [createIdentifierField()]
@@ -806,13 +731,6 @@ export function AddProductModal({
                 : [createIdentifierField()],
         }))
       );
-      setHighlights(
-        editingProduct.highlights && editingProduct.highlights.length > 0
-          ? editingProduct.highlights.map((highlight) => createHighlight(highlight.label, highlight.value))
-          : []
-      );
-      setHighlightDraft(createHighlightDraft());
-      setEditingHighlightId(null);
       setDraftRestoreCandidate(null);
       hasLoadedDraftRef.current = true;
     });
@@ -899,8 +817,7 @@ export function AddProductModal({
         newCategoryName,
         newBrandName,
         identifierType,
-        variants: variants.slice(0, 1),
-        highlights,
+        variants,
         selectedImages: draftImages,
       };
 
@@ -934,7 +851,6 @@ export function AddProductModal({
     newBrandName,
     identifierType,
     variants,
-    highlights,
     selectedImages,
   ]);
 
@@ -957,10 +873,7 @@ export function AddProductModal({
     setNewCategoryName(draft.newCategoryName ?? "");
     setNewBrandName(draft.newBrandName ?? "");
     setIdentifierType(draft.identifierType ?? "SERIAL_NUMBER");
-    setVariants(draft.variants?.length ? draft.variants.slice(0, 1) : [createVariant()]);
-    setHighlights(draft.highlights ?? []);
-    setHighlightDraft(createHighlightDraft());
-    setEditingHighlightId(null);
+    setVariants(draft.variants?.length ? draft.variants : [createVariant()]);
     setSelectedImages(
       (draft.selectedImages ?? []).map((image) =>
         image.kind === "existing"
@@ -994,9 +907,6 @@ export function AddProductModal({
     setCurrentStep("basics");
     setIdentifierType(profile === "SERIALIZED" ? "SERIAL_NUMBER" : "IMEI");
     setVariants([createVariant()]);
-    setHighlights([]);
-    setHighlightDraft(createHighlightDraft());
-    setEditingHighlightId(null);
     setDraftRestoreCandidate(null);
     setSelectedImages([]);
     setFullscreenImageId(null);
@@ -1072,8 +982,22 @@ export function AddProductModal({
     }
   }
 
-  function setVariantField(variantId: string, key: "color" | "storage" | "quantity", value: string) {
-    setVariants((current) => current.map((variant) => (variant.id === variantId ? { ...variant, [key]: value } : variant)).slice(0, 1));
+  function addVariant() {
+    setVariants((current) => [...current, createVariant()]);
+  }
+
+  function handleAddVariantClick() {
+    const next = createVariant();
+    setVariants((current) => [...current, next]);
+    setEditingVariantId(next.id);
+  }
+
+  function removeVariant(variantId: string) {
+    setVariants((current) => current.filter((v) => v.id !== variantId));
+  }
+
+  function setVariantField(variantId: string, key: "color" | "storage" | "quantity" | "sellingPrice", value: string) {
+    setVariants((current) => current.map((variant) => (variant.id === variantId ? { ...variant, [key]: value } : variant)));
     if (key === "quantity") {
       clearClientError(["stock"]);
     }
@@ -1090,7 +1014,7 @@ export function AddProductModal({
               ),
             }
           : variant
-      ).slice(0, 1)
+      )
     );
     clearClientError(["stock"]);
   }
@@ -1101,7 +1025,7 @@ export function AddProductModal({
         variant.id === variantId
           ? { ...variant, identifiers: [...variant.identifiers, createIdentifierField()] }
           : variant
-      ).slice(0, 1)
+      )
     );
     clearClientError(["stock"]);
   }
@@ -1118,80 +1042,9 @@ export function AddProductModal({
                   : variant.identifiers,
             }
           : variant
-      ).slice(0, 1)
+      )
     );
     clearClientError(["stock"]);
-  }
-
-  function setHighlightDraftField(key: "label" | "value", value: string) {
-    setHighlightDraft((current) => ({ ...current, [key]: value }));
-    clearClientError(["highlights"]);
-  }
-
-  function addHighlight() {
-    const label = highlightDraft.label.trim();
-    const value = highlightDraft.value.trim();
-
-    if (!label || !value) {
-      setClientErrors((current) => ({
-        ...current,
-        highlights: "Add both a highlight name and value before saving it to the list.",
-      }));
-      return;
-    }
-
-    if (editingHighlightId) {
-      setHighlights((current) =>
-        current.map((highlight) =>
-          highlight.id === editingHighlightId ? { ...highlight, label, value } : highlight
-        )
-      );
-    } else {
-      setHighlights((current) => [...current, createHighlight(label, value)]);
-    }
-    setHighlightDraft(createHighlightDraft());
-    setEditingHighlightId(null);
-    clearClientError(["highlights"]);
-  }
-
-  function addBulkHighlights(input: string) {
-    const parsedHighlights = parseHighlightText(input);
-
-    if (parsedHighlights.length === 0) {
-      setClientErrors((current) => ({
-        ...current,
-        highlights: "Paste one highlight per line using the format Key: Value.",
-      }));
-      return;
-    }
-
-    setHighlights((current) => [
-      ...current,
-      ...parsedHighlights.map((highlight) => createHighlight(highlight.label, highlight.value)),
-    ]);
-    clearClientError(["highlights"]);
-    toast.success(`${parsedHighlights.length} highlight${parsedHighlights.length > 1 ? "s" : ""} added.`);
-  }
-
-  function editHighlight(highlightId: string) {
-    const highlight = highlights.find((item) => item.id === highlightId);
-    if (!highlight) return;
-
-    setHighlightDraft({
-      label: highlight.label,
-      value: highlight.value,
-    });
-    setEditingHighlightId(highlightId);
-    clearClientError(["highlights"]);
-  }
-
-  function removeHighlight(highlightId: string) {
-    setHighlights((current) => current.filter((highlight) => highlight.id !== highlightId));
-    if (editingHighlightId === highlightId) {
-      setHighlightDraft(createHighlightDraft());
-      setEditingHighlightId(null);
-    }
-    clearClientError(["highlights"]);
   }
 
   function validateStep(step: StepId) {
@@ -1199,16 +1052,12 @@ export function AddProductModal({
 
     if (step === "basics") {
       if (!name.trim()) errors.name = "Product name is required.";
-      if (!description.trim()) errors.description = "Description is required.";
-      if (!purchasePrice.trim()) {
-        errors.base_purchase_price = "Purchase price is required.";
-      } else if (Number.isNaN(Number(purchasePrice)) || Number(purchasePrice) < 0) {
-        errors.base_purchase_price = "Purchase price must be 0 or more.";
-      }
-      if (!sellingPrice.trim()) {
-        errors.base_selling_price = "Selling price is required.";
-      } else if (Number.isNaN(Number(sellingPrice)) || Number(sellingPrice) < 0) {
-        errors.base_selling_price = "Selling price must be 0 or more.";
+      if (selectedProfile !== "MOBILE") {
+        if (!sellingPrice.trim()) {
+          errors.base_selling_price = "Selling price is required.";
+        } else if (Number.isNaN(Number(sellingPrice)) || Number(sellingPrice) < 0) {
+          errors.base_selling_price = "Selling price must be 0 or more.";
+        }
       }
       if (!lowStockThreshold.trim()) {
         errors.low_stock_threshold = "Low stock threshold is required.";
@@ -1222,35 +1071,35 @@ export function AddProductModal({
     }
 
     if (step === "options" && selectedProfile !== "QUANTITY_BASED") {
-      const activeVariant = variants[0];
-      const invalidVariant =
-        activeVariant &&
-        !activeVariant.color.trim() &&
-        !activeVariant.storage.trim();
-
+      const invalidVariant = variants.find(v => !v.color.trim() && !v.storage.trim());
       if (invalidVariant) {
-        errors.options = "Add at least one option like color or storage.";
+        errors.options = "Add color, storage, or both for each variant.";
+      }
+      if (selectedProfile === "MOBILE") {
+        const invalidPrice = variants.find(v => !v.sellingPrice.trim() || Number.isNaN(Number(v.sellingPrice)) || Number(v.sellingPrice) < 0);
+        if (invalidPrice) errors.options = "Valid selling price is required for each variant.";
+        const invalidStock = variants.find(v => !v.quantity.trim() || Number.isNaN(Number(v.quantity)) || Number(v.quantity) < 0);
+        if (invalidStock) errors.options = "Valid stock quantity is required for each variant.";
       }
     }
 
     if (step === "stock") {
-      if (selectedProfile === "QUANTITY_BASED") {
-        if (!(variants[0]?.quantity ?? "").trim()) {
-          errors.stock = "Opening quantity is required.";
-        } else if (Number.isNaN(Number(variants[0]?.quantity ?? "")) || Number(variants[0]?.quantity ?? "0") < 0) {
-          errors.stock = "Opening quantity must be 0 or more.";
+      if (selectedProfile !== "SERIALIZED") {
+        const invalidQuantity = variants.find(v => !(v.quantity ?? "").trim() || Number.isNaN(Number(v.quantity)) || Number(v.quantity) < 0);
+        if (invalidQuantity) {
+          errors.stock = "Valid opening quantity is required for each variant.";
         }
       } else {
-        const identifiers = (variants[0]?.identifiers ?? []).map((field) => field.value.trim()).filter(Boolean);
-        if (identifiers.length === 0) {
-          errors.stock = `Add at least one ${resolvedIdentifierType === "IMEI" ? "IMEI" : "identifier"}.`;
+        const hasMissingIdentifiers = variants.some(variant => {
+          const identifiers = (variant.identifiers ?? []).map((field) => field.value.trim()).filter(Boolean);
+          return identifiers.length === 0;
+        });
+        if (hasMissingIdentifiers) {
+          errors.stock = `Add at least one ${resolvedIdentifierType === "IMEI" ? "IMEI" : "identifier"} for each variant.`;
         }
-        const normalized = identifiers.map((value) => value.toLowerCase());
-        if (new Set(normalized).size !== normalized.length) {
+        const allIdentifiers = variants.flatMap(v => (v.identifiers ?? []).map(f => f.value.trim().toLowerCase())).filter(Boolean);
+        if (new Set(allIdentifiers).size !== allIdentifiers.length) {
           errors.stock = "Duplicate identifier values found.";
-        }
-        if (selectedProfile === "MOBILE" && identifiers.length > 0 && totalUnits === 0) {
-          errors.stock = "Add at least one mobile unit.";
         }
       }
     }
@@ -1364,16 +1213,12 @@ export function AddProductModal({
           color: templateVariant.color ?? "",
           storage: templateVariant.storage_label ?? "",
           quantity: "0",
+          sellingPrice: String(templateVariant.selling_price_override ?? template.base_selling_price ?? ""),
           identifiers: [createIdentifierField(), createIdentifierField()],
         },
       ]);
-      setHighlights(
-        template.highlights && template.highlights.length > 0
-          ? template.highlights.map((highlight) => createHighlight(highlight.label, highlight.value))
-          : []
-      );
       setClientErrors({});
-      toast.success("Phone details and images filled from existing product. Add this phone's IMEI numbers to continue.");
+      toast.success("Phone details and images filled from existing product. Set the stock count for this variant to continue.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load that phone template.");
     } finally {
@@ -1406,26 +1251,47 @@ export function AddProductModal({
 
         {!selectedProfile && !isEditMode ? (
           <div className="px-6 py-8 sm:px-8">
-            <div className="text-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Select Product Type</p>
+            <div className="rounded-[2rem] border border-stone-200 bg-[linear-gradient(180deg,#fffdf9_0%,#f4efe5_100%)] p-5 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-teal-700">Add Product</p>
+              <h3 className="mt-3 text-[1.75rem] font-black leading-tight tracking-[-0.03em] text-stone-950">
+                Choose the stock style that matches your shop
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-stone-600">
+                Mobile products track stock by phone variant like storage and color. Accessories and general items use simple quantity stock.
+              </p>
             </div>
 
-            <div className="mt-8 grid grid-cols-3 gap-4">
-              {profiles.map((profile) => {
+            <div className="mt-6 grid gap-4">
+              {createProfileChoices.map((profile) => {
                 const Icon = profile.icon;
                 return (
                   <button
                     key={profile.id}
                     type="button"
                     onClick={() => chooseProfile(profile.id)}
-                    className="group flex flex-col items-center text-center focus:outline-none"
+                    className="group relative overflow-hidden rounded-[1.75rem] border border-stone-200 bg-white p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-teal-700 hover:shadow-[0_20px_50px_rgba(15,23,42,0.1)] focus:outline-none"
                   >
-                    <div className="flex h-24 w-24 items-center justify-center rounded-full border border-stone-200 bg-[#fffdf9] text-stone-500 shadow-sm transition group-hover:border-teal-700 group-hover:bg-teal-700 group-hover:text-white">
-                      <Icon className="h-7 w-7" />
-                    </div>
-                    <div className="mt-4">
-                      <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-stone-900">{profile.title}</h3>
-                      <p className="mt-1 text-xs text-stone-400">{profile.subtitle}</p>
+                    <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[radial-gradient(circle_at_center,rgba(20,184,166,0.16),transparent_65%)]" />
+                    <div className="relative flex items-start gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] border border-stone-200 bg-[#fffdf9] text-stone-700 transition group-hover:border-teal-700 group-hover:bg-teal-700 group-hover:text-white">
+                        <Icon className="h-6 w-6" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <h4 className="text-base font-black tracking-[-0.02em] text-stone-950">
+                            {profile.title}
+                          </h4>
+                          <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500 transition group-hover:bg-teal-50 group-hover:text-teal-700">
+                            {profile.id === "MOBILE" ? "Phones" : "General"}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-stone-600">{profile.subtitle}</p>
+                        <p className="mt-3 text-xs font-medium leading-5 text-stone-500">
+                          {profile.id === "MOBILE"
+                            ? "Use this for iPhone, Samsung, Redmi, and other models with storage or color variants."
+                            : "Use this for chargers, cables, earbuds, covers, and other quantity-based products."}
+                        </p>
+                      </div>
                     </div>
                   </button>
                 );
@@ -1452,55 +1318,166 @@ export function AddProductModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
               {currentStep === "basics" ? (
-                <section className="space-y-4 py-2">
+                <section className="space-y-5 py-2">
                   <StepTitle step={stepIndex + 1} title="Basics" />
-                  <Field label="Product Name" required error={clientErrors.name || state.fieldErrors?.name}>
-                    <div className="relative">
-                      <Input
-                        name="name"
-                        value={name}
-                        onChange={(event) => {
-                          setName(event.target.value);
-                          clearClientError(["name"]);
-                        }}
-                        placeholder={profileCopy.namePlaceholder}
-                        required
-                      />
-                      {shouldShowMobileSuggestions ? (
-                        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
-                          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
-                            Matching phones
-                          </p>
-                          <div className="max-h-56 overflow-y-auto">
-                            {mobileTemplateOptions.slice(0, 6).map((product) => (
-                              <button
-                                key={product.id}
-                                type="button"
-                                onClick={() => applyMobileTemplate(product.id)}
-                                disabled={selectedTemplateProductId === product.id}
-                                className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-stone-100 disabled:opacity-60"
-                              >
-                                <div>
-                                  <div className="text-sm font-semibold text-stone-900">{product.name}</div>
-                                  <div className="text-xs text-stone-500">
-                                    {[product.brand?.name, product.category?.name].filter(Boolean).join(" • ") || "Mobile"}
+                  <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 p-5 space-y-5">
+                    <Field label="Product Name" required error={clientErrors.name || state.fieldErrors?.name}>
+                      <div className="relative">
+                        <Input
+                          name="name"
+                          value={name}
+                          onChange={(event) => {
+                            setName(event.target.value);
+                            clearClientError(["name"]);
+                          }}
+                          placeholder={profileCopy.namePlaceholder}
+                          required
+                        />
+                        {shouldShowMobileSuggestions ? (
+                          <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
+                            <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+                              Matching phones
+                            </p>
+                            <div className="max-h-56 overflow-y-auto">
+                              {mobileTemplateOptions.slice(0, 6).map((product) => (
+                                <button
+                                  key={product.id}
+                                  type="button"
+                                  onClick={() => applyMobileTemplate(product.id)}
+                                  disabled={selectedTemplateProductId === product.id}
+                                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-stone-100 disabled:opacity-60"
+                                >
+                                  <div>
+                                    <div className="text-sm font-semibold text-stone-900">{product.name}</div>
+                                    <div className="text-xs text-stone-500">
+                                      {[product.brand?.name, product.category?.name].filter(Boolean).join(" • ") || "Mobile"}
+                                    </div>
                                   </div>
-                                </div>
-                                {selectedTemplateProductId === product.id ? (
-                                  <LoaderCircle className="h-4 w-4 animate-spin text-stone-500" />
-                                ) : null}
-                              </button>
-                            ))}
+                                  {selectedTemplateProductId === product.id ? (
+                                    <LoaderCircle className="h-4 w-4 animate-spin text-stone-500" />
+                                  ) : null}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
+                    </Field>
+
+                    <div className="space-y-5">
+                      <ChooserField
+                        label="Brand"
+                        mode={brandMode}
+                        onToggle={() => setBrandMode((current) => (current === "existing" ? "new" : "existing"))}
+                        error={clientErrors.brand}
+                        existing={
+                          <SearchableSelect
+                            value={selectedBrandId}
+                            onChange={(value) => {
+                              setSelectedBrandId(value);
+                              clearClientError(["brand"]);
+                            }}
+                            options={brandOptions}
+                            placeholder="Select brand"
+                            emptyLabel="No brand found."
+                          />
+                        }
+                        created={
+                          <Field label="New Brand" required error={clientErrors.brand}>
+                            <Input
+                              value={newBrandName}
+                              onChange={(event) => {
+                                setNewBrandName(event.target.value);
+                                clearClientError(["brand"]);
+                              }}
+                              placeholder="Create a new brand"
+                            />
+                          </Field>
+                        }
+                      />
+
+                      <ChooserField
+                        label="Category"
+                        mode={categoryMode}
+                        onToggle={() => setCategoryMode((current) => (current === "existing" ? "new" : "existing"))}
+                        error={clientErrors.category}
+                        existing={
+                          <SearchableSelect
+                            value={selectedCategoryId}
+                            onChange={(value) => {
+                              setSelectedCategoryId(value);
+                              clearClientError(["category"]);
+                            }}
+                            options={categoryOptions}
+                            placeholder="Select category"
+                            emptyLabel="No category found."
+                          />
+                        }
+                        created={
+                          <Field label="New Category" required error={clientErrors.category}>
+                            <Input
+                              value={newCategoryName}
+                              onChange={(event) => {
+                                setNewCategoryName(event.target.value);
+                                clearClientError(["category"]);
+                              }}
+                              placeholder="Create a new category"
+                            />
+                          </Field>
+                        }
+                      />
                     </div>
-                    {selectedProfile === "MOBILE" ? (
-                      <p className="text-xs text-stone-500">
-                        Start typing a phone name to reuse details from an existing model. We&apos;ll keep IMEI fields empty because each device has unique IMEI numbers.
-                      </p>
-                    ) : null}
-                  </Field>
+
+                    <div className="space-y-5">
+                      {selectedProfile === "MOBILE" ? (
+                        <input type="hidden" name="base_selling_price" value="0" />
+                      ) : (
+                        <Field label="Selling Price" required error={clientErrors.base_selling_price || state.fieldErrors?.base_selling_price}>
+                          <Input
+                            name="base_selling_price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={sellingPrice}
+                            onChange={(event) => {
+                              setSellingPrice(event.target.value);
+                              clearClientError(["base_selling_price"]);
+                            }}
+                            placeholder="0.00"
+                            required
+                          />
+                        </Field>
+                      )}
+
+                      <Field label="Low Stock Alert" required error={clientErrors.low_stock_threshold || state.fieldErrors?.low_stock_threshold}>
+                        <Input
+                          name="low_stock_threshold"
+                          type="number"
+                          min="0"
+                          value={lowStockThreshold}
+                          onChange={(event) => {
+                            setLowStockThreshold(event.target.value);
+                            clearClientError(["low_stock_threshold"]);
+                          }}
+                        />
+                      </Field>
+                    </div>
+
+                    <Field label="Description (Optional)" error={clientErrors.description || state.fieldErrors?.description}>
+                      <Textarea
+                        name="description"
+                        value={description}
+                        onChange={(event) => {
+                          setDescription(event.target.value);
+                          clearClientError(["description"]);
+                        }}
+                        placeholder="Optional notes customers or staff may need."
+                        rows={3}
+                        maxLength={280}
+                      />
+                      <p className="text-xs text-stone-500">{description.length}/280 characters</p>
+                    </Field>
+                  </div>
 
                   {selectedProfile === "QUANTITY_BASED" ? (
                   <Field label="Product Images" error={clientErrors.images}>
@@ -1548,219 +1525,6 @@ export function AddProductModal({
                   </Field>
                   ) : null}
 
-                  <Field label="Description" required error={clientErrors.description || state.fieldErrors?.description}>
-                    <Textarea
-                      name="description"
-                      value={description}
-                      onChange={(event) => {
-                        setDescription(event.target.value);
-                        clearClientError(["description"]);
-                      }}
-                      placeholder="Short product description for inventory and ecommerce."
-                      rows={4}
-                      maxLength={280}
-                    />
-                    <p className="text-xs text-stone-500">{description.length}/280 characters</p>
-                  </Field>
-
-                  <Field label="Highlights / Specs" error={clientErrors.highlights}>
-                    <div className="space-y-3">
-                      <div className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
-                        <div className="space-y-3">
-                          <div>
-                            <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-                              Key
-                            </Label>
-                            <Input
-                              value={highlightDraft.label}
-                              onChange={(event) => setHighlightDraftField("label", event.target.value)}
-                              onPaste={(event) => {
-                                const pastedText = event.clipboardData.getData("text");
-                                if (!pastedText.includes(":") || !pastedText.includes("\n")) return;
-                                event.preventDefault();
-                                addBulkHighlights(pastedText);
-                              }}
-                              placeholder="Display Type"
-                              className="mt-2"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-                              Value
-                            </Label>
-                            <Textarea
-                              value={highlightDraft.value}
-                              onChange={(event) => setHighlightDraftField("value", event.target.value)}
-                              onPaste={(event) => {
-                                const pastedText = event.clipboardData.getData("text");
-                                if (!pastedText.includes(":") || !pastedText.includes("\n")) return;
-                                event.preventDefault();
-                                addBulkHighlights(pastedText);
-                              }}
-                              placeholder="Super Retina XDR OLED"
-                              rows={2}
-                              className="mt-2"
-                            />
-                          </div>
-                          <Button type="button" variant="secondary" onClick={addHighlight} className="w-full sm:w-auto">
-                            <Plus className="h-4 w-4" />
-                            {editingHighlightId ? "Update Highlight" : "Add Highlight"}
-                          </Button>
-                        </div>
-                        <p className="mt-3 text-xs text-stone-500">
-                          Optional. Paste multiple lines in `Key: Value` format here and we&apos;ll split them into separate highlights automatically.
-                        </p>
-                      </div>
-
-                      {highlights.length > 0 ? (
-                        <div>
-                          <p className="mb-2 text-sm font-semibold text-stone-900">Highlights</p>
-                          <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
-                          {highlights.map((highlight, index) => (
-                            <div
-                              key={highlight.id}
-                              className={cn(
-                                "flex items-start justify-between gap-3 px-4 py-3",
-                                index > 0 ? "border-t border-stone-200" : ""
-                              )}
-                            >
-                              <div className="min-w-0 pr-3 text-sm leading-6 text-stone-700">
-                                <span className="font-semibold text-stone-900">{highlight.label}:</span> {highlight.value}
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="h-8 px-2 text-stone-600 hover:bg-stone-100 hover:text-stone-900"
-                                  onClick={() => editHighlight(highlight.id)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="h-8 px-2 text-rose-600 hover:bg-rose-50"
-                                  onClick={() => removeHighlight(highlight.id)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-stone-500">No highlights added yet.</p>
-                      )}
-                    </div>
-                  </Field>
-
-                  <ChooserField
-                    label="Category"
-                    mode={categoryMode}
-                    onToggle={() => setCategoryMode((current) => (current === "existing" ? "new" : "existing"))}
-                    error={clientErrors.category}
-                    existing={
-                      <SearchableSelect
-                        value={selectedCategoryId}
-                        onChange={(value) => {
-                          setSelectedCategoryId(value);
-                          clearClientError(["category"]);
-                        }}
-                        options={categoryOptions}
-                        placeholder="Select category"
-                        emptyLabel="No category found."
-                      />
-                    }
-                    created={
-                      <Field label="New Category" required error={clientErrors.category}>
-                        <Input
-                          value={newCategoryName}
-                          onChange={(event) => {
-                            setNewCategoryName(event.target.value);
-                            clearClientError(["category"]);
-                          }}
-                          placeholder="Create a new category"
-                        />
-                      </Field>
-                    }
-                  />
-
-                  <ChooserField
-                    label="Brand"
-                    mode={brandMode}
-                    onToggle={() => setBrandMode((current) => (current === "existing" ? "new" : "existing"))}
-                    error={clientErrors.brand}
-                    existing={
-                      <SearchableSelect
-                        value={selectedBrandId}
-                        onChange={(value) => {
-                          setSelectedBrandId(value);
-                          clearClientError(["brand"]);
-                        }}
-                        options={brandOptions}
-                        placeholder="Select brand"
-                        emptyLabel="No brand found."
-                      />
-                    }
-                    created={
-                      <Field label="New Brand" required error={clientErrors.brand}>
-                        <Input
-                          value={newBrandName}
-                          onChange={(event) => {
-                            setNewBrandName(event.target.value);
-                            clearClientError(["brand"]);
-                          }}
-                          placeholder="Create a new brand"
-                        />
-                      </Field>
-                    }
-                  />
-
-                  <Field label="Base Purchase Price" required error={clientErrors.base_purchase_price || state.fieldErrors?.base_purchase_price}>
-                    <Input
-                      name="base_purchase_price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={purchasePrice}
-                      onChange={(event) => {
-                        setPurchasePrice(event.target.value);
-                        clearClientError(["base_purchase_price"]);
-                      }}
-                      placeholder="0.00"
-                      required
-                    />
-                  </Field>
-
-                  <Field label="Base Selling Price" required error={clientErrors.base_selling_price || state.fieldErrors?.base_selling_price}>
-                    <Input
-                      name="base_selling_price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={sellingPrice}
-                      onChange={(event) => {
-                        setSellingPrice(event.target.value);
-                        clearClientError(["base_selling_price"]);
-                      }}
-                      placeholder="0.00"
-                      required
-                    />
-                  </Field>
-
-                  <Field label="Low Stock Threshold" required error={clientErrors.low_stock_threshold || state.fieldErrors?.low_stock_threshold}>
-                    <Input
-                      name="low_stock_threshold"
-                      type="number"
-                      min="0"
-                      value={lowStockThreshold}
-                      onChange={(event) => {
-                        setLowStockThreshold(event.target.value);
-                        clearClientError(["low_stock_threshold"]);
-                      }}
-                    />
-                  </Field>
                 </section>
               ) : null}
 
@@ -1769,93 +1533,76 @@ export function AddProductModal({
                   <StepTitle step={stepIndex + 1} title="Options" />
                   {clientErrors.options ? <p className="text-sm text-rose-600">{clientErrors.options}</p> : null}
 
-                  {variants[0] ? (
-                    <div className="space-y-3">
-                      <Field label="Color">
-                        <Input value={variants[0].color} onChange={(event) => setVariantField(variants[0].id, "color", event.target.value)} placeholder="Black" />
-                      </Field>
-                      <Field label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}>
-                        <StoragePresetPicker
-                          value={variants[0].storage}
-                          onChange={(nextValue) => setVariantField(variants[0].id, "storage", nextValue)}
-                          presets={storagePresets}
-                          placeholder={selectedProfile === "MOBILE" ? "Select or type storage" : "Select or type size / storage"}
-                        />
-                      </Field>
-
-                      <Field label="Option Images (Optional)">
-                        <div
-                          className="rounded-2xl border border-dashed border-stone-300 bg-white p-3"
-                          onDragOver={(event) => event.preventDefault()}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            void addDroppedImages(event.dataTransfer, variants[0].id);
-                          }}
-                        >
-                          <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setImageTargetVariantKey(variants[0].id);
-                                fileInputRef.current?.click();
-                              }}
-                              className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white text-stone-400 transition hover:border-teal-700 hover:text-teal-700"
-                            >
-                              <ImagePlus className="h-6 w-6" />
-                            </button>
-
-                            {selectedImages
-                              .filter((image) => image.variantKey === variants[0].id)
-                              .map((image) => (
-                                <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
-                                  <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
-                                    <img src={image.previewUrl} alt="Selected variant" className="h-full w-full object-cover" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeImage(image.id)}
-                                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-stone-950/80 text-white"
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              ))}
+                  <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+                    <div className="divide-y divide-stone-200/60 transition-all">
+                      {variants.map((variant) => (
+                        <div key={variant.id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/40">
+                          <div>
+                            <p className="text-[13px] font-bold text-stone-900 tracking-tight">{buildVariantName(variant)}</p>
+                            {selectedProfile === "MOBILE" && (
+                              <div className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold text-stone-500">
+                                <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
+                                {variant.quantity || "0"} initial stock
+                              </div>
+                            )}
                           </div>
-                          <p className="mt-3 text-xs text-stone-500">
-                            Images added here are automatically saved for {buildVariantName(variants[0])}.
-                          </p>
+                          <div className="flex items-center gap-3">
+                            {selectedProfile === "MOBILE" && (
+                              <p className="text-[14px] font-black tracking-tight text-stone-800 lg:w-20 text-right">
+                                {variant.sellingPrice ? `₹${Number(variant.sellingPrice).toLocaleString("en-IN")}` : "-"}
+                              </p>
+                            )}
+                            <button type="button" onClick={() => setEditingVariantId(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-1 rounded transition hover:bg-teal-100">
+                              Edit
+                            </button>
+                            {variants.length > 1 && (
+                              <button type="button" onClick={() => removeVariant(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-1 rounded transition hover:bg-rose-100">
+                                Remove
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </Field>
+                      ))}
                     </div>
-                  ) : null}
+                  </div>
+
+                  {selectedProfile === "MOBILE" && (
+                    <Button type="button" variant="outline" onClick={handleAddVariantClick} className="w-full rounded-[1.6rem] border-dashed border-2 py-6 text-sm font-bold tracking-tight text-stone-500 transition hover:text-stone-900 hover:border-stone-400 hover:bg-stone-50">
+                      + Add Another Variant
+                    </Button>
+                  )}
                 </section>
               ) : null}
 
               {currentStep === "stock" ? (
                 <section className="space-y-4 py-2">
                   <StepTitle step={stepIndex + 1} title={profileCopy.stockTitle} />
+                  <div className="rounded-[1.6rem] border border-stone-200 bg-white p-4 shadow-sm">
+                    <p className="text-sm leading-6 text-stone-600">
+                      {selectedProfile === "MOBILE"
+                        ? "Set how many units you currently have for this phone variant."
+                        : selectedProfile === "QUANTITY_BASED"
+                          ? "Set the opening stock for this product."
+                          : "Add tracked identifiers for each unit."}
+                    </p>
+                  </div>
                   {selectedProfile === "SERIALIZED" ? <IdentifierTypePicker value={identifierType} onChange={setIdentifierType} /> : null}
                   {clientErrors.stock ? <p className="text-sm text-rose-600">{clientErrors.stock}</p> : null}
                   {state.fieldErrors?.product_payload ? <p className="text-sm text-rose-600">{state.fieldErrors.product_payload}</p> : null}
 
-                  {variants.slice(0, 1).map((variant) => (
+                  {variants.map((variant) => (
                     <div key={variant.id} className="space-y-3 border-b border-stone-200 pb-4 last:border-b-0">
                       <div>
-                        <p className="text-sm font-semibold text-stone-900">{selectedProfile === "QUANTITY_BASED" ? "Stock" : "Option"}</p>
-                        <p className="text-sm text-stone-500">{selectedProfile === "QUANTITY_BASED" ? "Opening quantity for this product" : buildVariantName(variant)}</p>
+                        <p className="text-sm font-semibold text-stone-900">{selectedProfile === "SERIALIZED" ? "Option" : "Stock"}</p>
+                        <p className="text-sm text-stone-500">{selectedProfile === "SERIALIZED" ? buildVariantName(variant) : "Opening quantity for this variant"}</p>
                       </div>
 
-                      {selectedProfile === "QUANTITY_BASED" ? (
-                        <Field label="Opening Quantity">
+                      {selectedProfile !== "SERIALIZED" ? (
+                        <Field label={selectedProfile === "MOBILE" ? "Variant Stock Count" : "Opening Quantity"}>
                           <Input type="number" min="0" value={variant.quantity} onChange={(event) => setVariantField(variant.id, "quantity", event.target.value)} placeholder="0" />
                         </Field>
                       ) : (
                         <div className="space-y-3">
-                          {selectedProfile === "MOBILE" ? (
-                            <p className="text-xs leading-5 text-stone-500">
-                              Add IMEI numbers for this phone here. If the phone has two IMEIs, enter both and we&apos;ll still count it as 1 stock item.
-                            </p>
-                          ) : null}
                           {variant.identifiers.map((field, fieldIndex) => (
                             <div key={field.id} className="flex items-center gap-2">
                               <Input
@@ -1863,9 +1610,7 @@ export function AddProductModal({
                                 onChange={(event) => setIdentifierValue(variant.id, field.id, event.target.value)}
                                 placeholder={
                                   resolvedIdentifierType === "IMEI"
-                                    ? selectedProfile === "MOBILE"
-                                      ? `Enter IMEI ${fieldIndex + 1}`
-                                      : "Enter IMEI"
+                                    ? `Enter IMEI ${fieldIndex + 1}`
                                     : "Enter identifier"
                                 }
                               />
@@ -1881,7 +1626,7 @@ export function AddProductModal({
                           ))}
                           <Button type="button" variant="secondary" onClick={() => addIdentifierField(variant.id)}>
                             <Plus className="h-4 w-4" />
-                            {selectedProfile === "MOBILE" ? "Add Another IMEI Field" : "Add More"}
+                            Add More
                           </Button>
                         </div>
                       )}
@@ -1893,150 +1638,120 @@ export function AddProductModal({
               {currentStep === "preview" ? (
                 <section className="space-y-4 py-2">
                   <StepTitle step={stepIndex + 1} title="Preview" />
-                  <PreviewField
-                    label="Profile"
-                    value={selectedProfileMeta.title}
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Name"
-                    value={name || "Not entered yet"}
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Description"
-                    value={description || "Not entered yet"}
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Highlights"
-                    value={
-                      highlights.some((highlight) => highlight.label.trim() && highlight.value.trim()) ? (
-                        <div className="space-y-2">
-                          {highlights
-                            .filter((highlight) => highlight.label.trim() && highlight.value.trim())
-                            .map((highlight) => (
-                              <div key={highlight.id} className="text-sm text-stone-900">
-                                <span className="font-semibold">{highlight.label.trim()}:</span> {highlight.value.trim()}
-                              </div>
-                            ))}
-                        </div>
-                      ) : (
-                        "No highlights added"
-                      )
-                    }
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Category"
-                    value={
-                      categoryMode === "existing"
-                        ? categories.find((category) => category.id === selectedCategoryId)?.name || "Not selected"
-                        : newCategoryName || "Not entered yet"
-                    }
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Brand"
-                    value={
-                      brandMode === "existing"
-                        ? brands.find((brand) => brand.id === selectedBrandId)?.name || "Not selected"
-                        : newBrandName || "Not entered yet"
-                    }
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Purchase Price"
-                    value={purchasePrice ? `₹${purchasePrice}` : "Not entered yet"}
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Selling Price"
-                    value={sellingPrice ? `₹${sellingPrice}` : "Not entered yet"}
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Low Stock Threshold"
-                    value={lowStockThreshold || "Not entered yet"}
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
-                  <PreviewField
-                    label="Images"
-                    value={
-                      selectedImages.length > 0 ? (
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {selectedImages.map((image) => (
-                            <button
-                              key={image.id}
-                              type="button"
-                              onClick={() => setFullscreenImageId(image.id)}
-                              className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white"
-                            >
-                              <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        "No images selected"
-                      )
-                    }
-                    step="basics"
-                    onEdit={handleStepChange}
-                  />
+                  <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Product Basics</p>
+                      <button type="button" onClick={() => handleStepChange("basics")} className="text-xs font-semibold text-teal-700 transition hover:text-teal-800">
+                        Edit Basics
+                      </button>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="text-xl font-black tracking-[-0.03em] text-stone-950">
+                        {name || "Untitled product"}
+                      </h3>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[13px] font-medium text-stone-500">
+                        <span className="text-stone-700">{(brandMode === "existing" ? brands.find((brand) => brand.id === selectedBrandId)?.name : newBrandName) || "No Brand"}</span>
+                        <span className="text-stone-300">•</span>
+                        <span className="text-stone-700">{(categoryMode === "existing" ? categories.find((category) => category.id === selectedCategoryId)?.name : newCategoryName) || "No Category"}</span>
+                        <span className="text-stone-300">•</span>
+                        <span className="text-stone-700">{variants.reduce((sum, v) => sum + (Number.parseInt(v.quantity || "0", 10) || 0), 0)} Initial Stock</span>
+                        <span className="text-stone-300">•</span>
+                        <span className="text-stone-700 text-rose-600/80">Alert at {lowStockThreshold || "0"}</span>
+                        {selectedProfile !== "MOBILE" && sellingPrice ? (
+                          <>
+                            <span className="text-stone-300">•</span>
+                            <span className="text-stone-700 font-bold">₹{sellingPrice}</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
                   {selectedProfile !== "QUANTITY_BASED" ? (
-                    <PreviewField
-                      label="Option"
-                      value={buildVariantName(variants[0] ?? createVariant())}
-                      step="options"
-                      onEdit={handleStepChange}
-                    />
-                  ) : null}
-                  <PreviewField
-                    label={selectedProfile === "QUANTITY_BASED" ? "Opening Stock" : "Tracked Stock"}
-                    value={
-                      selectedProfile === "QUANTITY_BASED" ? (
-                        variants[0]?.quantity || "0"
-                      ) : (
-                        <div className="space-y-3">
-                          {variants.slice(0, 1).map((variant) => {
-                            const values = variant.identifiers
-                              .map((field) => field.value.trim())
-                              .filter(Boolean);
-                            return (
-                              <div key={variant.id}>
-                                <div className="font-medium text-stone-900">{buildVariantName(variant)}</div>
-                                <div className="mt-1 flex flex-wrap gap-2">
-                                  {values.length > 0 ? (
-                                    values.map((value) => (
-                                      <span
-                                        key={`${variant.id}-${value}`}
-                                        className="rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700"
-                                      >
-                                        {value}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="text-sm text-stone-500">No identifiers added</span>
-                                  )}
+                    <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Configured Variants</p>
+                        <button type="button" onClick={() => handleStepChange("options")} className="text-xs font-semibold text-teal-700 transition hover:text-teal-800">
+                          Edit Options
+                        </button>
+                      </div>
+                      <div className="divide-y divide-stone-200/60 transition-all">
+                        {variants.map((variant) => (
+                          <div key={variant.id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/40">
+                            <div>
+                              <p className="text-[13px] font-bold text-stone-900 tracking-tight">{buildVariantName(variant)}</p>
+                              {selectedProfile === "MOBILE" && (
+                                <div className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold text-stone-500">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
+                                  {variant.quantity || "0"} initial stock
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )
-                    }
-                    step={selectedProfile === "QUANTITY_BASED" ? "stock" : "stock"}
-                    onEdit={handleStepChange}
-                  />
+                              )}
+                            </div>
+                            {selectedProfile === "MOBILE" && (
+                              <p className="text-[14px] font-black tracking-tight text-stone-800">
+                                {variant.sellingPrice ? `₹${Number(variant.sellingPrice).toLocaleString("en-IN")}` : "-"}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {selectedProfile !== "MOBILE" && (
+                    <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">
+                          {selectedProfile === "SERIALIZED" ? "Tracked Stock" : "Opening Stock"}
+                        </p>
+                        <button type="button" onClick={() => handleStepChange("stock")} className="text-xs font-semibold text-teal-700 transition hover:text-teal-800">
+                          Edit Stock
+                        </button>
+                      </div>
+                      <div className="p-4">
+                        <p className="text-sm font-semibold text-stone-900">
+                          {selectedProfile !== "SERIALIZED" ? `${variants[0]?.quantity || "0"} units` : `${totalUnits} identifiers`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {description ? (
+                    <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Description</p>
+                        <button type="button" onClick={() => handleStepChange("basics")} className="text-xs font-semibold text-teal-700 transition hover:text-teal-800">
+                          Edit Basics
+                        </button>
+                      </div>
+                      <div className="p-4">
+                        <p className="text-sm leading-6 text-stone-700 whitespace-pre-wrap">{description}</p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {selectedImages.length > 0 ? (
+                    <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Images</p>
+                        <button type="button" onClick={() => handleStepChange("basics")} className="text-xs font-semibold text-teal-700 transition hover:text-teal-800">
+                          Edit Basics
+                        </button>
+                      </div>
+                      <div className="p-4 flex gap-2 overflow-x-auto pb-1">
+                        {selectedImages.map((image) => (
+                          <button
+                            key={image.id}
+                            type="button"
+                            onClick={() => setFullscreenImageId(image.id)}
+                            className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white hover:opacity-80 transition"
+                          >
+                            <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </section>
               ) : null}
             </div>
@@ -2061,7 +1776,7 @@ export function AddProductModal({
             <input type="hidden" name="category_name" value={categoryMode === "new" ? newCategoryName : ""} />
             <input type="hidden" name="brand_id" value={brandMode === "existing" ? selectedBrandId : ""} />
             <input type="hidden" name="brand_name" value={brandMode === "new" ? newBrandName : ""} />
-            <input type="hidden" name="base_purchase_price" value={purchasePrice} />
+            <input type="hidden" name="base_purchase_price" value={purchasePrice || "0"} />
             <input type="hidden" name="base_selling_price" value={sellingPrice} />
             <input type="hidden" name="low_stock_threshold" value={lowStockThreshold} />
             <input type="hidden" name="tax_rate" value="0" />
@@ -2117,6 +1832,106 @@ export function AddProductModal({
           </div>
         </div>
       ) : null}
+
+      {editingVariantId ? (() => {
+        const variant = variants.find(v => v.id === editingVariantId);
+        if (!variant) return null;
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-sm sm:items-start sm:pt-[10vh]">
+            <div className="w-full max-w-md rounded-[2rem] bg-[#FAFAF8] shadow-[0_30px_80px_rgba(15,23,42,0.18)] max-h-[85vh] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between border-b border-stone-200/80 px-5 py-4 bg-white">
+                <h3 className="text-base font-bold text-stone-900">Configure Option</h3>
+                <button type="button" onClick={() => setEditingVariantId(null)} className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5 pb-8 space-y-6">
+                <div className="space-y-5">
+                  <Field label="Color">
+                    <Input value={variant.color} onChange={(event) => setVariantField(variant.id, "color", event.target.value)} placeholder="Black" />
+                  </Field>
+                  <Field label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}>
+                    <StoragePresetPicker
+                      value={variant.storage}
+                      onChange={(nextValue) => setVariantField(variant.id, "storage", nextValue)}
+                      presets={storagePresets}
+                      placeholder={selectedProfile === "MOBILE" ? "Select or type storage" : "Select or type size"}
+                    />
+                  </Field>
+                </div>
+
+                {selectedProfile === "MOBILE" ? (
+                  <div className="space-y-5">
+                    <Field label="Selling Price" required>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01"
+                        value={variant.sellingPrice}
+                        onChange={(event) => setVariantField(variant.id, "sellingPrice", event.target.value)}
+                        placeholder="0.00" 
+                      />
+                    </Field>
+                    <Field label="Stock Quantity" required>
+                      <Input 
+                        type="number" 
+                        min="0"
+                        value={variant.quantity}
+                        onChange={(event) => setVariantField(variant.id, "quantity", event.target.value)}
+                        placeholder="0" 
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+
+                <Field label="Option Images (Optional)">
+                  <div
+                    className="rounded-2xl border border-dashed border-stone-300 bg-white p-3"
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      void addDroppedImages(event.dataTransfer, variant.id);
+                    }}
+                  >
+                    <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageTargetVariantKey(variant.id);
+                          fileInputRef.current?.click();
+                        }}
+                        className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-stone-50 text-stone-400 transition hover:border-teal-700 hover:text-teal-700"
+                      >
+                        <ImagePlus className="h-6 w-6" />
+                      </button>
+
+                      {selectedImages
+                        .filter((image) => image.variantKey === variant.id)
+                        .map((image) => (
+                          <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                            <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
+                              <img src={image.previewUrl} alt="Selected variant" className="h-full w-full object-cover" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeImage(image.id)}
+                              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-stone-950/80 text-white"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </Field>
+              </div>
+              <div className="border-t border-stone-200/80 p-4 bg-white">
+                <Button type="button" className="w-full text-base py-5 rounded-[1rem]" onClick={() => setEditingVariantId(null)}>Done</Button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       {scanningTarget ? (
         <BarcodeScanner
@@ -2190,31 +2005,17 @@ function ChooserField({
   );
 }
 
-function PreviewField({
+function PreviewTile({
   label,
   value,
-  step,
-  onEdit,
 }: {
   label: string;
   value: React.ReactNode;
-  step: StepId;
-  onEdit: (step: StepId) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl bg-white p-4">
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-400">{label}</p>
-        <div className="mt-2 break-words text-sm font-medium text-stone-900">{value || "-"}</div>
-      </div>
-      <button
-        type="button"
-        onClick={() => onEdit(step)}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-700 transition hover:bg-stone-200"
-        aria-label={`Edit ${label}`}
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
+    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">{label}</p>
+      <div className="mt-1 break-words text-sm font-semibold text-stone-900">{value || "-"}</div>
     </div>
   );
 }
