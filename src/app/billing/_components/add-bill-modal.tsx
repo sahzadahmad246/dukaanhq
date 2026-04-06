@@ -347,48 +347,50 @@ function ProductPicker({
   }, [normalizedQuery, products]);
 
   return (
-    <div className="relative h-[min(68vh,560px)] overflow-y-auto rounded-[1.6rem] border border-stone-200 bg-white shadow-sm">
-      <div className="sticky top-0 z-10 border-b border-stone-200 bg-white p-3">
+    <div className="relative">
+      <div className="sticky top-0 z-10 pb-3">
         <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-        <Input
-          value={query}
-          placeholder="Search by product, brand, color, storage"
-          className="h-12 rounded-2xl border-stone-200 bg-white pl-10 pr-4"
-          onChange={(event) => setQuery(event.target.value)}
-        />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <Input
+            value={query}
+            placeholder="Search by product, brand, color, storage"
+            className="h-12 rounded-2xl border-stone-200 bg-white pl-10 pr-4 shadow-sm"
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </div>
       </div>
 
-      <div className="p-2">
+      <div>
           {filteredProducts.length > 0 ? (
-            filteredProducts.map((product) => {
+            filteredProducts.map((product, index) => {
               const blockReason = getProductSaleBlockReason(product);
               const active = product.id === selectedProductId;
 
               return (
-                <button
-                  key={product.id}
-                  type="button"
-                  disabled={Boolean(blockReason)}
-                  onClick={() => onSelect(product.id)}
-                  className={cn(
-                    "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200",
-                    active ? "bg-stone-100 text-stone-900" : "hover:bg-stone-50",
-                    blockReason && !active ? "cursor-not-allowed opacity-55" : ""
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className={cn("truncate text-[13px] font-bold", active ? "text-stone-900" : "text-stone-800")}>{product.name}</p>
-                    <p className="mt-1 text-[11px] font-semibold text-stone-500">
-                      {buildProductSearchLabel(product)}
-                    </p>
-                    <p className="mt-1 text-[11px] font-semibold text-stone-400">
-                      {blockReason ?? buildProductSupportMeta(product)}
-                    </p>
-                  </div>
-                  {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-stone-900" /> : null}
-                </button>
+                <div key={product.id}>
+                  {index > 0 ? <div className="mx-3 h-px bg-stone-200/70" /> : null}
+                  <button
+                    type="button"
+                    disabled={Boolean(blockReason)}
+                    onClick={() => onSelect(product.id)}
+                    className={cn(
+                      "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200",
+                      active ? "bg-white text-stone-900 shadow-sm border border-stone-200" : "hover:bg-white/60",
+                      blockReason && !active ? "cursor-not-allowed opacity-55" : ""
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className={cn("truncate text-[13px] font-bold", active ? "text-stone-900" : "text-stone-800")}>{product.name}</p>
+                      <p className="mt-1 text-[11px] font-semibold text-stone-500">
+                        {buildProductSearchLabel(product)}
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold text-stone-400">
+                        {blockReason ?? buildProductSupportMeta(product)}
+                      </p>
+                    </div>
+                    {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-stone-900" /> : null}
+                  </button>
+                </div>
               );
             })
           ) : (
@@ -1210,12 +1212,12 @@ export function AddBillModal({
           {currentStep === "preview" ? (
             <section className="space-y-4 py-2">
               <StepTitle step={3} title="Preview" />
-              <PreviewCard title="Customer Details">
-                <div className="grid grid-cols-1 gap-3">
+              <PreviewCard title="Customer Details" actionLabel="Edit" onAction={() => setCurrentStep("customer")}>
+                <div>
                   <PreviewField label="Customer" value={customer.name} />
                   <PreviewField label="Mobile" value={customer.mobile || "Not provided"} />
                   <PreviewField label="Address" value={customer.billing_address || "Not provided"} />
-                  <PreviewField label="GST" value={customer.gst_number || "Not provided"} />
+                  <PreviewField label="GST" value={customer.gst_number || "Not provided"} isLast />
                 </div>
               </PreviewCard>
 
@@ -1227,49 +1229,31 @@ export function AddBillModal({
                 </div>
               </PreviewCard>
 
-              <PreviewCard title="Items">
-                <div className="space-y-3">
+              <PreviewCard title="Items" actionLabel="Edit" onAction={() => setCurrentStep("products")}>
+                <div>
                   {preparedLines.map((line, index) => (
-                    <div
-                      key={`${line.product_id}-${index}`}
-                      className={cn(
-                        "px-1 py-1",
-                        index < preparedLines.length - 1 ? "border-b border-stone-100 pb-4" : ""
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-3 px-3 py-1">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white shadow-sm ring-2 ring-stone-900/10">
-                            {index + 1}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="px-3 py-3">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-stone-900">{line.product_name_snapshot}</div>
-                            {line.variant_name_snapshot ? <div className="mt-1 text-xs font-medium text-stone-500">{line.variant_name_snapshot}</div> : null}
+                    <div key={`${line.product_id}-${index}`}>
+                      {index > 0 ? <div className="mx-1 h-px bg-stone-100" /> : null}
+                      <div className="py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-stone-900 leading-snug">{line.product_name_snapshot}</p>
+                            {line.variant_name_snapshot ? <p className="mt-1 text-[13px] font-semibold text-stone-500">{line.variant_name_snapshot}</p> : null}
                             {buildPreviewIdentifierLines(line.identifier_snapshot).length > 0 ? (
-                              <div className="mt-2 space-y-1">
+                              <div className="mt-1.5 space-y-0.5">
                                 {buildPreviewIdentifierLines(line.identifier_snapshot).map((identifier) => (
-                                  <p key={identifier} className="text-xs font-medium text-stone-500">
-                                    {identifier}
-                                  </p>
+                                  <p key={identifier} className="text-xs font-medium text-stone-500">{identifier}</p>
                                 ))}
                               </div>
                             ) : null}
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <span className="inline-flex items-center rounded-md bg-stone-100 px-2.5 py-0.5 text-[11px] font-bold text-stone-700 tabular-nums">
-                                Qty {line.quantity}
-                              </span>
-                              <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 tabular-nums">
-                                Rate {money(line.unit_price)}
-                              </span>
+                            <div className="mt-2.5 flex flex-wrap gap-2">
+                              <span className="inline-flex items-center rounded-md bg-stone-100 px-2.5 py-0.5 text-[11px] font-bold text-stone-700 tabular-nums">Qty {line.quantity}</span>
+                              <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 tabular-nums">Rate {money(line.unit_price)}</span>
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-col items-end justify-center">
                             <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">Total</span>
-                            <span className="text-base font-black text-stone-900">{money(line.line_total)}</span>
+                            <span className="text-base font-black text-stone-900 tabular-nums">{money(line.line_total)}</span>
                           </div>
                         </div>
                       </div>
@@ -1286,16 +1270,13 @@ export function AddBillModal({
                 </div>
               </PreviewCard>
 
-              <PreviewCard title="Notes">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-stone-700">Notes</Label>
-                  <Textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    className="min-h-[112px] rounded-none border-0 bg-transparent px-0 py-1 shadow-none focus-visible:ring-0"
-                    placeholder="Add bill notes"
-                  />
-                </div>
+              <PreviewCard title="Notes" compactContent>
+                <Textarea
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  className="min-h-[100px] rounded-none border-0 bg-transparent px-0 py-0 shadow-none focus-visible:ring-0 text-sm text-stone-800 placeholder:text-stone-400 resize-none"
+                  placeholder="Add bill notes..."
+                />
               </PreviewCard>
             </section>
           ) : null}
@@ -1330,38 +1311,42 @@ export function AddBillModal({
 
       {isPaymentModalOpen ? (
         <div className="fixed inset-0 z-[60] bg-stone-950/50 px-4 py-6 backdrop-blur-sm">
-          <div className="mx-auto flex h-auto max-h-[88vh] w-full max-w-[500px] flex-col overflow-hidden rounded-[2rem] border border-stone-200 bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.22)]">
-            <div className="flex items-center justify-between border-b border-stone-200/80 bg-[#fffdf9] px-5 py-4">
+          <div className="mx-auto flex h-auto max-h-[88vh] w-full max-w-[500px] flex-col overflow-hidden rounded-[2.2rem] bg-stone-100 shadow-[0_30px_80px_rgba(15,23,42,0.22)] border border-stone-200">
+            <div className="flex items-center justify-between bg-stone-100/80 px-6 py-5 backdrop-blur-md z-10">
               <div>
-                <h3 className="text-base font-semibold text-stone-950">Payment Method</h3>
-                <p className="mt-1 text-xs text-stone-500">Choose one or more methods for this bill.</p>
+                <h3 className="text-[17px] font-black tracking-tight text-stone-900">Payment Method</h3>
+                <p className="mt-1 text-[13px] font-semibold text-stone-500">Choose how this bill is being paid.</p>
               </div>
-              <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900">
+              <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-200/60 text-stone-500 transition-colors duration-200 hover:bg-stone-300 hover:text-stone-900">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="overflow-y-auto px-5 py-5">
-              <div className="space-y-5">
-                <div className="rounded-[1.4rem] border border-stone-200 bg-white p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Methods</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {PAYMENT_METHOD_OPTIONS.map((option) => {
-                      const active = pendingPaymentDraft.methods.includes(option.id);
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => togglePendingPaymentMethod(option.id)}
-                          className={cn(
-                            "rounded-full px-4 py-2 text-sm font-semibold transition",
-                            active ? "bg-stone-950 text-white" : "bg-stone-100 text-stone-700 hover:bg-stone-200"
-                          )}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-2">
+              <div className="space-y-4">
+                <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Select Method</p>
+                  </div>
+                  <div className="bg-white p-4">
+                    <div className="flex flex-wrap gap-2">
+                      {PAYMENT_METHOD_OPTIONS.map((option) => {
+                        const active = pendingPaymentDraft.methods.includes(option.id);
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => togglePendingPaymentMethod(option.id)}
+                            className={cn(
+                              "rounded-full px-4 py-2.5 text-sm font-bold transition-all duration-200",
+                              active ? "bg-stone-900 text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-800"
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -1376,11 +1361,13 @@ export function AddBillModal({
               </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-stone-200/80 bg-white px-5 py-4">
-              <Button type="button" variant="ghost" onClick={() => setIsPaymentModalOpen(false)}>
+            {clientError ? <p className="mx-5 mb-2 text-sm font-medium text-rose-600">{clientError}</p> : null}
+
+            <div className="flex items-center justify-between border-t border-stone-200/80 bg-white px-5 py-4 shrink-0">
+              <Button type="button" variant="ghost" onClick={() => setIsPaymentModalOpen(false)} className="font-bold text-stone-500 hover:text-stone-800">
                 Cancel
               </Button>
-              <Button type="button" onClick={savePaymentDraft}>
+              <Button type="button" onClick={savePaymentDraft} className="px-6 rounded-xl font-bold bg-stone-900 hover:bg-stone-800 transition-all shadow-sm">
                 Save
               </Button>
             </div>
@@ -1440,11 +1427,13 @@ function PreviewCard({
   children,
   actionLabel,
   onAction,
+  compactContent,
 }: {
   title: string;
   children: React.ReactNode;
   actionLabel?: string;
   onAction?: () => void;
+  compactContent?: boolean;
 }) {
   return (
     <div className="overflow-hidden rounded-[1.3rem] border border-stone-200 bg-stone-50 shadow-sm">
@@ -1456,7 +1445,7 @@ function PreviewCard({
           </button>
         ) : null}
       </div>
-      <div className="bg-white px-4 py-4">{children}</div>
+      <div className={cn("bg-white", compactContent ? "px-3 py-3" : "px-4 py-4")}>{children}</div>
     </div>
   );
 }
@@ -1545,45 +1534,61 @@ function LoanProviderPicker({
   }, [value]);
 
   return (
-    <div className="rounded-[1.4rem] border border-stone-200 bg-white p-4">
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Loan Details</p>
-      <div className="mt-4 space-y-4">
-        <div className="space-y-3">
+    <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+      <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Loan Details</p>
+      </div>
+      <div className="bg-white">
+        <div className="p-4 pb-3">
           <Label className="text-sm font-medium text-stone-700">Loan Provider</Label>
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search loan provider" />
-          <div className="max-h-48 overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50 p-2">
-            {filteredProviders.map((provider) => (
-              <button
-                key={provider}
-                type="button"
-                onClick={() => {
-                  setQuery(provider);
-                  onProviderChange(provider);
-                }}
-                className={cn(
-                  "w-full rounded-xl px-3 py-2 text-left text-sm transition",
-                  value === provider ? "bg-stone-900 text-white" : "text-stone-700 hover:bg-white"
-                )}
-              >
-                {provider}
-              </button>
-            ))}
-          </div>
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search loan provider" className="mt-2 rounded-xl border-stone-200 bg-stone-50" />
         </div>
 
-        <Field label="Loan Number" required>
-          <Input value={loanNumber} onChange={(event) => onLoanNumberChange(event.target.value)} placeholder="Enter loan number" />
-        </Field>
+        <div className="max-h-52 overflow-y-auto">
+          {filteredProviders.map((provider, index) => {
+            const isSelected = value === provider;
+            return (
+              <div key={provider}>
+                {index > 0 ? <div className="mx-4 h-px bg-stone-100" /> : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery(provider);
+                    onProviderChange(provider);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between px-4 py-3 text-left text-[13px] font-semibold transition-colors duration-200",
+                    isSelected ? "text-stone-900" : "text-stone-600 hover:bg-stone-50"
+                  )}
+                >
+                  <span>{provider}</span>
+                  {isSelected ? <Check className="h-4 w-4 shrink-0 text-stone-900" /> : null}
+                </button>
+              </div>
+            );
+          })}
+          {filteredProviders.length === 0 ? (
+            <div className="px-4 py-4 text-center text-sm text-stone-400">No providers found.</div>
+          ) : null}
+        </div>
+
+        <div className="border-t border-stone-200 p-4">
+          <Field label="Loan Number" required>
+            <Input value={loanNumber} onChange={(event) => onLoanNumberChange(event.target.value)} placeholder="Enter loan number" className="rounded-xl border-stone-200 bg-stone-50" />
+          </Field>
+        </div>
       </div>
     </div>
   );
 }
 
-function PreviewField({ label, value }: { label: string; value: string }) {
+function PreviewField({ label, value, isLast }: { label: string; value: string; isLast?: boolean }) {
   return (
-    <div className="rounded-2xl bg-[#f8f4ec] p-4">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-400">{label}</p>
-      <p className="mt-2 text-sm font-medium text-stone-900">{value}</p>
+    <div className={isLast ? "" : "border-b border-stone-100"}>
+      <div className="flex items-baseline justify-between gap-3 py-3">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-stone-400 shrink-0">{label}</p>
+        <p className="text-sm font-semibold text-stone-900 text-right">{value}</p>
+      </div>
     </div>
   );
 }
