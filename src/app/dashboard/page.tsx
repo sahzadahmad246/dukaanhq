@@ -20,7 +20,6 @@ export default async function DashboardPage() {
     >
       <DashboardHome
         ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop Owner"}
-        shopName={shop?.name ?? "Your Shop"}
         shopLogoUrl={shop?.logo_url ?? null}
         stats={stats}
         recentInvoices={recentInvoices}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { HomePrimaryCta } from "@/app/_components/home-primary-cta";
 import { MarketingHeader } from "@/app/_components/marketing-header";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -86,12 +87,7 @@ export default async function Home() {
           )}
 
           <div className="flex flex-col gap-3">
-            <Link
-              href={primaryHref}
-              className="flex h-14 items-center justify-center rounded-2xl bg-[#f5c542] text-[#080e1a] text-[15px] font-black tracking-tight transition hover:bg-[#f0bb2a] active:scale-[0.98]"
-            >
-              {primaryLabel} →
-            </Link>
+            <HomePrimaryCta href={primaryHref} label={primaryLabel} />
             {!user && (
               <Link
                 href={secondaryHref}

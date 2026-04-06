@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import {
   Wallet,
   TrendingUp,
@@ -40,9 +40,10 @@ type ProductSummary = Product & {
 };
 
 function formatCurrency(n: number) {
-  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
-  if (n >= 1000) return `₹${(n / 1000).toFixed(1)}k`;
-  return `₹${n.toFixed(0)}`;
+  const value = Number.isFinite(n) ? n : 0;
+  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
+  if (value >= 1000) return `₹${(value / 1000).toFixed(1)}k`;
+  return `₹${value.toFixed(0)}`;
 }
 
 function getGreeting() {
@@ -50,6 +51,17 @@ function getGreeting() {
   if (h < 12) return "Good morning,";
   if (h < 17) return "Good afternoon,";
   return "Good evening,";
+}
+
+function formatSafeShortDate(value: string | null | undefined) {
+  if (!value) return "--";
+  const parsed = new Date(value);
+  return isValid(parsed) ? format(parsed, "dd MMM") : "--";
+}
+
+function formatSafeAmount(value: number | null | undefined) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount.toFixed(0) : "0";
 }
 
 const STAT_CARDS: Array<{
@@ -80,7 +92,6 @@ const CARD_ACCENTS = [
 
 export function DashboardHome({
   ownerName,
-  shopName,
   shopLogoUrl,
   stats,
   recentInvoices,
@@ -90,7 +101,6 @@ export function DashboardHome({
   brands,
 }: {
   ownerName: string;
-  shopName: string;
   shopLogoUrl: string | null;
   stats: DashboardStats;
   recentInvoices: RecentInvoice[];
@@ -355,7 +365,7 @@ export function DashboardHome({
                       </div>
                       <span style={{ fontSize: 11.5, fontWeight: 600, color: "#a1a1aa", display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
                         <CalendarDays style={{ width: 11, height: 11 }} />
-                        {format(new Date(invoice.invoice_date), "dd MMM")}
+                        {formatSafeShortDate(invoice.invoice_date)}
                       </span>
                     </div>
 
@@ -369,7 +379,7 @@ export function DashboardHome({
                         </span>
                       </div>
                       <div style={{ fontSize: 19, fontWeight: 900, letterSpacing: "-0.025em", color: "#18181b", flexShrink: 0 }}>
-                        ₹{invoice.grand_total.toFixed(0)}
+                        ₹{formatSafeAmount(invoice.grand_total)}
                       </div>
                     </div>
 

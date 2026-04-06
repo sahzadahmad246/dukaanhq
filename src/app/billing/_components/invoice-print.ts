@@ -398,7 +398,7 @@ export function printInvoice(invoice: PrintableInvoice) {
                 `
                 : ""
             }
-            <div class="info-row">
+            <div class="info-row full">
               <div class="info-label">Payment:</div>
               <div class="info-value">${escapeHtml(buildPaymentSummary(invoice.payment_method, invoice.payment_details))}</div>
             </div>
