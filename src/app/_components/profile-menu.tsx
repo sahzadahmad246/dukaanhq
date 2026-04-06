@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -22,7 +21,6 @@ export function ProfileMenu({
   userAvatarUrl,
   theme = "dark",
 }: ProfileMenuProps) {
-  const router = useRouter();
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -59,8 +57,7 @@ export function ProfileMenu({
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
       setMenuOpen(false);
-      router.push("/auth/login");
-      router.refresh();
+      window.location.replace("/");
     } catch (error) {
       console.error("Error signing out:", error);
     } finally {

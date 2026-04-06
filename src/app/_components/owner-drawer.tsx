@@ -17,7 +17,6 @@ import {
   Users,
   LogOut,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useState } from "react";
 
@@ -79,7 +78,6 @@ export function OwnerDrawer({
   ownerRole: string;
   userAvatarUrl: string | null;
 }) {
-  const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
@@ -87,7 +85,7 @@ export function OwnerDrawer({
       setIsLoggingOut(true);
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
-      router.push("/auth/login");
+      window.location.replace("/");
     } catch (error) {
       console.error("Error signing out:", error);
     } finally {

@@ -20,8 +20,25 @@ export type RecentInvoice = {
   invoice_date: string;
   customer_name: string;
   customer_mobile?: string | null;
+  billing_address?: string | null;
+  customer_gst_number?: string | null;
+  subtotal: number;
+  tax_total: number;
+  discount_total: number;
   grand_total: number;
   payment_method: string;
+  payment_details?: {
+    methods?: string[];
+    loan_provider?: string | null;
+    loan_number?: string | null;
+  } | null;
+  payment_status: string;
+  notes?: string | null;
+  shop_name_snapshot: string;
+  shop_address_snapshot?: string | null;
+  shop_phone_snapshot?: string | null;
+  shop_gst_snapshot?: string | null;
+  invoice_footer_snapshot?: string | null;
   invoice_items?: Array<{
     id: string;
     product_name_snapshot: string;
@@ -48,9 +65,32 @@ export type RecentProduct = {
   created_at: string;
 };
 
+type VariantQuantityRow = {
+  quantity: number | null;
+};
+
+type RecentProductRow = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  base_purchase_price: number;
+  base_selling_price: number;
+  tracking_type: string;
+  created_at: string;
+  product_variants?: VariantQuantityRow[] | null;
+  brands?: { name?: string | null } | { name?: string | null }[] | null;
+  categories?: { name?: string | null } | { name?: string | null }[] | null;
+};
+
+type LowStockProductRow = {
+  id: string;
+  low_stock_threshold: number | null;
+  product_variants?: VariantQuantityRow[] | null;
+};
+
 export async function loadDashboardData() {
   const workspace = await getWorkspaceData();
-  const inventory = await loadInventoryData();
+  const inventory = await loadInventoryData(workspace);
   const supabase = await createSupabaseServerClient();
 
   const stats: DashboardStats = {
@@ -121,11 +161,8 @@ export async function loadDashboardData() {
     .eq("tracking_type", "QUANTITY_BASED");
 
   if (lowStockData) {
-    stats.lowStockProducts = lowStockData.filter((p) => {
-      const totalQty = (p.product_variants as any[])?.reduce(
-        (s: number, v: any) => s + (v.quantity ?? 0),
-        0
-      ) ?? 0;
+    stats.lowStockProducts = (lowStockData as LowStockProductRow[]).filter((p) => {
+      const totalQty = (p.product_variants ?? []).reduce((sum, variant) => sum + (variant.quantity ?? 0), 0);
       return totalQty <= (p.low_stock_threshold ?? 0);
     }).length;
   }
@@ -134,7 +171,9 @@ export async function loadDashboardData() {
   const { data: recent } = await supabase
     .from("invoices")
     .select(`
-      id, invoice_number, invoice_date, customer_name, customer_mobile, grand_total, payment_method,
+      id, invoice_number, invoice_date, customer_name, customer_mobile, billing_address, customer_gst_number,
+      subtotal, tax_total, discount_total, grand_total, payment_method, payment_details, payment_status, notes,
+      shop_name_snapshot, shop_address_snapshot, shop_phone_snapshot, shop_gst_snapshot, invoice_footer_snapshot,
       invoice_items (
         id, product_name_snapshot, brand_name_snapshot, category_name_snapshot,
         variant_name_snapshot, identifier_snapshot, quantity, unit_price, line_total
@@ -151,8 +190,21 @@ export async function loadDashboardData() {
       invoice_date: inv.invoice_date,
       customer_name: inv.customer_name,
       customer_mobile: inv.customer_mobile,
+      billing_address: inv.billing_address,
+      customer_gst_number: inv.customer_gst_number,
+      subtotal: Number(inv.subtotal ?? 0),
+      tax_total: Number(inv.tax_total ?? 0),
+      discount_total: Number(inv.discount_total ?? 0),
       grand_total: Number(inv.grand_total),
       payment_method: inv.payment_method,
+      payment_details: inv.payment_details as RecentInvoice["payment_details"],
+      payment_status: inv.payment_status,
+      notes: inv.notes,
+      shop_name_snapshot: inv.shop_name_snapshot,
+      shop_address_snapshot: inv.shop_address_snapshot,
+      shop_phone_snapshot: inv.shop_phone_snapshot,
+      shop_gst_snapshot: inv.shop_gst_snapshot,
+      invoice_footer_snapshot: inv.invoice_footer_snapshot,
       invoice_items: inv.invoice_items as RecentInvoice["invoice_items"],
     }));
   }
@@ -167,16 +219,16 @@ export async function loadDashboardData() {
     .limit(5);
 
   if (recentProds) {
-    recentProducts = recentProds.map((p) => ({
+    recentProducts = (recentProds as RecentProductRow[]).map((p) => ({
       id: p.id,
       name: p.name,
       image_url: p.image_url,
       base_purchase_price: Number(p.base_purchase_price),
       base_selling_price: Number(p.base_selling_price),
       tracking_type: p.tracking_type,
-      total_quantity: (p.product_variants as any[])?.reduce((s: number, v: any) => s + (v.quantity ?? 0), 0) ?? 0,
-      brand_name: (p.brands as any)?.name ?? null,
-      category_name: (p.categories as any)?.name ?? null,
+      total_quantity: (p.product_variants ?? []).reduce((sum, variant) => sum + (variant.quantity ?? 0), 0),
+      brand_name: (Array.isArray(p.brands) ? p.brands[0] : p.brands)?.name ?? null,
+      category_name: (Array.isArray(p.categories) ? p.categories[0] : p.categories)?.name ?? null,
       created_at: p.created_at,
     }));
   }

@@ -3,21 +3,34 @@ import { redirect } from "next/navigation";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export async function getWorkspaceData() {
+export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
   const supabase = await createSupabaseServerClient();
-  const { user, profile, profileSyncReady, membership, shopSettings, isOwner, hasCompletedOnboarding } =
+  const {
+    user,
+    profile,
+    profileSyncReady,
+    membership,
+    shopSettings,
+    hasWorkspaceAccess,
+    canManageStaff,
+    hasCompletedOnboarding,
+  } =
     await getUserAppState(supabase);
 
   if (!user) {
     redirect("/auth/login");
   }
 
-  if (!isOwner) {
+  if (!hasWorkspaceAccess) {
     redirect("/");
   }
 
   if (!hasCompletedOnboarding || !membership) {
     redirect("/onboarding");
+  }
+
+  if (options?.requireOwner && !canManageStaff) {
+    redirect("/dashboard");
   }
 
   const { data: shop } = await supabase

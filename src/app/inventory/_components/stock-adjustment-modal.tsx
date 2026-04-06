@@ -5,7 +5,6 @@ import { AlertTriangle, Info, Loader2, X, MinusCircle, PlusCircle } from "lucide
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,17 +84,19 @@ function FieldGroup({ label, children, action }: { label: string; children: Reac
 export function StockAdjustmentModal({
   open,
   productId,
+  initialAdjustmentType = "ADJUSTMENT_ADD",
   onClose,
   onAdjusted,
 }: {
   open: boolean;
   productId: string | null;
+  initialAdjustmentType?: AdjustmentType;
   onClose: () => void;
   onAdjusted?: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const queryClient = useQueryClient();
-  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>("ADJUSTMENT_ADD");
+  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>(initialAdjustmentType);
   const [variantId, setVariantId] = useState("");
   const [inventoryItemId, setInventoryItemId] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -129,6 +130,7 @@ export function StockAdjustmentModal({
       return false;
     });
   }, [activeVariantId, adjustmentType, product?.inventory_items]);
+
 
   if (!open) return null;
 
@@ -191,8 +193,6 @@ export function StockAdjustmentModal({
       }
     });
   }
-
-  const selectedActionInfo = ADJUSTMENT_OPTIONS.find((c) => c.value === adjustmentType);
 
   return (
     <>

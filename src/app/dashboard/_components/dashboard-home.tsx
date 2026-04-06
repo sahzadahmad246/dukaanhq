@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { format, isValid } from "date-fns";
 import {
@@ -18,6 +19,7 @@ import {
   Plus,
   PhoneCall,
   User,
+  Printer,
 } from "lucide-react";
 
 import type { DashboardStats, RecentInvoice, RecentProduct } from "../load-dashboard-data";
@@ -25,6 +27,10 @@ import type { Product } from "@/lib/types/inventory";
 import type { Brand, Category } from "@/lib/types/inventory";
 import { AddBillModal } from "@/app/billing/_components/add-bill-modal";
 import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
+import { ProductDetailsDrawer } from "@/app/inventory/_components/product-details-drawer";
+import { productDetailsQueryOptions } from "@/app/inventory/queries";
+import { BillDetailsDrawer } from "@/app/billing/_components/bill-details-drawer";
+import { printInvoice, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
 
 type ProductSummary = Product & {
   total_quantity: number;
@@ -110,8 +116,33 @@ export function DashboardHome({
   brands: Brand[];
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+
+  const recentProductCards = useMemo(
+    () => recentProducts.map((recentProduct) => products.find((product) => product.id === recentProduct.id)).filter(Boolean) as ProductSummary[],
+    [products, recentProducts]
+  );
+  const selectedInvoice = useMemo(
+    () => recentInvoices.find((invoice) => invoice.id === selectedInvoiceId) ?? null,
+    [recentInvoices, selectedInvoiceId]
+  );
+
+  function prefetchProduct(productId: string) {
+    void queryClient.prefetchQuery(productDetailsQueryOptions(productId));
+  }
+
+  function handleProductClick(productId: string) {
+    prefetchProduct(productId);
+    setSelectedProductId(productId);
+  }
+
+  function handleReprintInvoice(invoice: PrintableInvoice) {
+    printInvoice({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
+  }
 
   return (
     <>
@@ -345,7 +376,7 @@ export function DashboardHome({
               {recentInvoices.map((invoice, i) => {
                 const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
                 return (
-                  <article key={invoice.id} className="dash-card">
+                  <article key={invoice.id} className="dash-card" onClick={() => setSelectedInvoiceId(invoice.id)}>
                     <div className="dash-card-topbar" style={{ background: accent.top }} />
 
                     {/* Row 1 */}
@@ -393,6 +424,16 @@ export function DashboardHome({
                           <PhoneCall style={{ width: 11, height: 11 }} /> Call
                         </a>
                       ) : null}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReprintInvoice(invoice);
+                        }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 50, fontSize: 11.5, fontWeight: 700, background: "#f4f4f5", color: "#52525b", border: "none" }}
+                      >
+                        <Printer style={{ width: 12, height: 12 }} /> Reprint
+                      </button>
                     </div>
                   </article>
                 );
@@ -411,7 +452,7 @@ export function DashboardHome({
               </Link>
             </div>
             <div className="overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm" style={{ marginBottom: 20 }}>
-              {recentProducts.map((product, index) => {
+              {recentProductCards.map((product, index) => {
                 const isOutOfStock = product.total_quantity === 0;
                 const isLowStock = !isOutOfStock && product.total_quantity <= 5;
                 const marginPct =
@@ -431,11 +472,17 @@ export function DashboardHome({
                       }`}
                     />
 
-                    <div className={`flex items-start gap-3 px-4 py-3.5 ${isOutOfStock ? "cursor-default" : "cursor-pointer hover:bg-stone-50/70"} transition-colors duration-150`}>
+                    <div
+                      className={`flex items-start gap-3 px-4 py-3.5 ${isOutOfStock ? "cursor-default" : "cursor-pointer hover:bg-stone-50/70"} transition-colors duration-150`}
+                      onClick={() => !isOutOfStock && handleProductClick(product.id)}
+                      onMouseEnter={() => prefetchProduct(product.id)}
+                      onFocus={() => prefetchProduct(product.id)}
+                      onTouchStart={() => prefetchProduct(product.id)}
+                    >
                       <div className={`min-w-0 flex-1 transition-opacity duration-200 ${isOutOfStock ? "opacity-35" : ""}`}>
                         {/* Brand / Category */}
                         <p className="mb-0.5 truncate text-[10px] font-bold uppercase tracking-widest text-stone-400">
-                          {product.brand_name || product.category_name || "—"}
+                          {product.brand?.name || product.category?.name || "—"}
                         </p>
 
                         {/* Name */}
@@ -469,7 +516,7 @@ export function DashboardHome({
                           <div className="flex items-center gap-1">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300">Cost</span>
                             <span className="text-xs font-semibold tabular-nums text-stone-500">
-                              ₹{product.base_purchase_price.toLocaleString("en-IN")}
+                              ₹{Number(product.base_purchase_price ?? 0).toLocaleString("en-IN")}
                             </span>
                           </div>
 
@@ -477,7 +524,7 @@ export function DashboardHome({
                           <div className="flex items-center gap-1">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300">MRP</span>
                             <span className="text-xs font-bold tabular-nums text-stone-700">
-                              ₹{product.base_selling_price.toLocaleString("en-IN")}
+                              ₹{Number(product.base_selling_price ?? 0).toLocaleString("en-IN")}
                             </span>
                           </div>
 
@@ -544,6 +591,22 @@ export function DashboardHome({
           products={products}
         />
       ) : null}
+
+      <ProductDetailsDrawer
+        productId={selectedProductId}
+        onEdit={() => {}}
+        onDelete={() => {}}
+        onRecordSale={() => {}}
+        onAdjustStock={() => {}}
+        onClose={() => setSelectedProductId(null)}
+      />
+
+      <BillDetailsDrawer
+        invoice={selectedInvoice ? { ...selectedInvoice, shop_logo_url: shopLogoUrl ?? null } : null}
+        open={Boolean(selectedInvoice)}
+        onClose={() => setSelectedInvoiceId(null)}
+        onReprint={handleReprintInvoice}
+      />
     </>
   );
 }

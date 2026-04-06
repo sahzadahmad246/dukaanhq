@@ -12,6 +12,7 @@ import {
 } from "@/lib/types/inventory";
 import { formatQrLabelCode, stringifyQrPayload, type QrPayload } from "@/lib/qr";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import {
   deleteImageFromCloudinary,
@@ -1186,19 +1187,35 @@ export async function getProductDetailsAction(productId: string): Promise<Action
     const userIds = Array.from(
       new Set(productWithRelations.stock_movements.map((movement: StockMovementRow) => movement.performed_by))
     );
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", userIds);
+    const adminSupabase = createSupabaseAdminClient();
+    const lookupClient = adminSupabase ?? supabase;
 
-    const profileMap = (profiles || []).reduce<Record<string, string | null>>((acc, profile) => {
-      acc[profile.id] = profile.full_name;
+    const [{ data: memberRows }, { data: profiles }] = await Promise.all([
+      lookupClient
+        .from("shop_members")
+        .select("user_id, full_name, email")
+        .eq("shop_id", shop.id)
+        .in("user_id", userIds),
+      lookupClient
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", userIds),
+    ]);
+
+    const profileMap = (memberRows || []).reduce<Record<string, string | null>>((acc, member) => {
+      acc[member.user_id] = member.full_name || member.email || null;
       return acc;
     }, {});
 
+    for (const profile of profiles || []) {
+      if (!profileMap[profile.id]) {
+        profileMap[profile.id] = profile.full_name || profile.email || null;
+      }
+    }
+
     productWithRelations.stock_movements = productWithRelations.stock_movements.map((movement: StockMovementRow) => ({
       ...movement,
-      performed_by_name: profileMap[movement.performed_by] || "Admin",
+      performed_by_name: profileMap[movement.performed_by] || "Unknown staff",
     }));
   }
 

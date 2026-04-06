@@ -8,7 +8,7 @@ function formatTime(value: string | null | undefined) {
 }
 
 export default async function SettingsPage() {
-  const { user, profile, shop, shopSettings } = await getWorkspaceData();
+  const { user, profile, membership, shop, shopSettings } = await getWorkspaceData({ requireOwner: true });
 
   return (
     <WorkspaceShell
@@ -19,7 +19,7 @@ export default async function SettingsPage() {
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
-      ownerRole={profile?.role ?? "customer"}
+      ownerRole={membership?.role ?? profile?.role ?? "customer"}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <SettingsEditor

@@ -11,7 +11,7 @@ export default async function InventoryGroupPage({
   params: Promise<{ group: GroupType; slug: string }>;
 }) {
   const { group, slug } = await params;
-  const { user, profile, shop, products } = await loadInventoryData();
+  const { user, profile, shop, membership, products } = await loadInventoryData();
 
   const filteredProducts = products.filter((product) => {
     if (group === "brand") {
@@ -50,7 +50,7 @@ export default async function InventoryGroupPage({
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
-      ownerRole={profile?.role ?? "customer"}
+      ownerRole={membership?.role ?? profile?.role ?? "customer"}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <InventoryGroupView

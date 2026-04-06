@@ -6,6 +6,10 @@ import { syncAuthenticatedUserProfile } from "@/lib/auth/sync-user";
 type MembershipRecord = {
   shop_id: string;
   role: string;
+  status?: "ACTIVE" | "SUSPENDED" | null;
+  full_name?: string | null;
+  email?: string | null;
+  mobile_number?: string | null;
 };
 
 export type ShopSettingsRecord = {
@@ -28,6 +32,8 @@ export type UserAppState = {
   membership: MembershipRecord | null;
   shopSettings: ShopSettingsRecord | null;
   isOwner: boolean;
+  hasWorkspaceAccess: boolean;
+  canManageStaff: boolean;
   hasCompletedOnboarding: boolean;
 };
 
@@ -42,13 +48,15 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
       membership: null,
       shopSettings: null,
       isOwner: false,
+      hasWorkspaceAccess: false,
+      canManageStaff: false,
       hasCompletedOnboarding: false,
     };
   }
 
   const { data: membership } = await supabase
     .from("shop_members")
-    .select("shop_id, role")
+    .select("shop_id, role, status, full_name, email, mobile_number")
     .eq("user_id", user.id)
     .maybeSingle<MembershipRecord>();
 
@@ -61,6 +69,8 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     : { data: null };
 
   const isOwner = profile?.role === "owner" || membership?.role === "owner";
+  const hasWorkspaceAccess = Boolean(membership && membership.status !== "SUSPENDED" && ["owner", "admin"].includes(membership.role));
+  const canManageStaff = membership?.role === "owner" && membership?.status !== "SUSPENDED";
   const hasCompletedOnboarding = Boolean(shopSettings?.onboarding_completed);
 
   return {
@@ -70,24 +80,32 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     membership,
     shopSettings,
     isOwner,
+    hasWorkspaceAccess,
+    canManageStaff,
     hasCompletedOnboarding,
   };
 }
 
-export function getSignedInLandingPath(state: Pick<UserAppState, "isOwner" | "hasCompletedOnboarding">) {
-  if (state.isOwner && state.hasCompletedOnboarding) {
+export function getSignedInLandingPath(state: Pick<UserAppState, "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding">) {
+  if (state.hasWorkspaceAccess && state.hasCompletedOnboarding) {
     return "/dashboard";
+  }
+
+  if (state.isOwner) {
+    return "/onboarding";
   }
 
   return "/";
 }
 
-export function redirectSignedInUser(state: Pick<UserAppState, "user" | "isOwner" | "hasCompletedOnboarding">) {
+export function redirectSignedInUser(
+  state: Pick<UserAppState, "user" | "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding">
+) {
   if (!state.user) {
     redirect("/auth/login");
   }
 
-  if (!state.isOwner) {
+  if (!state.hasWorkspaceAccess && !state.isOwner) {
     redirect("/");
   }
 

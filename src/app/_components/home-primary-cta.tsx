@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 type HomePrimaryCtaProps = {
   href: string;
@@ -15,6 +15,10 @@ export function HomePrimaryCta({ href, label }: HomePrimaryCtaProps) {
   const [hasStartedNavigation, setHasStartedNavigation] = useState(false);
 
   const loading = isPending || hasStartedNavigation;
+
+  useEffect(() => {
+    router.prefetch(href);
+  }, [href, router]);
 
   return (
     <button

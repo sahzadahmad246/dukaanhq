@@ -16,24 +16,30 @@ function getInitials(name: string) {
 
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
-  const { user, profile, isOwner, hasCompletedOnboarding } = await getUserAppState(supabase);
+  const { user, profile, isOwner, hasWorkspaceAccess, hasCompletedOnboarding } = await getUserAppState(supabase);
 
   const displayName = profile?.full_name ?? user?.user_metadata.full_name ?? user?.email ?? "there";
   const userEmail = profile?.email ?? user?.email ?? "";
   const initials = getInitials(displayName || "DukaanHQ");
   const primaryHref = user
-    ? isOwner && hasCompletedOnboarding ? "/dashboard" : "/onboarding"
+    ? hasWorkspaceAccess && hasCompletedOnboarding
+      ? "/dashboard"
+      : isOwner
+        ? "/onboarding"
+        : "/"
     : "/auth/login";
   const primaryLabel = user
-    ? isOwner && hasCompletedOnboarding ? "Open Dashboard" : "Set Up Your Shop"
+    ? hasWorkspaceAccess && hasCompletedOnboarding
+      ? "Open Dashboard"
+      : isOwner
+        ? "Set Up Your Shop"
+        : "Open Home"
     : "Get Started Free";
   const secondaryHref = "/auth/login";
   const secondaryLabel = "Sign In";
 
   return (
-    <main className="relative min-h-screen w-full max-w-[645px] mx-auto overflow-x-hidden bg-[#080e1a] pt-[72px] text-white">
-
-      {/* ── STICKY HEADER ── */}
+    <main className="relative mx-auto min-h-screen w-full max-w-[645px] overflow-x-hidden bg-[#f7f3e8] pt-[72px] text-stone-900">
       <MarketingHeader
         containerClassName="max-w-[645px]"
         userInitials={user ? initials || "DH" : null}
@@ -42,46 +48,48 @@ export default async function Home() {
         userAvatarUrl={profile?.avatar_url ?? user?.user_metadata.avatar_url ?? user?.user_metadata.picture ?? null}
         actionHref="/auth/login"
         actionLabel="Sign in"
+        theme="light"
       />
 
-      {/* ── HERO — dot grid bg ── */}
       <section
-        className="relative px-5 pt-12 pb-14 overflow-hidden"
+        className="relative overflow-hidden px-5 pb-16 pt-12"
         style={{
-          backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)`,
-          backgroundSize: "24px 24px",
+          backgroundImage: "radial-gradient(circle, rgba(68,64,60,0.08) 1px, transparent 1px)",
+          backgroundSize: "22px 22px",
         }}
       >
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-52 rounded-full bg-[#2563eb]/15 blur-[90px] pointer-events-none" />
-        <div className="absolute bottom-0 right-4 w-40 h-40 rounded-full bg-[#f5c542]/8 blur-[60px] pointer-events-none" />
+        <div className="pointer-events-none absolute left-0 top-0 h-56 w-56 rounded-full bg-[#f5c542]/35 blur-[90px]" />
+        <div className="pointer-events-none absolute right-[-3rem] top-24 h-56 w-56 rounded-full bg-[#93c5fd]/35 blur-[95px]" />
 
         <div className="relative">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#f5c542]/25 bg-[#f5c542]/8 px-3 py-1.5 mb-7">
+          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#f5c542]/35 bg-[#fff4c9] px-3 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[#4ade80]" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#f5c542]">
-              {user ? (isOwner && hasCompletedOnboarding ? "Shop active" : "Account ready") : "Electronics retail OS"}
+            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#a16207]">
+              {user ? (hasWorkspaceAccess && hasCompletedOnboarding ? "Shop active" : "Account ready") : "Electronics retail OS"}
             </span>
           </div>
 
-          <h1 className="text-[40px] font-black leading-[1.0] tracking-[-0.04em] mb-5 text-white">
+          <h1 className="mb-5 text-[40px] font-black leading-[1.0] tracking-[-0.04em] text-stone-950">
             The operating<br />
             system for your<br />
-            <span className="text-[#f5c542]">electronics shop.</span>
+            <span className="text-[#a16207]">electronics shop.</span>
           </h1>
 
-          <p className="text-[14px] leading-[1.75] text-white/72 mb-8 max-w-[360px]">
+          <p className="mb-8 max-w-[360px] text-[14px] leading-[1.75] text-stone-600">
             Bill faster. Stock smarter. Sell everywhere. Built for the counter, designed for growth.
           </p>
 
           {user && (
-            <div className="mb-8 rounded-2xl border border-[#2563eb]/25 bg-[#0f1d3a] p-4">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/55 mb-2">Signed in</p>
-              <p className="text-[15px] font-bold">{displayName}</p>
-              <p className="text-[13px] text-white/65 mt-0.5">{userEmail}</p>
-              <p className="mt-3 text-[13px] text-white/78 leading-relaxed">
-                {isOwner && hasCompletedOnboarding
+            <div className="mb-8 max-w-[360px] border-l-4 border-[#f5c542] pl-4">
+              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-stone-500">Signed in</p>
+              <p className="text-[15px] font-bold text-stone-950">{displayName}</p>
+              <p className="mt-0.5 text-[13px] text-stone-600">{userEmail}</p>
+              <p className="mt-3 text-[13px] leading-relaxed text-stone-700">
+                {hasWorkspaceAccess && hasCompletedOnboarding
                   ? "Your shop is live — jump back into your dashboard."
-                  : "Complete onboarding to activate your shop."}
+                  : isOwner
+                    ? "Complete onboarding to activate your shop."
+                    : "Your account is signed in, but shop access is not active yet."}
               </p>
             </div>
           )}
@@ -91,7 +99,7 @@ export default async function Home() {
             {!user && (
               <Link
                 href={secondaryHref}
-                className="flex h-12 items-center justify-center rounded-2xl border border-white/15 text-[13px] font-semibold text-white/85 transition hover:bg-white/5 hover:text-white"
+                className="flex h-12 items-center justify-center rounded-2xl border border-stone-200 bg-white text-[13px] font-semibold text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
               >
                 {secondaryLabel}
               </Link>
@@ -100,34 +108,31 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ── STATS — solid navy panel ── */}
-      <section className="bg-[#0c1526] border-y border-white/[0.05]">
-        <div className="grid grid-cols-3 divide-x divide-white/[0.05]">
+      <section className="border-y border-stone-200 bg-[#fffaf0]">
+        <div className="grid grid-cols-3 divide-x divide-stone-200">
           {[
             { value: "3s", label: "Avg. bill time" },
             { value: "∞", label: "Stock items" },
             { value: "1", label: "OS for all" },
           ].map((stat) => (
             <div key={stat.label} className="flex flex-col items-center justify-center py-6 text-center px-2">
-              <p className="text-[26px] font-black text-[#f5c542] leading-none">{stat.value}</p>
-              <p className="text-[11px] text-white/55 mt-1.5 leading-snug">{stat.label}</p>
+              <p className="text-[26px] font-black leading-none text-[#a16207]">{stat.value}</p>
+              <p className="mt-1.5 text-[11px] leading-snug text-stone-500">{stat.label}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── FEATURES — line grid bg ── */}
       <section
-        className="px-5 py-12 relative overflow-hidden"
+        className="relative overflow-hidden px-5 py-12"
         style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)`,
-          backgroundSize: "48px 48px",
+          backgroundImage: "linear-gradient(rgba(120,113,108,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(120,113,108,0.08) 1px, transparent 1px)",
+          backgroundSize: "44px 44px",
         }}
       >
         <div className="relative">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[#60a5fa] font-bold mb-2">Inside the product</p>
-          <h2 className="text-[26px] font-black leading-tight tracking-tight text-white mb-8">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-[#2563eb]">Inside the product</p>
+          <h2 className="mb-8 text-[26px] font-black leading-tight tracking-tight text-stone-950">
             Everything your shop runs on.
           </h2>
 
@@ -163,13 +168,13 @@ export default async function Home() {
             ].map((f) => (
               <div
                 key={f.tag}
-                className="rounded-2xl p-5"
-                style={{ backgroundColor: f.bg, border: `1px solid ${f.border}` }}
+                className="rounded-2xl bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]"
+                style={{ border: `1px solid ${f.border}` }}
               >
                 <div className="flex items-start gap-4">
                   <div
                     className="h-11 w-11 shrink-0 rounded-xl flex items-center justify-center text-xl"
-                    style={{ backgroundColor: `${f.accent}12`, border: `1px solid ${f.accent}22` }}
+                    style={{ backgroundColor: f.bg, border: `1px solid ${f.accent}22` }}
                   >
                     {f.icon}
                   </div>
@@ -177,8 +182,8 @@ export default async function Home() {
                     <span className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: f.accent }}>
                       {f.tag}
                     </span>
-                    <h3 className="text-[16px] font-bold text-white mt-1 mb-1.5 leading-snug">{f.title}</h3>
-                    <p className="text-[13px] text-white/72 leading-relaxed">{f.desc}</p>
+                    <h3 className="mt-1 mb-1.5 text-[16px] font-bold leading-snug text-stone-950">{f.title}</h3>
+                    <p className="text-[13px] leading-relaxed text-stone-600">{f.desc}</p>
                   </div>
                 </div>
               </div>
@@ -187,23 +192,22 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ── WHY — diagonal stripe bg ── */}
       <section
-        className="px-5 py-12 relative overflow-hidden"
+        className="relative overflow-hidden px-5 py-12"
         style={{
-          background: "#0c1526",
+          background: "#f3efe3",
           backgroundImage: `repeating-linear-gradient(
             -45deg,
             transparent,
             transparent 18px,
-            rgba(255,255,255,0.015) 18px,
-            rgba(255,255,255,0.015) 19px
+            rgba(120,113,108,0.06) 18px,
+            rgba(120,113,108,0.06) 19px
           )`,
         }}
       >
         <div className="relative">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[#f5c542] font-bold mb-2">Built different</p>
-          <h2 className="text-[26px] font-black leading-tight tracking-tight text-white mb-8">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-[#a16207]">Built different</p>
+          <h2 className="mb-8 text-[26px] font-black leading-tight tracking-tight text-stone-950">
             Made for how electronics shops actually work.
           </h2>
 
@@ -216,12 +220,12 @@ export default async function Home() {
             ].map((item) => (
               <div
                 key={item.num}
-                className="flex items-start gap-4 rounded-2xl border border-white/[0.06] bg-[#0a1222]/80 p-5"
+                className="flex items-start gap-4 rounded-2xl border border-stone-200 bg-white/85 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
               >
-                <span className="text-[11px] font-black text-[#2563eb]/40 mt-0.5 shrink-0 w-6">{item.num}</span>
+                <span className="mt-0.5 w-6 shrink-0 text-[11px] font-black text-[#2563eb]/40">{item.num}</span>
                 <div>
-                  <p className="text-[15px] font-bold text-white mb-1">{item.title}</p>
-                  <p className="text-[13px] text-white/72 leading-relaxed">{item.detail}</p>
+                  <p className="mb-1 text-[15px] font-bold text-stone-950">{item.title}</p>
+                  <p className="text-[13px] leading-relaxed text-stone-600">{item.detail}</p>
                 </div>
               </div>
             ))}
@@ -229,8 +233,7 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ── BOTTOM CTA — amber panel with dot texture ── */}
-      <section className="mx-5 my-10 rounded-3xl bg-[#f5c542] p-7 overflow-hidden relative">
+      <section className="relative mx-5 my-10 overflow-hidden rounded-3xl bg-[#fff4c9] p-7">
         <div
           className="absolute inset-0 opacity-[0.08] rounded-3xl"
           style={{
@@ -239,48 +242,42 @@ export default async function Home() {
           }}
         />
         <div className="relative">
-          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#080e1a]/45 mb-3">Ready to start?</p>
-          <h2 className="text-[24px] font-black leading-[1.1] tracking-tight text-[#080e1a] mb-2">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.24em] text-[#080e1a]/45">Ready to start?</p>
+          <h2 className="mb-2 text-[24px] font-black leading-[1.1] tracking-tight text-[#080e1a]">
             Your shop deserves a real OS.
           </h2>
-          <p className="text-[13px] text-[#080e1a]/55 mb-7 leading-relaxed">
+          <p className="mb-7 text-[13px] leading-relaxed text-[#080e1a]/55">
             Join electronics shop owners running their entire business from one clean dashboard.
           </p>
-          <Link
-            href={primaryHref}
-            className="flex items-center justify-center py-3.5 rounded-xl bg-[#080e1a] text-[#f5c542] text-[14px] font-black tracking-tight transition hover:bg-[#0f1d3a] active:scale-[0.98]"
-          >
-            {primaryLabel} →
-          </Link>
+          <HomePrimaryCta href={primaryHref} label={primaryLabel} />
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
-      <footer className="bg-[#060c17] border-t border-white/[0.05] px-5 pt-10 pb-8">
-        <div className="flex items-center gap-3 mb-4">
+      <footer className="border-t border-stone-200 bg-[#fffdf7] px-5 pb-8 pt-10">
+        <div className="mb-4 flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f5c542] text-[#080e1a] text-[10px] font-black">
             DH
           </div>
           <div>
-            <p className="text-[15px] font-bold text-white leading-tight">DukaanHQ</p>
-            <p className="text-[11px] text-white/30">Electronics retail OS</p>
+            <p className="text-[15px] font-bold leading-tight text-stone-950">DukaanHQ</p>
+            <p className="text-[11px] text-stone-400">Electronics retail OS</p>
           </div>
         </div>
 
-        <p className="text-[13px] text-white/60 leading-relaxed mb-8 max-w-[320px]">
+        <p className="mb-8 max-w-[320px] text-[13px] leading-relaxed text-stone-600">
           The operating system for electronics shop owners who want to bill faster, manage stock, and grow online.
         </p>
 
-        <div className="grid grid-cols-2 gap-x-8 gap-y-6 mb-8">
+        <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-6">
           {[
             { label: "Product", links: ["Billing", "Inventory", "Ecommerce"] },
             { label: "Company", links: ["About", "Blog", "Contact"] },
           ].map((col) => (
             <div key={col.label}>
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/25 mb-3">{col.label}</p>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.22em] text-stone-400">{col.label}</p>
               <div className="flex flex-col gap-2.5">
                 {col.links.map((link) => (
-                  <a key={link} href="#" className="text-[13px] text-white/68 hover:text-white transition-colors">
+                  <a key={link} href="#" className="text-[13px] text-stone-600 transition-colors hover:text-stone-950">
                     {link}
                   </a>
                 ))}
@@ -289,11 +286,11 @@ export default async function Home() {
           ))}
         </div>
 
-        <div className="border-t border-white/[0.05] pt-5 flex items-center justify-between">
-          <p className="text-[11px] text-white/35">© 2025 DukaanHQ</p>
+        <div className="flex items-center justify-between border-t border-stone-200 pt-5">
+          <p className="text-[11px] text-stone-400">© 2025 DukaanHQ</p>
           <div className="flex items-center gap-4">
             {["Privacy", "Terms"].map((t) => (
-              <a key={t} href="#" className="text-[11px] text-white/40 hover:text-white/70 transition-colors">
+              <a key={t} href="#" className="text-[11px] text-stone-400 transition-colors hover:text-stone-700">
                 {t}
               </a>
             ))}

@@ -8,7 +8,7 @@ type PageProps = {
 
 export default async function BillingPage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const { user, profile, shop, products, invoices } = await loadBillingData(query);
+  const { user, profile, shop, membership, products, invoices } = await loadBillingData(query);
 
   return (
     <WorkspaceShell
@@ -20,7 +20,7 @@ export default async function BillingPage({ searchParams }: PageProps) {
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
-      ownerRole={profile?.role ?? "customer"}
+      ownerRole={membership?.role ?? profile?.role ?? "customer"}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <BillingManager

@@ -3,8 +3,10 @@ import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import { Brand, Category, Product } from "@/lib/types/inventory";
 import { computeInventoryQuantity } from "./inventory-utils";
 
-export async function loadInventoryData() {
-  const { user, profile, shop } = await getWorkspaceData();
+type WorkspaceData = Awaited<ReturnType<typeof getWorkspaceData>>;
+
+export async function loadInventoryData(workspaceData?: WorkspaceData) {
+  const { user, profile, shop, membership } = workspaceData ?? (await getWorkspaceData());
   const supabase = await createSupabaseServerClient();
 
   let products: (Product & {
@@ -82,6 +84,7 @@ export async function loadInventoryData() {
     user,
     profile,
     shop,
+    membership,
     products,
     categories,
     brands,

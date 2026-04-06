@@ -3,7 +3,7 @@ import { InventoryManager } from "./_components/inventory-manager";
 import { loadInventoryData } from "./load-inventory-data";
 
 export default async function InventoryPage() {
-  const { user, profile, shop, products, categories, brands } = await loadInventoryData();
+  const { user, profile, shop, membership, products, categories, brands } = await loadInventoryData();
 
   return (
     <WorkspaceShell
@@ -15,7 +15,7 @@ export default async function InventoryPage() {
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
-      ownerRole={profile?.role ?? "customer"}
+      ownerRole={membership?.role ?? profile?.role ?? "customer"}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <section className="grid gap-6">

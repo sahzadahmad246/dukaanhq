@@ -1,10 +1,78 @@
-import Link from "next/link";
-
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
+import { StaffManager } from "@/app/staff/_components/staff-manager";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 
+type StaffMemberRow = {
+  id: string;
+  user_id: string;
+  role: string;
+  status: "ACTIVE" | "SUSPENDED";
+  email: string | null;
+  full_name: string | null;
+  mobile_number: string | null;
+  joined_at: string | null;
+};
+
+type InviteRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+};
+
 export default async function StaffPage() {
-  const { user, profile, shop } = await getWorkspaceData();
+  const { user, profile, shop } = await getWorkspaceData({ requireOwner: true });
+  const adminSupabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
+
+  let members: StaffMemberRow[] = [];
+  let invitations: InviteRow[] = [];
+
+  if (shop) {
+    const [{ data: memberRows }, { data: invitationRows }] = await Promise.all([
+      adminSupabase
+        .from("shop_members")
+        .select("id, user_id, role, status, email, full_name, mobile_number, joined_at")
+        .eq("shop_id", shop.id)
+        .in("role", ["owner", "admin"])
+        .order("created_at", { ascending: true }),
+      adminSupabase
+        .from("shop_member_invitations")
+        .select("id, email, full_name, role, status, created_at, expires_at")
+        .eq("shop_id", shop.id)
+        .eq("status", "PENDING")
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const membersList = (memberRows ?? []) as StaffMemberRow[];
+    const missingProfileIds = membersList.filter((member) => !member.full_name || !member.email).map((member) => member.user_id);
+
+    let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
+
+    if (missingProfileIds.length > 0) {
+      const { data: profiles } = await adminSupabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", missingProfileIds);
+
+      profileMap = new Map((profiles ?? []).map((entry) => [entry.id, { full_name: entry.full_name, email: entry.email }]));
+    }
+
+    members = membersList.map((member) => {
+      const fallback = profileMap.get(member.user_id);
+      return {
+        ...member,
+        full_name: member.full_name ?? fallback?.full_name ?? null,
+        email: member.email ?? fallback?.email ?? null,
+      };
+    });
+
+    invitations = (invitationRows ?? []) as InviteRow[];
+  }
 
   return (
     <WorkspaceShell
@@ -15,35 +83,10 @@ export default async function StaffPage() {
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
-      ownerRole={profile?.role ?? "customer"}
+      ownerRole="owner"
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
-      <section className="grid gap-3">
-        <div className="rounded-3xl border border-blue-100 bg-white/95 px-4 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.12)]">
-          <p className="text-xs uppercase tracking-[0.22em] text-stone-500">Staff</p>
-          <h1 className="mt-2 text-2xl font-semibold text-stone-950">Team access and permissions</h1>
-          <p className="mt-2 text-sm leading-6 text-stone-600">
-            Add staff members, assign store roles, and control who can access billing, inventory, and reports.
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl bg-stone-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-stone-500">Current shop</div>
-              <div className="mt-1 text-sm font-medium text-stone-950">{shop?.name ?? "-"}</div>
-            </div>
-            <div className="rounded-2xl bg-stone-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-stone-500">Access owner</div>
-              <div className="mt-1 text-sm font-medium text-stone-950">{profile?.full_name ?? user.user_metadata.full_name ?? "-"}</div>
-            </div>
-          </div>
-        </div>
-
-        <Link
-          href="/dashboard"
-          className="flex h-12 items-center justify-center rounded-full border border-stone-300 bg-white text-sm font-semibold text-stone-900 transition hover:bg-stone-50"
-        >
-          Back to Dashboard
-        </Link>
-      </section>
+      <StaffManager members={members} invitations={invitations} />
     </WorkspaceShell>
   );
 }

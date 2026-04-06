@@ -183,6 +183,9 @@ export async function createShopAction(
     user_id: user.id,
     role: "owner",
     invited_by: user.id,
+    email: user.email ?? null,
+    full_name: user.user_metadata.full_name ?? user.user_metadata.name ?? null,
+    status: "ACTIVE",
   });
 
   if (memberError) {

@@ -3,6 +3,19 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 const AUTH_SESSION_ERROR_CODES = new Set(["refresh_token_not_found", "session_not_found"]);
 
+function isMissingAuthSessionError(error: { code?: string; status?: number; message?: string; name?: string } | null | undefined) {
+  if (!error) {
+    return false;
+  }
+
+  if (error.code && AUTH_SESSION_ERROR_CODES.has(error.code)) {
+    return true;
+  }
+
+  const normalizedMessage = (error.message ?? "").toLowerCase();
+  return error.status === 400 && (error.name === "AuthSessionMissingError" || normalizedMessage.includes("auth session missing"));
+}
+
 type ProfileRecord = {
   id: string;
   email: string;
@@ -27,7 +40,7 @@ export async function syncAuthenticatedUserProfile(supabase: SupabaseClient) {
   } = await supabase.auth.getUser();
 
   if (authError) {
-    if (authError.code && AUTH_SESSION_ERROR_CODES.has(authError.code)) {
+    if (isMissingAuthSessionError(authError)) {
       return { user: null, profile: null, profileSyncReady: false };
     }
 

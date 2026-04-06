@@ -3,7 +3,7 @@ import { loadDashboardData } from "./load-dashboard-data";
 import { DashboardHome } from "./_components/dashboard-home";
 
 export default async function DashboardPage() {
-  const { user, profile, shop, stats, recentInvoices, recentProducts, products, categories, brands } =
+  const { user, profile, shop, membership, stats, recentInvoices, recentProducts, products, categories, brands } =
     await loadDashboardData();
 
   return (
@@ -15,7 +15,7 @@ export default async function DashboardPage() {
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
-      ownerRole={profile?.role ?? "customer"}
+      ownerRole={membership?.role ?? profile?.role ?? "customer"}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <DashboardHome

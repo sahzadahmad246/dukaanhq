@@ -11,7 +11,6 @@ import { ProductList } from "./product-list";
 import { AddProductModal } from "./add-product-modal";
 import { ProductDetailsDrawer } from "./product-details-drawer";
 import { RecordSaleModal } from "./record-sale-modal";
-import { AddStockModal } from "./add-stock-modal";
 import { StockAdjustmentModal } from "./stock-adjustment-modal";
 import { QrExportModal } from "./qr-export-modal";
 import { productDetailsQueryOptions } from "../queries";
@@ -39,8 +38,8 @@ export function InventoryManager({
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [saleProductId, setSaleProductId] = useState<string | null>(null);
-  const [stockProductId, setStockProductId] = useState<string | null>(null);
   const [adjustmentProductId, setAdjustmentProductId] = useState<string | null>(null);
+  const [adjustmentMode, setAdjustmentMode] = useState<"ADJUSTMENT_ADD" | "ADJUSTMENT_REMOVE">("ADJUSTMENT_REMOVE");
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [isQrExportOpen, setIsQrExportOpen] = useState(false);
@@ -96,11 +95,13 @@ export function InventoryManager({
 
   function handleAddStock(productId: string) {
     prefetchProduct(productId);
-    setStockProductId(productId);
+    setAdjustmentMode("ADJUSTMENT_ADD");
+    setAdjustmentProductId(productId);
   }
 
   function handleAdjustStock(productId: string) {
     prefetchProduct(productId);
+    setAdjustmentMode("ADJUSTMENT_REMOVE");
     setAdjustmentProductId(productId);
   }
 
@@ -202,31 +203,21 @@ export function InventoryManager({
         }}
       />
 
-      <AddStockModal
-        key={stockProductId ?? "stock-idle"}
-        open={Boolean(stockProductId)}
-        productId={stockProductId}
-        onClose={() => setStockProductId(null)}
-        onSaved={async () => {
-          router.refresh();
-          if (stockProductId) {
-            await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", stockProductId] });
-          }
-        }}
-      />
-
-      <StockAdjustmentModal
-        key={adjustmentProductId ?? "adjust-idle"}
-        open={Boolean(adjustmentProductId)}
-        productId={adjustmentProductId}
-        onClose={() => setAdjustmentProductId(null)}
-        onAdjusted={async () => {
-          router.refresh();
-          if (adjustmentProductId) {
-            await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", adjustmentProductId] });
-          }
-        }}
-      />
+      {adjustmentProductId ? (
+        <StockAdjustmentModal
+          key={`${adjustmentProductId}-${adjustmentMode}`}
+          open
+          productId={adjustmentProductId}
+          initialAdjustmentType={adjustmentMode}
+          onClose={() => setAdjustmentProductId(null)}
+          onAdjusted={async () => {
+            router.refresh();
+            if (adjustmentProductId) {
+              await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", adjustmentProductId] });
+            }
+          }}
+        />
+      ) : null}
 
       <QrExportModal
         open={isQrExportOpen}

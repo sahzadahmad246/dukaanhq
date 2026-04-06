@@ -1,23 +1,38 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 import { MarketingHeader } from "@/app/_components/marketing-header";
 import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-async function signInWithGoogle() {
+async function signInWithGoogle(formData: FormData) {
   "use server";
 
   const supabase = await createSupabaseServerClient();
+  const cookieStore = await cookies();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const inviteToken = String(formData.get("invite") ?? "").trim();
 
   if (!appUrl) {
     throw new Error("NEXT_PUBLIC_APP_URL is not configured.");
   }
 
+  const redirectUrl = new URL("/auth/callback", appUrl);
+  if (inviteToken) {
+    redirectUrl.searchParams.set("invite", inviteToken);
+    cookieStore.set("dukaanhq_invite_token", inviteToken, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 15,
+    });
+  }
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${appUrl}/auth/callback`,
+      redirectTo: redirectUrl.toString(),
       queryParams: {
         access_type: "offline",
         prompt: "consent",
@@ -55,11 +70,28 @@ function GoogleIcon() {
   );
 }
 
-export default async function LoginPage() {
+function getLoginErrorCopy(error?: string) {
+  if (error === "invite_invalid") return "This staff invitation is invalid or expired.";
+  if (error === "invite_email_mismatch") return "Please continue with Google using the same email address that received the invitation.";
+  if (error === "invite_access_denied") return "Your invitation could not be accepted. Please contact the shop owner.";
+  return null;
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string; error?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const state = await getUserAppState(supabase);
+  const query = await searchParams;
+  const inviteToken = query.invite ?? "";
+  const loginError = getLoginErrorCopy(query.error);
 
   if (state.user) {
+    if (inviteToken) {
+      redirect(`/auth/callback?invite=${encodeURIComponent(inviteToken)}`);
+    }
     redirect(getSignedInLandingPath(state));
   }
 
@@ -87,8 +119,13 @@ export default async function LoginPage() {
               Continue with Google
             </h1>
             <p className="text-sm leading-6 text-white/68">
-              Sign in to enter DukaanHQ.
+              {inviteToken ? "Use the invited Google email to accept staff access." : "Sign in to enter DukaanHQ."}
             </p>
+            {loginError ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm font-medium text-amber-800">
+                {loginError}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -148,6 +185,7 @@ export default async function LoginPage() {
         </section>
 
         <form action={signInWithGoogle} className="mt-8">
+          {inviteToken ? <input type="hidden" name="invite" value={inviteToken} /> : null}
           <button
             type="submit"
             className="flex h-13 w-full items-center justify-center gap-3 rounded-full bg-[#f5c542] text-sm font-black text-[#080e1a] transition hover:bg-[#f0bb2a]"

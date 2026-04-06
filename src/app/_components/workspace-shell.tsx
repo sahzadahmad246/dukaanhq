@@ -82,6 +82,7 @@ export function WorkspaceShell({
 
   const showHeader = !hideHeader && scrollDirection !== "up";
   const showBottomNav = scrollDirection !== "down";
+  const visibleNavItems = navItems.filter((item) => item.key !== "staff" || ownerRole === "owner");
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-950">
@@ -149,7 +150,7 @@ export function WorkspaceShell({
           ].join(" ")}
         >
           <div className="mx-auto flex w-full max-w-3xl items-center justify-around border-t border-stone-200 bg-white/96 px-3 py-3 backdrop-blur">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const active = item.key === activeNav;
               return (
