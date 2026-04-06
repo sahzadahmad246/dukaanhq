@@ -71,6 +71,7 @@ export async function createInvoiceAction(
     p_customer: payload.customer,
     p_items: payload.items,
     p_payment_method: payload.payment_method,
+    p_payment_details: payload.payment_details,
     p_notes: payload.notes ?? null,
   });
 

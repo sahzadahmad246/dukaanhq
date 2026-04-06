@@ -17,6 +17,11 @@ export type PrintableInvoice = {
   discount_total: number;
   grand_total: number;
   payment_method?: string | null;
+  payment_details?: {
+    methods?: string[];
+    loan_provider?: string | null;
+    loan_number?: string | null;
+  } | null;
   payment_status?: string | null;
   notes?: string | null;
   shop_logo_url?: string | null;
@@ -43,6 +48,19 @@ function escapeHtml(value: string) {
 
 function formatMoney(value: number) {
   return `${Number(value || 0).toFixed(2)}`;
+}
+
+function buildPaymentSummary(paymentMethod?: string | null, paymentDetails?: PrintableInvoice["payment_details"]) {
+  const methods = paymentDetails?.methods?.filter(Boolean) ?? [];
+  const methodLabel = methods.length > 0 ? methods.join(", ") : paymentMethod || "CASH";
+  const loanMeta = [
+    paymentDetails?.loan_provider ? `Provider: ${paymentDetails.loan_provider}` : null,
+    paymentDetails?.loan_number ? `Loan No: ${paymentDetails.loan_number}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  return loanMeta ? `${methodLabel} (${loanMeta})` : methodLabel;
 }
 
 function resolvePrintableAssetUrl(value?: string | null) {
@@ -382,7 +400,7 @@ export function printInvoice(invoice: PrintableInvoice) {
             }
             <div class="info-row">
               <div class="info-label">Payment:</div>
-              <div class="info-value">${escapeHtml(invoice.payment_method ?? "CASH")}</div>
+              <div class="info-value">${escapeHtml(buildPaymentSummary(invoice.payment_method, invoice.payment_details))}</div>
             </div>
             <div class="info-row full address-row">
               <div class="info-label">Address:</div>

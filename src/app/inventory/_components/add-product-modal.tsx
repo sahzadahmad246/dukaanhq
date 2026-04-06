@@ -12,7 +12,6 @@ import {
   ImagePlus,
   Laptop,
   PackageOpen,
-  Pencil,
   Plus,
   ScanBarcode,
   Search,
@@ -149,6 +148,10 @@ function createVariant(): VariantDraft {
     sellingPrice: "",
     identifiers: [createIdentifierField()],
   };
+}
+
+function getInitialVariants(productKind: ProductKind | null) {
+  return productKind === "MOBILE" ? [] : [createVariant()];
 }
 
 function revokeNewImagePreviews(images: SelectedImage[]) {
@@ -521,6 +524,7 @@ export function AddProductModal({
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState<string | null>(null);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
+  const [variantModalErrors, setVariantModalErrors] = useState<Record<string, string>>({});
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedEditProductRef = useRef<string | null>(null);
@@ -746,6 +750,12 @@ export function AddProductModal({
   }, [open]);
 
   useEffect(() => {
+    if (editingVariantId) {
+      setVariantModalErrors({});
+    }
+  }, [editingVariantId]);
+
+  useEffect(() => {
     if (!open || isEditMode || hasLoadedDraftRef.current) return;
 
     const rawDraft = window.localStorage.getItem(PRODUCT_DRAFT_STORAGE_KEY);
@@ -873,7 +883,7 @@ export function AddProductModal({
     setNewCategoryName(draft.newCategoryName ?? "");
     setNewBrandName(draft.newBrandName ?? "");
     setIdentifierType(draft.identifierType ?? "SERIAL_NUMBER");
-    setVariants(draft.variants?.length ? draft.variants : [createVariant()]);
+    setVariants(draft.variants?.length ? draft.variants : getInitialVariants(draftProfile));
     setSelectedImages(
       (draft.selectedImages ?? []).map((image) =>
         image.kind === "existing"
@@ -906,11 +916,12 @@ export function AddProductModal({
     setSelectedProfile(profile);
     setCurrentStep("basics");
     setIdentifierType(profile === "SERIALIZED" ? "SERIAL_NUMBER" : "IMEI");
-    setVariants([createVariant()]);
+    setVariants(getInitialVariants(profile));
     setDraftRestoreCandidate(null);
     setSelectedImages([]);
     setFullscreenImageId(null);
     setClientErrors({});
+    setVariantModalErrors({});
     setState({ status: "success", message: "" });
     setSelectedTemplateProductId(null);
   }
@@ -982,18 +993,19 @@ export function AddProductModal({
     }
   }
 
-  function addVariant() {
-    setVariants((current) => [...current, createVariant()]);
-  }
-
   function handleAddVariantClick() {
     const next = createVariant();
     setVariants((current) => [...current, next]);
+    setVariantModalErrors({});
     setEditingVariantId(next.id);
   }
 
   function removeVariant(variantId: string) {
     setVariants((current) => current.filter((v) => v.id !== variantId));
+    if (editingVariantId === variantId) {
+      setEditingVariantId(null);
+      setVariantModalErrors({});
+    }
   }
 
   function setVariantField(variantId: string, key: "color" | "storage" | "quantity" | "sellingPrice", value: string) {
@@ -1001,6 +1013,12 @@ export function AddProductModal({
     if (key === "quantity") {
       clearClientError(["stock"]);
     }
+    setVariantModalErrors((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   }
 
   function setIdentifierValue(variantId: string, fieldId: string, value: string) {
@@ -1071,15 +1089,18 @@ export function AddProductModal({
     }
 
     if (step === "options" && selectedProfile !== "QUANTITY_BASED") {
+      if (variants.length === 0) {
+        errors.options = "Add at least one variant.";
+      }
       const invalidVariant = variants.find(v => !v.color.trim() && !v.storage.trim());
-      if (invalidVariant) {
+      if (!errors.options && invalidVariant) {
         errors.options = "Add color, storage, or both for each variant.";
       }
       if (selectedProfile === "MOBILE") {
         const invalidPrice = variants.find(v => !v.sellingPrice.trim() || Number.isNaN(Number(v.sellingPrice)) || Number(v.sellingPrice) < 0);
-        if (invalidPrice) errors.options = "Valid selling price is required for each variant.";
-        const invalidStock = variants.find(v => !v.quantity.trim() || Number.isNaN(Number(v.quantity)) || Number(v.quantity) < 0);
-        if (invalidStock) errors.options = "Valid stock quantity is required for each variant.";
+        if (!errors.options && invalidPrice) errors.options = "Valid selling price is required for each variant.";
+        const invalidStock = variants.find(v => !v.quantity.trim() || Number.isNaN(Number(v.quantity)) || Number(v.quantity) <= 0);
+        if (!errors.options && invalidStock) errors.options = "Stock Quantity must be greater than 0 for each variant.";
       }
     }
 
@@ -1218,12 +1239,64 @@ export function AddProductModal({
         },
       ]);
       setClientErrors({});
+      setVariantModalErrors({});
       toast.success("Phone details and images filled from existing product. Set the stock count for this variant to continue.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load that phone template.");
     } finally {
       setSelectedTemplateProductId(null);
     }
+  }
+
+  function adjustVariantQuantity(variantId: string, delta: number) {
+    setVariants((current) =>
+      current.map((variant) => {
+        if (variant.id !== variantId) return variant;
+        const currentQuantity = Number.parseInt(variant.quantity || "0", 10) || 0;
+        return {
+          ...variant,
+          quantity: String(Math.max(0, currentQuantity + delta)),
+        };
+      })
+    );
+    clearClientError(["stock"]);
+  }
+
+  function handleVariantQuantityTextInput(variantId: string, value: string) {
+    if (value !== "" && !/^\d+$/.test(value)) {
+      return;
+    }
+    setVariantField(variantId, "quantity", value);
+  }
+
+  function handleVariantModalDone(variant: VariantDraft) {
+    const nextErrors: Record<string, string> = {};
+
+    if (!variant.color.trim()) {
+      nextErrors.color = "Color is required.";
+    }
+
+    if (!variant.storage.trim()) {
+      nextErrors.storage = selectedProfile === "MOBILE" ? "Storage / RAM is required." : "Size / Storage is required.";
+    }
+
+    if (selectedProfile === "MOBILE") {
+      if (!variant.sellingPrice.trim() || Number.isNaN(Number(variant.sellingPrice)) || Number(variant.sellingPrice) < 0) {
+        nextErrors.sellingPrice = "Selling Price is required.";
+      }
+      const quantity = Number.parseInt(variant.quantity || "0", 10);
+      if (!variant.quantity.trim() || Number.isNaN(quantity) || quantity <= 0) {
+        nextErrors.quantity = "Stock Quantity* can't be 0.";
+      }
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setVariantModalErrors(nextErrors);
+      return;
+    }
+
+    setVariantModalErrors({});
+    setEditingVariantId(null);
   }
 
   return (
@@ -1251,17 +1324,14 @@ export function AddProductModal({
 
         {!selectedProfile && !isEditMode ? (
           <div className="px-6 py-8 sm:px-8">
-            <div className="rounded-[2rem] border border-stone-200 bg-[linear-gradient(180deg,#fffdf9_0%,#f4efe5_100%)] p-5 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
+            <div className="text-center">
               <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-teal-700">Add Product</p>
-              <h3 className="mt-3 text-[1.75rem] font-black leading-tight tracking-[-0.03em] text-stone-950">
-                Choose the stock style that matches your shop
+              <h3 className="mt-3 text-[1.85rem] font-black leading-tight tracking-[-0.04em] text-stone-950">
+                What kind of product do you want to add?
               </h3>
-              <p className="mt-3 text-sm leading-6 text-stone-600">
-                Mobile products track stock by phone variant like storage and color. Accessories and general items use simple quantity stock.
-              </p>
             </div>
 
-            <div className="mt-6 grid gap-4">
+            <div className="mt-7 grid gap-4">
               {createProfileChoices.map((profile) => {
                 const Icon = profile.icon;
                 return (
@@ -1269,28 +1339,21 @@ export function AddProductModal({
                     key={profile.id}
                     type="button"
                     onClick={() => chooseProfile(profile.id)}
-                    className="group relative overflow-hidden rounded-[1.75rem] border border-stone-200 bg-white p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-teal-700 hover:shadow-[0_20px_50px_rgba(15,23,42,0.1)] focus:outline-none"
+                    className="group relative overflow-hidden rounded-[1.9rem] border border-stone-200 bg-white p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-teal-700 hover:shadow-[0_20px_50px_rgba(15,23,42,0.1)] focus:outline-none"
                   >
-                    <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[radial-gradient(circle_at_center,rgba(20,184,166,0.16),transparent_65%)]" />
-                    <div className="relative flex items-start gap-4">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] border border-stone-200 bg-[#fffdf9] text-stone-700 transition group-hover:border-teal-700 group-hover:bg-teal-700 group-hover:text-white">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(20,184,166,0.14),transparent_34%)] opacity-80" />
+                    <div className="relative flex items-center gap-4">
+                      <div className="flex h-15 w-15 shrink-0 items-center justify-center rounded-[1.35rem] border border-stone-200 bg-[#fffdf9] text-stone-700 transition group-hover:border-teal-700 group-hover:bg-teal-700 group-hover:text-white">
                         <Icon className="h-6 w-6" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <h4 className="text-base font-black tracking-[-0.02em] text-stone-950">
-                            {profile.title}
-                          </h4>
-                          <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500 transition group-hover:bg-teal-50 group-hover:text-teal-700">
-                            {profile.id === "MOBILE" ? "Phones" : "General"}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-stone-600">{profile.subtitle}</p>
-                        <p className="mt-3 text-xs font-medium leading-5 text-stone-500">
-                          {profile.id === "MOBILE"
-                            ? "Use this for iPhone, Samsung, Redmi, and other models with storage or color variants."
-                            : "Use this for chargers, cables, earbuds, covers, and other quantity-based products."}
+                        <h4 className="text-lg font-black tracking-[-0.02em] text-stone-950">{profile.title}</h4>
+                        <p className="mt-1 text-sm font-medium text-stone-500">
+                          {profile.id === "MOBILE" ? "Phones with variants" : "Chargers, cables, covers"}
                         </p>
+                      </div>
+                      <div className="text-stone-300 transition group-hover:text-teal-700">
+                        <ChevronRight className="h-5 w-5" />
                       </div>
                     </div>
                   </button>
@@ -1534,41 +1597,48 @@ export function AddProductModal({
                   {clientErrors.options ? <p className="text-sm text-rose-600">{clientErrors.options}</p> : null}
 
                   <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
-                    <div className="divide-y divide-stone-200/60 transition-all">
-                      {variants.map((variant) => (
-                        <div key={variant.id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/40">
-                          <div>
-                            <p className="text-[13px] font-bold text-stone-900 tracking-tight">{buildVariantName(variant)}</p>
-                            {selectedProfile === "MOBILE" && (
-                              <div className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold text-stone-500">
-                                <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
-                                {variant.quantity || "0"} initial stock
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {selectedProfile === "MOBILE" && (
-                              <p className="text-[14px] font-black tracking-tight text-stone-800 lg:w-20 text-right">
-                                {variant.sellingPrice ? `₹${Number(variant.sellingPrice).toLocaleString("en-IN")}` : "-"}
-                              </p>
-                            )}
-                            <button type="button" onClick={() => setEditingVariantId(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-1 rounded transition hover:bg-teal-100">
-                              Edit
-                            </button>
-                            {variants.length > 1 && (
-                              <button type="button" onClick={() => removeVariant(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-1 rounded transition hover:bg-rose-100">
-                                Remove
+                    {variants.length === 0 ? (
+                      <div className="px-4 py-8 text-center">
+                        <p className="text-sm font-semibold text-stone-900">No variant added</p>
+                        <p className="mt-1 text-sm text-stone-500">Add a variant to configure storage, color, price, and stock.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-stone-200/60 transition-all">
+                        {variants.map((variant) => (
+                          <div key={variant.id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/40">
+                            <div>
+                              <p className="text-[13px] font-bold text-stone-900 tracking-tight">{buildVariantName(variant)}</p>
+                              {selectedProfile === "MOBILE" && (
+                                <div className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold text-stone-500">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
+                                  {variant.quantity || "0"} initial stock
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              {selectedProfile === "MOBILE" && (
+                                <p className="text-[14px] font-black tracking-tight text-stone-800 lg:w-20 text-right">
+                                  {variant.sellingPrice ? `₹${Number(variant.sellingPrice).toLocaleString("en-IN")}` : "-"}
+                                </p>
+                              )}
+                              <button type="button" onClick={() => setEditingVariantId(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-1 rounded transition hover:bg-teal-100">
+                                Edit
                               </button>
-                            )}
+                              {variants.length > 1 && (
+                                <button type="button" onClick={() => removeVariant(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-1 rounded transition hover:bg-rose-100">
+                                  Remove
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {selectedProfile === "MOBILE" && (
                     <Button type="button" variant="outline" onClick={handleAddVariantClick} className="w-full rounded-[1.6rem] border-dashed border-2 py-6 text-sm font-bold tracking-tight text-stone-500 transition hover:text-stone-900 hover:border-stone-400 hover:bg-stone-50">
-                      + Add Another Variant
+                      {variants.length === 0 ? "Add Variant" : "+ Add Another Variant"}
                     </Button>
                   )}
                 </section>
@@ -1578,12 +1648,11 @@ export function AddProductModal({
                 <section className="space-y-4 py-2">
                   <StepTitle step={stepIndex + 1} title={profileCopy.stockTitle} />
                   <div className="rounded-[1.6rem] border border-stone-200 bg-white p-4 shadow-sm">
-                    <p className="text-sm leading-6 text-stone-600">
-                      {selectedProfile === "MOBILE"
-                        ? "Set how many units you currently have for this phone variant."
-                        : selectedProfile === "QUANTITY_BASED"
-                          ? "Set the opening stock for this product."
-                          : "Add tracked identifiers for each unit."}
+                    <p className="text-base font-semibold text-stone-900">Step {stepIndex + 1} Opening Stock</p>
+                    <p className="mt-1 text-sm leading-6 text-stone-600">
+                      {selectedProfile === "QUANTITY_BASED"
+                        ? "How many units do you want to add for this product?"
+                        : "Add tracked identifiers for each unit."}
                     </p>
                   </div>
                   {selectedProfile === "SERIALIZED" ? <IdentifierTypePicker value={identifierType} onChange={setIdentifierType} /> : null}
@@ -1593,13 +1662,18 @@ export function AddProductModal({
                   {variants.map((variant) => (
                     <div key={variant.id} className="space-y-3 border-b border-stone-200 pb-4 last:border-b-0">
                       <div>
-                        <p className="text-sm font-semibold text-stone-900">{selectedProfile === "SERIALIZED" ? "Option" : "Stock"}</p>
-                        <p className="text-sm text-stone-500">{selectedProfile === "SERIALIZED" ? buildVariantName(variant) : "Opening quantity for this variant"}</p>
+                        <p className="text-sm font-semibold text-stone-900">{selectedProfile === "SERIALIZED" ? "Option" : "Opening Stock"}</p>
+                        <p className="text-sm text-stone-500">{selectedProfile === "SERIALIZED" ? buildVariantName(variant) : name || "This product"}</p>
                       </div>
 
                       {selectedProfile !== "SERIALIZED" ? (
-                        <Field label={selectedProfile === "MOBILE" ? "Variant Stock Count" : "Opening Quantity"}>
-                          <Input type="number" min="0" value={variant.quantity} onChange={(event) => setVariantField(variant.id, "quantity", event.target.value)} placeholder="0" />
+                        <Field label="Quantity">
+                          <QuantityStepper
+                            value={variant.quantity}
+                            onChange={(nextValue) => handleVariantQuantityTextInput(variant.id, nextValue)}
+                            onIncrement={() => adjustVariantQuantity(variant.id, 1)}
+                            onDecrement={() => adjustVariantQuantity(variant.id, -1)}
+                          />
                         </Field>
                       ) : (
                         <div className="space-y-3">
@@ -1841,16 +1915,27 @@ export function AddProductModal({
             <div className="w-full max-w-md rounded-[2rem] bg-[#FAFAF8] shadow-[0_30px_80px_rgba(15,23,42,0.18)] max-h-[85vh] flex flex-col overflow-hidden">
               <div className="flex items-center justify-between border-b border-stone-200/80 px-5 py-4 bg-white">
                 <h3 className="text-base font-bold text-stone-900">Configure Option</h3>
-                <button type="button" onClick={() => setEditingVariantId(null)} className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVariantModalErrors({});
+                    setEditingVariantId(null);
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition"
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto p-5 pb-8 space-y-6">
                 <div className="space-y-5">
-                  <Field label="Color">
+                  <Field label="Color" required error={variantModalErrors.color}>
                     <Input value={variant.color} onChange={(event) => setVariantField(variant.id, "color", event.target.value)} placeholder="Black" />
                   </Field>
-                  <Field label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}>
+                  <Field
+                    label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}
+                    required
+                    error={variantModalErrors.storage}
+                  >
                     <StoragePresetPicker
                       value={variant.storage}
                       onChange={(nextValue) => setVariantField(variant.id, "storage", nextValue)}
@@ -1862,7 +1947,7 @@ export function AddProductModal({
 
                 {selectedProfile === "MOBILE" ? (
                   <div className="space-y-5">
-                    <Field label="Selling Price" required>
+                    <Field label="Selling Price" required error={variantModalErrors.sellingPrice}>
                       <Input 
                         type="number" 
                         min="0" 
@@ -1872,7 +1957,7 @@ export function AddProductModal({
                         placeholder="0.00" 
                       />
                     </Field>
-                    <Field label="Stock Quantity" required>
+                    <Field label="Stock Quantity" required error={variantModalErrors.quantity}>
                       <Input 
                         type="number" 
                         min="0"
@@ -1926,7 +2011,7 @@ export function AddProductModal({
                 </Field>
               </div>
               <div className="border-t border-stone-200/80 p-4 bg-white">
-                <Button type="button" className="w-full text-base py-5 rounded-[1rem]" onClick={() => setEditingVariantId(null)}>Done</Button>
+                <Button type="button" className="w-full text-base py-5 rounded-[1rem]" onClick={() => handleVariantModalDone(variant)}>Done</Button>
               </div>
             </div>
           </div>
@@ -2005,21 +2090,6 @@ function ChooserField({
   );
 }
 
-function PreviewTile({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">{label}</p>
-      <div className="mt-1 break-words text-sm font-semibold text-stone-900">{value || "-"}</div>
-    </div>
-  );
-}
-
 function Field({
   label,
   children,
@@ -2039,6 +2109,48 @@ function Field({
       </Label>
       {children}
       {error ? <p className="text-xs text-rose-600">{error}</p> : null}
+    </div>
+  );
+}
+
+function QuantityStepper({
+  value,
+  onChange,
+  onIncrement,
+  onDecrement,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onIncrement: () => void;
+  onDecrement: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-stone-300 bg-white p-2">
+      <button
+        type="button"
+        onClick={onDecrement}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-700 transition hover:bg-stone-200"
+        aria-label="Decrease quantity"
+      >
+        <span className="text-xl leading-none">-</span>
+      </button>
+      <Input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="0"
+        className="border-0 px-0 text-center text-lg font-semibold shadow-none focus:ring-0"
+      />
+      <button
+        type="button"
+        onClick={onIncrement}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-stone-900 text-white transition hover:bg-stone-800"
+        aria-label="Increase quantity"
+      >
+        <span className="text-xl leading-none">+</span>
+      </button>
     </div>
   );
 }

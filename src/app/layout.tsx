@@ -29,7 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>
         <AppQueryProvider>
-          <NextTopLoader color="#111827" showSpinner={false} shadow="0 0 10px rgba(17,24,39,0.35),0 0 5px rgba(17,24,39,0.25)" />
+          <NextTopLoader color="#f5c542" showSpinner={false} shadow="0 0 10px rgba(245,197,66,0.35),0 0 5px rgba(245,197,66,0.25)" />
           {children}
           <AppToaster />
         </AppQueryProvider>

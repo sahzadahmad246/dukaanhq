@@ -15,6 +15,11 @@ export type BillingInvoiceSummary = {
   discount_total: number;
   grand_total: number;
   payment_method: string;
+  payment_details?: {
+    methods?: string[];
+    loan_provider?: string | null;
+    loan_number?: string | null;
+  } | null;
   payment_status: string;
   notes?: string | null;
   shop_name_snapshot: string;
@@ -58,6 +63,7 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
         discount_total,
         grand_total,
         payment_method,
+        payment_details,
         payment_status,
         notes,
         shop_name_snapshot,

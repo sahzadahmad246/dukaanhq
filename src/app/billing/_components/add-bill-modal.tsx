@@ -1,22 +1,21 @@
 "use client";
 
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronLeft, ChevronRight, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { buildVariantLabel } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
-import { createInvoiceAction, resolveBillingQrAction } from "../actions";
+import { createInvoiceAction } from "../actions";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "@/app/inventory/queries";
 import type { ActionResponse } from "@/app/inventory/actions";
 import { printInvoice } from "./invoice-print";
-import { QrScanner } from "./qr-scanner";
+import { BarcodeScanner } from "@/app/inventory/_components/barcode-scanner";
 
 type StepId = "customer" | "products" | "preview";
 
@@ -42,18 +41,50 @@ type CustomerDraft = {
   gst_number: string;
 };
 
+type PaymentMethodChoice = "CASH" | "CARD" | "UPI" | "BANK_TRANSFER" | "OTHER" | "LOAN";
+
+type PaymentDraft = {
+  methods: PaymentMethodChoice[];
+  loan_provider: string;
+  loan_number: string;
+};
+
 type BillingLineDraft = {
   id: string;
   product_id: string;
   variant_id: string;
   inventory_item_id: string;
   identifier_value: string;
+  imei_1: string;
+  imei_2: string;
   quantity: string;
   unit_price: string;
   discount_amount: string;
 };
 
 type InventoryRecord = NonNullable<ProductDetails["inventory_items"]>[number];
+
+const PAYMENT_METHOD_OPTIONS: Array<{ id: PaymentMethodChoice; label: string }> = [
+  { id: "CASH", label: "Cash" },
+  { id: "UPI", label: "UPI" },
+  { id: "CARD", label: "Card" },
+  { id: "BANK_TRANSFER", label: "Bank Transfer" },
+  { id: "LOAN", label: "Loan" },
+  { id: "OTHER", label: "Other" },
+];
+
+const LOAN_PROVIDER_OPTIONS = [
+  "Bajaj Finserv",
+  "Home Credit",
+  "HDB Financial Services",
+  "IDFC First Bank",
+  "TVS Credit",
+  "Kissht",
+  "ShopSe",
+  "Snapmint",
+  "ZestMoney",
+  "Other",
+];
 
 function createLine(): BillingLineDraft {
   return {
@@ -62,6 +93,8 @@ function createLine(): BillingLineDraft {
     variant_id: "",
     inventory_item_id: "",
     identifier_value: "",
+    imei_1: "",
+    imei_2: "",
     quantity: "1",
     unit_price: "0",
     discount_amount: "0",
@@ -109,22 +142,62 @@ function Stepper({
   );
 }
 
-function buildLineMeta(parts: Array<string | null | undefined>) {
-  const filtered = parts.filter(Boolean);
-  return filtered.length > 0 ? filtered.join(" • ") : null;
-}
-
 function isLineComplete(line: BillingLineDraft, products: ProductSummary[]) {
   const product = products.find((item) => item.id === line.product_id);
   if (!product) return false;
   if (getProductSaleBlockReason(product)) return false;
   if (!line.variant_id) return false;
 
+  if (product.product_kind === "MOBILE") {
+    return Boolean(line.imei_1.trim());
+  }
+
   if (product.tracking_type === "SERIALIZED") {
     return Boolean(line.inventory_item_id);
   }
 
   return (Number.parseInt(line.quantity || "0", 10) || 0) > 0;
+}
+
+function buildMobileIdentifierSnapshot(line: Pick<BillingLineDraft, "imei_1" | "imei_2">) {
+  const parts = [
+    line.imei_1.trim() ? `IMEI 1: ${line.imei_1.trim()}` : null,
+    line.imei_2.trim() ? `IMEI 2: ${line.imei_2.trim()}` : null,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" • ") : null;
+}
+
+function createEmptyPaymentDraft(): PaymentDraft {
+  return {
+    methods: [],
+    loan_provider: "",
+    loan_number: "",
+  };
+}
+
+function deriveInvoicePaymentMethod(payment: PaymentDraft): "CASH" | "CARD" | "UPI" | "BANK_TRANSFER" | "OTHER" {
+  if (payment.methods.length !== 1) return "OTHER";
+  const [method] = payment.methods;
+  if (method === "CASH" || method === "CARD" || method === "UPI" || method === "BANK_TRANSFER") {
+    return method;
+  }
+  return "OTHER";
+}
+
+function buildPaymentSummary(payment: PaymentDraft) {
+  const labels = payment.methods
+    .map((method) => PAYMENT_METHOD_OPTIONS.find((option) => option.id === method)?.label ?? method)
+    .join(", ");
+  return labels || "No payment method added";
+}
+
+function buildPreviewIdentifierLines(identifierSnapshot: string | null) {
+  if (!identifierSnapshot) return [];
+  return identifierSnapshot
+    .split(" • ")
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 function getProductSaleBlockReason(product: ProductSummary | null) {
@@ -233,23 +306,7 @@ function ProductPicker({
   selectedProductId: string;
   onSelect: (productId: string) => void;
 }) {
-  const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const inputValue = open ? query : selectedProduct ? buildProductSearchLabel(selectedProduct) : query;
-
-  useEffect(() => {
-    function handlePointer(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointer);
-    return () => document.removeEventListener("mousedown", handlePointer);
-  }, []);
-
   const normalizedQuery = query.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
     const ranked = products
@@ -290,132 +347,93 @@ function ProductPicker({
   }, [normalizedQuery, products]);
 
   return (
-    <div ref={rootRef} className="relative">
-      <div className="relative">
+    <div className="relative h-[min(68vh,560px)] overflow-y-auto rounded-[1.6rem] border border-stone-200 bg-white shadow-sm">
+      <div className="sticky top-0 z-10 border-b border-stone-200 bg-white p-3">
+        <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
         <Input
-          value={inputValue}
+          value={query}
           placeholder="Search by product, brand, color, storage"
-          className="h-12 rounded-2xl border-stone-200 bg-white pl-10 pr-10"
-          onFocus={() => setOpen(true)}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setOpen(true);
-          }}
+          className="h-12 rounded-2xl border-stone-200 bg-white pl-10 pr-4"
+          onChange={(event) => setQuery(event.target.value)}
         />
-        {selectedProduct && query && !open ? (
-          <button
-            type="button"
-            onClick={() => {
-              setQuery("");
-              onSelect("");
-              setOpen(true);
-            }}
-            className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
+        </div>
       </div>
 
-      {open ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.14)]">
-          <div className="max-h-80 overflow-y-auto p-2">
-            {filteredProducts.length > 0 ? (
-              filteredProducts.map((product) => {
-                const blockReason = getProductSaleBlockReason(product);
-                const active = product.id === selectedProductId;
+      <div className="p-2">
+          {filteredProducts.length > 0 ? (
+            filteredProducts.map((product) => {
+              const blockReason = getProductSaleBlockReason(product);
+              const active = product.id === selectedProductId;
 
-                return (
-                  <button
-                    key={product.id}
-                    type="button"
-                    disabled={Boolean(blockReason)}
-                    onClick={() => {
-                      onSelect(product.id);
-                      setOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-start justify-between gap-3 rounded-2xl px-3 py-3 text-left transition",
-                      active ? "bg-stone-950 text-white" : "hover:bg-stone-50",
-                      blockReason && !active ? "cursor-not-allowed opacity-55" : ""
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{product.name}</p>
-                      <p className={cn("mt-1 text-xs", active ? "text-white/70" : "text-stone-500")}>
-                        {buildProductSearchLabel(product)}
-                      </p>
-                      <p className={cn("mt-1 text-xs", active ? "text-white/70" : "text-stone-400")}>
-                        {blockReason ?? buildProductSupportMeta(product)}
-                      </p>
-                    </div>
-                    {active ? <Check className="mt-0.5 h-4 w-4 shrink-0" /> : null}
-                  </button>
-                );
-              })
-            ) : (
-              <div className="px-3 py-6 text-center text-sm text-stone-500">No matching products found.</div>
-            )}
-          </div>
-        </div>
-      ) : null}
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  disabled={Boolean(blockReason)}
+                  onClick={() => onSelect(product.id)}
+                  className={cn(
+                    "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200",
+                    active ? "bg-stone-100 text-stone-900" : "hover:bg-stone-50",
+                    blockReason && !active ? "cursor-not-allowed opacity-55" : ""
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className={cn("truncate text-[13px] font-bold", active ? "text-stone-900" : "text-stone-800")}>{product.name}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-stone-500">
+                      {buildProductSearchLabel(product)}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold text-stone-400">
+                      {blockReason ?? buildProductSupportMeta(product)}
+                    </p>
+                  </div>
+                  {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-stone-900" /> : null}
+                </button>
+              );
+            })
+          ) : (
+            <div className="px-3 py-6 text-center text-sm text-stone-500">No matching products found.</div>
+          )}
+      </div>
     </div>
-  );
-}
-
-function OptionChip({
-  label,
-  stock,
-  active,
-  onClick,
-}: {
-  label: string;
-  stock: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-2xl border px-4 py-3 text-left transition",
-        active
-          ? "border-stone-950 bg-stone-950 text-white shadow-sm"
-          : "border-stone-200 bg-[#fffdf9] text-stone-900 hover:border-stone-300 hover:bg-white"
-      )}
-    >
-      <div className="text-sm font-semibold">{label}</div>
-      <div className={cn("mt-1 text-xs", active ? "text-white/75" : "text-stone-500")}>{stock} in stock</div>
-    </button>
   );
 }
 
 function LineEditor({
   line,
-  index,
   products,
   onChange,
-  onRemove,
-  mode = "inline",
 }: {
   line: BillingLineDraft;
-  index: number;
   products: ProductSummary[];
   onChange: (next: Partial<BillingLineDraft>) => void;
-  onRemove: () => void;
-  mode?: "inline" | "dialog";
 }) {
-  const selectedProduct = products.find((product) => product.id === line.product_id) ?? null;
+  const queryClient = useQueryClient();
   const { data: productDetails } = useQuery({
     queryKey: line.product_id ? productDetailsQueryKey(line.product_id) : ["inventory", "product-details", line.id],
     queryFn: line.product_id ? () => fetchProductDetails(line.product_id) : skipToken,
     enabled: Boolean(line.product_id),
-    staleTime: 10 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
+    gcTime: 2 * 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    placeholderData: line.product_id
+      ? () => queryClient.getQueryData<ProductDetails>(productDetailsQueryKey(line.product_id))
+      : undefined,
   });
 
   const variants = useMemo(() => productDetails?.variants ?? [], [productDetails?.variants]);
+  const selectedProduct = useMemo(
+    () =>
+      productDetails
+        ? ({
+            ...(products.find((product) => product.id === line.product_id) ?? {}),
+            ...productDetails,
+          } as ProductSummary)
+        : products.find((product) => product.id === line.product_id) ?? null,
+    [line.product_id, productDetails, products]
+  );
 
   const variantStockMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -442,48 +460,7 @@ function LineEditor({
   }, [variantStockMap, variants]);
 
   const selectedVariant = variants.find((variant) => variant.id === line.variant_id) ?? preferredVariant;
-  const activeStorage = selectedVariant?.storage_label ?? "";
   const selectedProductBlockReason = getProductSaleBlockReason(selectedProduct);
-
-  const storageOptions = useMemo(() => {
-    return Array.from(
-      new Map(
-        variants
-          .filter((variant) => variant.storage_label)
-          .map((variant) => [
-            variant.storage_label as string,
-            {
-              label: variant.storage_label as string,
-              stock: variants
-                .filter((candidate) => candidate.storage_label === variant.storage_label)
-                .reduce((sum, candidate) => sum + (variantStockMap.get(candidate.id) ?? 0), 0),
-            },
-          ])
-      ).values()
-    );
-  }, [variantStockMap, variants]);
-
-  const storageScopedVariants = activeStorage
-    ? variants.filter((variant) => variant.storage_label === activeStorage)
-    : variants;
-
-  const colorOptions = useMemo(() => {
-    return Array.from(
-      new Map(
-        storageScopedVariants
-          .filter((variant) => variant.color)
-          .map((variant) => [
-            variant.color as string,
-            {
-              label: variant.color as string,
-              stock: storageScopedVariants
-                .filter((candidate) => candidate.color === variant.color)
-                .reduce((sum, candidate) => sum + (variantStockMap.get(candidate.id) ?? 0), 0),
-            },
-          ])
-      ).values()
-    );
-  }, [storageScopedVariants, variantStockMap]);
 
   const availableUnits = useMemo(() => {
     const activeVariantId = selectedVariant?.id ?? "";
@@ -502,6 +479,8 @@ function LineEditor({
   const productKindCopy = buildProductKindCopy(selectedProduct);
   const ProductKindIcon = productKindCopy?.icon ?? Package2;
 
+  const [scanningField, setScanningField] = useState<"identifier" | "imei_1" | "imei_2" | null>(null);
+
   useEffect(() => {
     if (!selectedProduct || !productDetails) return;
     if (selectedProductBlockReason) return;
@@ -511,6 +490,8 @@ function LineEditor({
         variant_id: preferredVariant?.id ?? "",
         inventory_item_id: "",
         identifier_value: "",
+        imei_1: "",
+        imei_2: "",
       });
     }
   }, [line.variant_id, onChange, preferredVariant?.id, productDetails, selectedProduct, selectedProductBlockReason, variants]);
@@ -518,14 +499,11 @@ function LineEditor({
   useEffect(() => {
     if (!selectedProduct) return;
 
-    if (selectedProduct.tracking_type === "SERIALIZED" && line.quantity !== "1") {
+    if ((selectedProduct.tracking_type === "SERIALIZED" || selectedProduct.product_kind === "MOBILE") && line.quantity !== "1") {
       onChange({ quantity: "1" });
     }
 
-    if (selectedProduct.tracking_type === "SERIALIZED" && line.inventory_item_id && !availableUnits.some((item) => item.id === line.inventory_item_id)) {
-      onChange({ inventory_item_id: "", identifier_value: "" });
-    }
-  }, [availableUnits, line.inventory_item_id, line.quantity, onChange, selectedProduct]);
+  }, [line.quantity, onChange, selectedProduct]);
 
   useEffect(() => {
     if (!selectedProduct) return;
@@ -543,235 +521,254 @@ function LineEditor({
     onChange({ unit_price: String(selectedVariantPrice) });
   }, [line.unit_price, onChange, selectedProduct, selectedVariant, selectedVariantPrice]);
 
-  function selectStorage(storageValue: string) {
-    const nextVariant =
-      variants.find(
-        (variant) =>
-          variant.storage_label === storageValue &&
-          (selectedVariant?.color ? variant.color === selectedVariant.color : true) &&
-          (variantStockMap.get(variant.id) ?? 0) > 0
-      ) ??
-      variants.find((variant) => variant.storage_label === storageValue && (variantStockMap.get(variant.id) ?? 0) > 0) ??
-      variants.find((variant) => variant.storage_label === storageValue) ??
-      null;
-
-    if (!nextVariant) return;
-
-    onChange({
-      variant_id: nextVariant.id,
-      inventory_item_id: "",
-      identifier_value: "",
-    });
-  }
-
-  function selectColor(colorValue: string) {
-    const nextVariant =
-      variants.find(
-        (variant) =>
-          variant.color === colorValue &&
-          (activeStorage ? variant.storage_label === activeStorage : true) &&
-          (variantStockMap.get(variant.id) ?? 0) > 0
-      ) ??
-      variants.find(
-        (variant) => variant.color === colorValue && (activeStorage ? variant.storage_label === activeStorage : true)
-      ) ??
-      variants.find((variant) => variant.color === colorValue) ??
-      null;
-
-    if (!nextVariant) return;
-
-    onChange({
-      variant_id: nextVariant.id,
-      inventory_item_id: "",
-      identifier_value: "",
-    });
+  function adjustAccessoryQuantity(delta: 1 | -1) {
+    if (!selectedProduct || selectedProduct.product_kind === "MOBILE") return;
+    const currentQuantity = Number.parseInt(line.quantity || "1", 10) || 1;
+    const nextQuantity = Math.max(1, Math.min(stockLeft || 1, currentQuantity + delta));
+    onChange({ quantity: String(nextQuantity) });
   }
 
   return (
-    <div className="space-y-4 rounded-[1.75rem] border border-stone-200/80 bg-gradient-to-b from-white to-[#f9f5ee] p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        {mode === "inline" ? (
-          <Button type="button" variant="ghost" className="h-8 px-2 text-rose-600 hover:bg-rose-50" onClick={onRemove}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        ) : <div className="h-8 w-8" />}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-stone-900 px-2 text-xs font-semibold text-white">
-              {index + 1}
-            </span>
-            <p className="text-sm font-semibold text-stone-900">Bill Item</p>
-          </div>
-          <p className="mt-1 text-xs text-stone-500">Find a product fast, then choose the exact sale option.</p>
+    <div className="space-y-4">
+      {!selectedProduct ? (
+        <div className="pt-2">
+          <ProductPicker
+            products={products}
+            selectedProductId={line.product_id}
+            onSelect={(productId) => {
+              const nextProduct = products.find((product) => product.id === productId);
+              onChange({
+                product_id: productId,
+                variant_id: "",
+                inventory_item_id: "",
+                identifier_value: "",
+                imei_1: "",
+                imei_2: "",
+                quantity: "1",
+                unit_price: nextProduct ? String(nextProduct.base_selling_price) : "0",
+                discount_amount: "0",
+              });
+            }}
+          />
         </div>
-      </div>
-
-      <Field label="Product" required>
-        <ProductPicker
-          products={products}
-          selectedProductId={line.product_id}
-          onSelect={(productId) => {
-            const nextProduct = products.find((product) => product.id === productId);
-            onChange({
-              product_id: productId,
-              variant_id: "",
-              inventory_item_id: "",
-              identifier_value: "",
-              quantity: "1",
-              unit_price: nextProduct ? String(nextProduct.base_selling_price) : "0",
-              discount_amount: "0",
-            });
-          }}
-        />
-      </Field>
+      ) : null}
 
       {selectedProduct ? (
-        <div className="rounded-3xl border border-stone-200 bg-[#fffdfa] px-4 py-3">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-stone-100 text-stone-700">
-              <ProductKindIcon className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-stone-900">{selectedProduct.name}</p>
-              <p className="mt-1 text-xs text-stone-500">
-                {buildLineMeta([selectedProduct.brand?.name, productKindCopy?.title, `${selectedProduct.total_quantity} in stock`])}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-stone-600">{productKindCopy?.description}</p>
-            </div>
+        <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+             <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Selected Product</p>
+             <button
+               type="button"
+               onClick={() => onChange({ product_id: "", variant_id: "", inventory_item_id: "", identifier_value: "", imei_1: "", imei_2: "", quantity: "1", unit_price: "0", discount_amount: "0" })}
+               className="text-[11px] font-bold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-900 focus:outline-none"
+             >
+               Change
+             </button>
           </div>
-          {selectedProductBlockReason ? (
-            <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-              {selectedProductBlockReason}
+          <div className="px-4 py-4">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white border border-stone-200 text-stone-700 shadow-sm">
+                <ProductKindIcon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-stone-900 leading-snug">{selectedProduct.name}</p>
+                <div className="mt-1.5 flex items-center gap-2 text-xs font-semibold text-stone-500">
+                  <span>{productKindCopy?.title}</span>
+                  <span className="w-1 h-1 rounded-full bg-stone-300" />
+                  <span className={`${selectedProduct.total_quantity > 0 ? "text-emerald-600" : "text-rose-500"}`}>{selectedProduct.total_quantity} in stock</span>
+                </div>
+              </div>
             </div>
-          ) : null}
+            {selectedProductBlockReason ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm">
+                {selectedProductBlockReason}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
       {selectedProduct && productDetails && !selectedProductBlockReason ? (
         <>
-          {storageOptions.length > 0 ? (
-            <Field label="Storage / Variant">
-              <div className="flex flex-wrap gap-3">
-                {storageOptions.map((option) => (
-                  <OptionChip
-                    key={option.label}
-                    label={option.label}
-                    stock={option.stock}
-                    active={(selectedVariant?.storage_label ?? "") === option.label}
-                    onClick={() => selectStorage(option.label)}
-                  />
-                ))}
+          {variants.length > 0 ? (
+            <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Select Variant</p>
               </div>
-            </Field>
-          ) : null}
-
-          {colorOptions.length > 0 ? (
-            <Field label="Color">
-              <div className="flex flex-wrap gap-3">
-                {colorOptions.map((option) => (
-                  <OptionChip
-                    key={option.label}
-                    label={option.label}
-                    stock={option.stock}
-                    active={(selectedVariant?.color ?? "") === option.label}
-                    onClick={() => selectColor(option.label)}
-                  />
-                ))}
+              <div className="bg-white flex flex-col divide-y divide-stone-100">
+                {variants.map((variant) => {
+                  const stock = variantStockMap.get(variant.id) ?? 0;
+                  const isActive = line.variant_id === variant.id;
+                  const priceOverride = variant.selling_price_override ?? selectedProduct.base_selling_price;
+                  return (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      onClick={() => onChange({ variant_id: variant.id, inventory_item_id: "", identifier_value: "" })}
+                      className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors duration-200 hover:bg-stone-50 ${isActive ? "bg-[#faf9f7]" : "bg-white"}`}
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isActive ? "border-stone-900 bg-stone-900" : "border-stone-300"}`}>
+                          {isActive && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                        </div>
+                        <span className={`text-[13px] font-bold leading-none ${isActive ? "text-stone-900" : "text-stone-700"}`}>
+                          {[variant.color, variant.storage_label, variant.name].filter(Boolean).join(" - ") || "Default Option"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                         <span className={`text-[13px] font-bold ${isActive ? "text-stone-900" : "text-stone-500"}`}>{money(Number(priceOverride))}</span>
+                         <span className={`text-[11px] font-bold uppercase tracking-wider ${stock > 0 ? (isActive ? "text-emerald-600" : "text-emerald-600/70") : "text-rose-500"}`}>
+                           ({stock})
+                         </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            </Field>
-          ) : null}
-
-          {selectedVariant ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-stone-200 bg-white px-4 py-3">
-              {buildVariantLabel(selectedVariant) ? (
-                <span className="rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-900">
-                  {buildVariantLabel(selectedVariant)}
-                </span>
-              ) : null}
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">{stockLeft} in stock</span>
-              <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700">
-                Rate {money(Number.parseFloat(line.unit_price || "0") || selectedVariantPrice)}
-              </span>
-              {selectedProduct.tracking_type === "SERIALIZED" ? (
-                <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">Exact unit required</span>
-              ) : null}
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-3">
-            {selectedProduct.tracking_type === "SERIALIZED" ? (
-              <div>
-                <Field label={selectedProduct.product_kind === "MOBILE" ? "Device / IMEI" : "Device / Serial"} required>
-                  <Select
-                    value={line.inventory_item_id}
-                    onValueChange={(val) => {
-                      const unit = availableUnits.find((item) => item.id === val);
-                      onChange({
-                        inventory_item_id: val,
-                        identifier_value: unit ? buildInventoryItemLabel(unit) : "",
-                        quantity: "1",
-                        variant_id: unit?.variant_id ?? line.variant_id,
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="rounded-2xl border-stone-200 bg-white">
-                      <SelectValue placeholder="Select stock unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableUnits.map((unit) => (
-                        <SelectItem key={unit.id} value={unit.id}>
-                          {buildInventoryItemLabel(unit)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedUnit ? <p className="mt-2 text-xs text-stone-500">Selected device: {buildInventoryItemLabel(selectedUnit)}</p> : null}
+          <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+             <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+               <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Sale Details</p>
+             </div>
+             <div className="p-4 bg-white space-y-4">
+                {selectedProduct.tracking_type === "SERIALIZED" ? (
+                  <div className="space-y-4">
+                    <Field label={selectedProduct.product_kind === "MOBILE" ? "Device IMEI" : "Device Serial"} required>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            value={line.identifier_value}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const matchedUnit = availableUnits.find(u => buildInventoryItemLabel(u) === val || u.identifiers?.some(id => id.identifier_value === val));
+                              onChange({
+                                identifier_value: val,
+                                inventory_item_id: matchedUnit ? matchedUnit.id : "",
+                                quantity: "1",
+                                variant_id: matchedUnit?.variant_id ?? line.variant_id
+                              });
+                            }}
+                            placeholder="Scan or enter exactly..."
+                            className="rounded-xl border-stone-200 bg-stone-50"
+                          />
+                        </div>
+                        <Button type="button" variant="outline" className="shrink-0 h-10 w-10 p-0 rounded-xl" onClick={() => setScanningField("identifier")}>
+                          <ScanBarcode className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {selectedUnit ? <p className="mt-2 text-xs font-semibold text-emerald-600">Matched in-stock device: {buildInventoryItemLabel(selectedUnit)}</p> : null}
+                      {!selectedUnit && line.identifier_value ? <p className="mt-2 text-xs font-medium text-amber-600">Manual entry (Not mapped to inventory)</p> : null}
+                    </Field>
+                  </div>
+                ) : (
+                  <Field label="Quantity" required>
+                    <QuantityStepper
+                      value={selectedProduct.product_kind === "MOBILE" ? "1" : line.quantity}
+                      disabled={selectedProduct.product_kind === "MOBILE"}
+                      onDecrease={() => adjustAccessoryQuantity(-1)}
+                      onIncrease={() => adjustAccessoryQuantity(1)}
+                    />
+                    <p className="mt-2 text-[11px] font-semibold text-stone-500">
+                      {selectedProduct.product_kind === "MOBILE" ? "Mobile bills are added one device at a time." : `Available stock: ${stockLeft}`}
+                    </p>
+                  </Field>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Unit Price">
+                    <Input
+                      type="number"
+                      readOnly
+                      value={line.unit_price}
+                      className="rounded-xl border-stone-100 bg-stone-100/50 text-stone-600 font-medium"
+                    />
+                  </Field>
+
+                  <Field label="Discount">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={line.discount_amount}
+                      className="rounded-xl border-stone-200 bg-stone-50"
+                      onChange={(event) => onChange({ discount_amount: event.target.value })}
+                    />
+                  </Field>
+                </div>
+             </div>
+          </div>
+
+          {selectedProduct.product_kind === "MOBILE" ? (
+            <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">IMEI</p>
+              </div>
+              <div className="p-4 bg-white space-y-4">
+                <Field label="IMEI 1" required>
+                  <div className="flex gap-2">
+                    <Input
+                      value={line.imei_1}
+                      inputMode="numeric"
+                      placeholder="Enter or scan IMEI 1"
+                      className="rounded-xl border-stone-200 bg-stone-50"
+                      onChange={(event) => onChange({ imei_1: event.target.value.replace(/\D/g, "").slice(0, 15) })}
+                    />
+                    <button type="button" className="shrink-0 text-stone-900 transition hover:text-teal-700" onClick={() => setScanningField("imei_1")}>
+                      <ScanBarcode className="h-6 w-6" />
+                    </button>
+                  </div>
+                </Field>
+
+                <Field label="IMEI 2">
+                  <div className="flex gap-2">
+                    <Input
+                      value={line.imei_2}
+                      inputMode="numeric"
+                      placeholder="Enter or scan IMEI 2"
+                      className="rounded-xl border-stone-200 bg-stone-50"
+                      onChange={(event) => onChange({ imei_2: event.target.value.replace(/\D/g, "").slice(0, 15) })}
+                    />
+                    <button type="button" className="shrink-0 text-stone-900 transition hover:text-teal-700" onClick={() => setScanningField("imei_2")}>
+                      <ScanBarcode className="h-6 w-6" />
+                    </button>
+                  </div>
                 </Field>
               </div>
-            ) : (
-              <Field label="Quantity" required>
-                <Input
-                  type="number"
-                  min="1"
-                  max={Math.max(stockLeft, 1)}
-                  value={line.quantity}
-                  className="rounded-2xl border-stone-200 bg-white"
-                  onChange={(event) => onChange({ quantity: event.target.value })}
-                />
-                <p className="mt-2 text-xs text-stone-500">Available stock: {stockLeft}</p>
-              </Field>
-            )}
-
-            <Field label="Unit Price" required>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={line.unit_price}
-                className="rounded-2xl border-stone-200 bg-white"
-                onChange={(event) => onChange({ unit_price: event.target.value })}
-              />
-            </Field>
-
-            <Field label="Discount">
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={line.discount_amount}
-                className="rounded-2xl border-stone-200 bg-white"
-                onChange={(event) => onChange({ discount_amount: event.target.value })}
-              />
-            </Field>
-          </div>
+            </div>
+          ) : null}
         </>
       ) : null}
 
       {selectedProduct && !productDetails && line.product_id ? (
         <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm text-stone-500">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading product options...
+          Loading variants...
         </div>
+      ) : null}
+
+      {scanningField ? (
+        <BarcodeScanner
+          expectedType={scanningField === "identifier" ? "SERIAL" : "IMEI"}
+          onClose={() => setScanningField(null)}
+          onScan={(result) => {
+            if (scanningField === "identifier") {
+              const matchedUnit = availableUnits.find((u) => buildInventoryItemLabel(u) === result || u.identifiers?.some((id) => id.identifier_value === result));
+              onChange({
+                identifier_value: result,
+                inventory_item_id: matchedUnit ? matchedUnit.id : "",
+                quantity: "1",
+                variant_id: matchedUnit?.variant_id ?? line.variant_id
+              });
+            } else if (scanningField === "imei_1") {
+              onChange({ imei_1: result });
+            } else if (scanningField === "imei_2") {
+              onChange({ imei_2: result });
+            }
+            setScanningField(null);
+          }}
+        />
       ) : null}
     </div>
   );
@@ -793,31 +790,25 @@ export function AddBillModal({
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
   const [customer, setCustomer] = useState<CustomerDraft>({ name: "", mobile: "", billing_address: "", gst_number: "" });
-  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "CARD" | "UPI" | "BANK_TRANSFER" | "OTHER">("CASH");
+  const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(createEmptyPaymentDraft());
+  const [pendingPaymentDraft, setPendingPaymentDraft] = useState<PaymentDraft>(createEmptyPaymentDraft());
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<BillingLineDraft[]>([]);
   const [clientError, setClientError] = useState("");
   const [state, setState] = useState<ActionResponse>({ status: "success", message: "" });
-  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [draftLine, setDraftLine] = useState<BillingLineDraft | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
-  const [scanLoadingCount, setScanLoadingCount] = useState(0);
   const steps: StepId[] = ["customer", "products", "preview"];
   const stepIndex = steps.indexOf(currentStep);
-  const productsRef = useRef(products);
-
-  useEffect(() => {
-    productsRef.current = products;
-  }, [products]);
-
   if (!open) return null;
 
   const preparedLines = lines
     .map((line) => {
       const product = products.find((item) => item.id === line.product_id);
       if (!product) return null;
-      const quantity = product.tracking_type === "SERIALIZED" ? 1 : Number.parseInt(line.quantity || "1", 10) || 1;
+      const quantity = product.tracking_type === "SERIALIZED" || product.product_kind === "MOBILE" ? 1 : Number.parseInt(line.quantity || "1", 10) || 1;
       const unitPrice = Number.parseFloat(line.unit_price || "0") || 0;
       const discountAmount = Number.parseFloat(line.discount_amount || "0") || 0;
       const variant = product.variants?.find((item) => item.id === line.variant_id);
@@ -830,7 +821,10 @@ export function AddBillModal({
         brand_name_snapshot: product.brand?.name ?? null,
         category_name_snapshot: product.category?.name ?? null,
         variant_name_snapshot: variant ? buildVariantLabel(variant) : null,
-        identifier_snapshot: line.identifier_value || null,
+        identifier_snapshot:
+          product.product_kind === "MOBILE"
+            ? buildMobileIdentifierSnapshot(line)
+            : line.identifier_value || null,
         quantity,
         unit_price: unitPrice,
         tax_rate: 0,
@@ -873,8 +867,66 @@ export function AddBillModal({
     setIsProductDialogOpen(false);
   }
 
+  function openPaymentModal() {
+    setPendingPaymentDraft(paymentDraft);
+    setClientError("");
+    setIsPaymentModalOpen(true);
+  }
+
+  function togglePendingPaymentMethod(method: PaymentMethodChoice) {
+    setPendingPaymentDraft((current) => {
+      let methods: PaymentMethodChoice[];
+
+      if (method === "LOAN") {
+        methods = current.methods.includes("LOAN") ? [] : ["LOAN"];
+      } else if (current.methods.includes("LOAN")) {
+        methods = [method];
+      } else if (current.methods.includes(method)) {
+        methods = current.methods.filter((entry) => entry !== method);
+      } else {
+        methods = [...current.methods, method];
+      }
+
+      return {
+        ...current,
+        methods,
+        loan_provider: methods.includes("LOAN") ? current.loan_provider : "",
+        loan_number: methods.includes("LOAN") ? current.loan_number : "",
+      };
+    });
+  }
+
+  function savePaymentDraft() {
+    if (pendingPaymentDraft.methods.length === 0) {
+      setClientError("Add at least one payment method.");
+      return;
+    }
+
+    if (pendingPaymentDraft.methods.includes("LOAN")) {
+      if (!pendingPaymentDraft.loan_provider.trim()) {
+        setClientError("Select a loan provider.");
+        return;
+      }
+      if (!pendingPaymentDraft.loan_number.trim()) {
+        setClientError("Enter the loan number.");
+        return;
+      }
+    }
+
+    setPaymentDraft(pendingPaymentDraft);
+    setIsPaymentModalOpen(false);
+    setClientError("");
+  }
+
   function saveDraftLine() {
     if (!draftLine) return;
+    const selectedProduct = products.find((item) => item.id === draftLine.product_id) ?? null;
+
+    if (selectedProduct?.product_kind === "MOBILE" && !draftLine.imei_1.trim()) {
+      setClientError("IMEI 1 is required for mobile products.");
+      return;
+    }
+
     if (!isLineComplete(draftLine, products)) {
       setClientError("Select the product and complete its sale details before adding it to the bill.");
       return;
@@ -910,6 +962,11 @@ export function AddBillModal({
     if (step === "products") {
       if (preparedLines.length === 0) {
         setClientError("Add at least one product line.");
+        return false;
+      }
+
+      if (paymentDraft.methods.length === 0) {
+        setClientError("Add the payment method before continuing.");
         return false;
       }
 
@@ -956,7 +1013,12 @@ export function AddBillModal({
       JSON.stringify({
         customer,
         items: preparedLines,
-        payment_method: paymentMethod,
+        payment_method: deriveInvoicePaymentMethod(paymentDraft),
+        payment_details: {
+          methods: paymentDraft.methods,
+          loan_provider: paymentDraft.loan_provider || null,
+          loan_number: paymentDraft.loan_number || null,
+        },
         notes,
       })
     );
@@ -975,56 +1037,6 @@ export function AddBillModal({
         );
         onClose();
       }
-    });
-  }
-
-  function applyResolvedQrLine(resolved: {
-    kind: "UNIT" | "QTY";
-    product_id: string;
-    variant_id: string;
-    inventory_item_id: string | null;
-    identifier_value: string | null;
-    unit_price: number;
-  }) {
-    setLines((current) => {
-      if (resolved.kind === "QTY") {
-        const existingIndex = current.findIndex(
-          (line) =>
-            line.product_id === resolved.product_id &&
-            line.variant_id === resolved.variant_id &&
-            !line.inventory_item_id
-        );
-
-        if (existingIndex >= 0) {
-          return current.map((line, index) =>
-            index === existingIndex
-              ? {
-                  ...line,
-                  quantity: String((Number.parseInt(line.quantity || "1", 10) || 1) + 1),
-                  unit_price: String(resolved.unit_price),
-                }
-              : line
-          );
-        }
-      }
-
-      const emptyIndex = current.findIndex((line) => !line.product_id);
-      const nextLine: BillingLineDraft = {
-        id: emptyIndex >= 0 ? current[emptyIndex].id : crypto.randomUUID(),
-        product_id: resolved.product_id,
-        variant_id: resolved.variant_id,
-        inventory_item_id: resolved.inventory_item_id ?? "",
-        identifier_value: resolved.identifier_value ?? "",
-        quantity: "1",
-        unit_price: String(resolved.unit_price),
-        discount_amount: "0",
-      };
-
-      if (emptyIndex >= 0) {
-        return current.map((line, index) => (index === emptyIndex ? nextLine : line));
-      }
-
-      return [...current, nextLine];
     });
   }
 
@@ -1063,167 +1075,228 @@ export function AddBillModal({
 
           {currentStep === "products" ? (
             <section className="space-y-4 py-2">
-              <div className="flex items-center justify-between gap-3">
-                <StepTitle step={2} title="Products" />
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" onClick={() => setIsQrScannerOpen(true)}>
-                    <ScanBarcode className="h-4 w-4" />
-                    Scan QR
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={openNewProductDialog}>
-                    <Plus className="h-4 w-4" />
-                    Add Product
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 rounded-[1.75rem] border border-stone-200/80 bg-white/70 p-4">
-                <Field label="Payment Method">
-                  <Select
-                    value={paymentMethod}
-                    onValueChange={(val) => setPaymentMethod(val as typeof paymentMethod)}
-                  >
-                    <SelectTrigger className="rounded-2xl border-stone-200 bg-white">
-                      <SelectValue placeholder="Select payment method" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CASH">Cash</SelectItem>
-                      <SelectItem value="UPI">UPI</SelectItem>
-                      <SelectItem value="CARD">Card</SelectItem>
-                      <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                      <SelectItem value="OTHER">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-
-                <div className="rounded-2xl bg-[#f6f1e8] px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Quick Summary</p>
-                  <div className="mt-2 flex items-center justify-between text-sm text-stone-600">
-                    <span>{preparedLines.length} items</span>
-                    <span>{money(totals.total)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {scanLoadingCount > 0 ? (
-                <div className="space-y-3">
-                  {Array.from({ length: scanLoadingCount }).map((_, index) => (
-                    <div key={`scan-skeleton-${index}`} className="rounded-[1.75rem] border border-stone-200/80 bg-white p-4">
-                      <div className="animate-pulse space-y-3">
-                        <div className="h-4 w-28 rounded-full bg-stone-200" />
-                        <div className="h-5 w-2/3 rounded-full bg-stone-200" />
-                        <div className="h-4 w-1/2 rounded-full bg-stone-100" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              <StepTitle step={2} title="Products" />
 
               {lines.length > 0 ? (
-                <div className="overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-white shadow-sm">
+                <div className="space-y-3">
                   {lines.map((line, index) => {
                     const product = products.find((item) => item.id === line.product_id) ?? null;
                     const variant = product?.variants?.find((item) => item.id === line.variant_id) ?? null;
-                    const quantity = product?.tracking_type === "SERIALIZED" ? 1 : Number.parseInt(line.quantity || "1", 10) || 1;
+                    const quantity =
+                      product?.tracking_type === "SERIALIZED" || product?.product_kind === "MOBILE"
+                        ? 1
+                        : Number.parseInt(line.quantity || "1", 10) || 1;
                     const unitPrice = Number.parseFloat(line.unit_price || "0") || 0;
                     const discountAmount = Number.parseFloat(line.discount_amount || "0") || 0;
                     const lineTotal = computeLineTotal({ quantity, unitPrice, discountAmount });
 
                     return (
-                      <div key={line.id} className={cn("px-4 py-4", index < lines.length - 1 ? "border-b border-stone-100" : "")}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start gap-3">
-                              <span className="mt-0.5 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-stone-900 px-2 text-xs font-semibold text-white">
-                                {index + 1}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold leading-5 text-stone-900">{product?.name ?? "Incomplete item"}</p>
-                                {buildLineMeta([variant ? buildVariantLabel(variant) : null, line.identifier_value]) ? (
-                                  <p className="mt-1 text-xs text-stone-500">
-                                    {buildLineMeta([variant ? buildVariantLabel(variant) : null, line.identifier_value])}
-                                  </p>
-                                ) : null}
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-700">Qty {quantity}</span>
-                                  <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">Rate {money(unitPrice)}</span>
-                                  {discountAmount > 0 ? (
-                                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                                      Discount {money(discountAmount)}
-                                    </span>
-                                  ) : null}
+                      <div key={line.id} className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden shadow-sm transition-all duration-200 hover:shadow-md hover:border-stone-300">
+                        <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-stone-200 bg-stone-100/50">
+                           <div className="flex items-center gap-2">
+                             <div className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white shadow-sm ring-2 ring-stone-900/10">
+                               {index + 1}
+                             </div>
+                             <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">Item Selected</span>
+                           </div>
+                           <div className="flex items-center gap-1">
+                             <button type="button" className="p-1 text-stone-900 transition hover:text-teal-700" onClick={() => openEditProductDialog(line.id)}>
+                               <Pencil className="h-4 w-4" />
+                             </button>
+                             <button
+                               type="button"
+                               className="p-1 text-rose-700 transition hover:text-rose-800"
+                               onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
+                             >
+                               <Trash2 className="h-4 w-4" />
+                             </button>
+                           </div>
+                        </div>
+
+                        <div className="px-4 py-4 bg-white">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-stone-900 leading-snug">{product?.name ?? "Incomplete item"}</p>
+                              {variant ? <p className="mt-1 text-[13px] font-semibold text-stone-500">{buildVariantLabel(variant)}</p> : null}
+                              {product?.product_kind === "MOBILE" ? (
+                                <div className="mt-2 space-y-1 text-xs text-stone-500">
+                                  {line.imei_1 ? <p>IMEI 1: {line.imei_1}</p> : null}
+                                  {line.imei_2 ? <p>IMEI 2: {line.imei_2}</p> : null}
                                 </div>
+                              ) : line.identifier_value ? (
+                                <p className="mt-1 text-[13px] font-semibold text-stone-500">{line.identifier_value}</p>
+                              ) : null}
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-stone-100 text-stone-700 tabular-nums">Qty {quantity}</span>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-700 tabular-nums">Rate {money(unitPrice)}</span>
+                                {discountAmount > 0 ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 tabular-nums">
+                                    Discount {money(discountAmount)}
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
-                          </div>
-                          <div className="flex shrink-0 items-start gap-1">
-                            <div className="min-w-[92px] pt-1 text-right text-sm font-semibold text-stone-900">{money(lineTotal)}</div>
-                            <Button type="button" variant="ghost" className="h-9 px-2 text-stone-600" onClick={() => openEditProductDialog(line.id)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="h-9 px-2 text-rose-600 hover:bg-rose-50"
-                              onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="shrink-0 flex flex-col items-end justify-center">
+                              <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400 mb-1">Total</span>
+                              <span className="text-base font-black text-stone-900 tabular-nums">{money(lineTotal)}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              ) : scanLoadingCount === 0 ? (
-                <div className="rounded-[1.75rem] border border-dashed border-stone-300 bg-white/70 px-4 py-8 text-center">
-                  <p className="text-sm font-medium text-stone-700">No products added yet.</p>
-                  <p className="mt-1 text-xs text-stone-500">Scan a QR or add a product manually to build the bill.</p>
+              ) : (
+                <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between gap-3 border-b border-stone-200 bg-stone-100/50 px-4 py-2.5">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">Items</span>
+                  </div>
+                  <div className="space-y-4 bg-white px-4 py-5">
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-stone-900">No products added yet.</p>
+                      <p className="mt-1 text-xs font-medium text-stone-500">Tap Add Product to search and add items to the bill.</p>
+                    </div>
+                    <Button type="button" variant="secondary" onClick={openNewProductDialog} className="w-full rounded-2xl">
+                      <Plus className="h-4 w-4" />
+                      Add Product
+                    </Button>
+                  </div>
                 </div>
+              )}
+
+              {lines.length > 0 ? (
+                <Button type="button" variant="secondary" onClick={openNewProductDialog} className="w-full rounded-2xl">
+                  <Plus className="h-4 w-4" />
+                  Add Product
+                </Button>
               ) : null}
 
-              <Field label="Notes">
-                <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
-              </Field>
+              <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden shadow-sm">
+                <div className="flex items-center justify-between gap-3 border-b border-stone-200 bg-stone-100/50 px-4 py-2.5">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">Payment Method</span>
+                  {paymentDraft.methods.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={openPaymentModal}
+                      className="text-sm font-semibold text-teal-700 transition hover:text-teal-800"
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
+                <div className="bg-white px-4 py-4">
+                  {paymentDraft.methods.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-semibold text-stone-900">{buildPaymentSummary(paymentDraft)}</p>
+                      {paymentDraft.loan_provider ? <p className="text-xs font-medium text-stone-500">Provider: {paymentDraft.loan_provider}</p> : null}
+                      {paymentDraft.loan_number ? <p className="text-xs font-medium text-stone-500">Loan No: {paymentDraft.loan_number}</p> : null}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-stone-900">No payment method added yet.</p>
+                        <p className="mt-1 text-xs font-medium text-stone-500">Add how this bill is being paid before moving to preview.</p>
+                      </div>
+                      <Button type="button" variant="outline" onClick={openPaymentModal} className="w-full rounded-2xl">
+                        Add Payment Method
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </section>
           ) : null}
 
           {currentStep === "preview" ? (
             <section className="space-y-4 py-2">
               <StepTitle step={3} title="Preview" />
-              <div className="rounded-[1.75rem] border border-stone-200/80 bg-white p-4">
-                <div className="grid grid-cols-1 gap-4">
+              <PreviewCard title="Customer Details">
+                <div className="grid grid-cols-1 gap-3">
                   <PreviewField label="Customer" value={customer.name} />
                   <PreviewField label="Mobile" value={customer.mobile || "Not provided"} />
                   <PreviewField label="Address" value={customer.billing_address || "Not provided"} />
                   <PreviewField label="GST" value={customer.gst_number || "Not provided"} />
-                  <PreviewField label="Payment Method" value={paymentMethod.replace("_", " ")} />
                 </div>
-              </div>
-              <div className="rounded-[1.75rem] border border-stone-200/80 bg-white p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-400">Products</p>
-                <div className="mt-3 space-y-3">
+              </PreviewCard>
+
+              <PreviewCard title="Payment Method" actionLabel="Edit" onAction={openPaymentModal}>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold text-stone-900">{buildPaymentSummary(paymentDraft)}</p>
+                  {paymentDraft.loan_provider ? <p className="text-xs font-medium text-stone-500">Provider: {paymentDraft.loan_provider}</p> : null}
+                  {paymentDraft.loan_number ? <p className="text-xs font-medium text-stone-500">Loan No: {paymentDraft.loan_number}</p> : null}
+                </div>
+              </PreviewCard>
+
+              <PreviewCard title="Items">
+                <div className="space-y-3">
                   {preparedLines.map((line, index) => (
-                    <div key={`${line.product_id}-${index}`} className="flex items-start justify-between gap-4 border-b border-stone-100 pb-3 last:border-b-0 last:pb-0">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-stone-900">{line.product_name_snapshot}</div>
-                        {buildLineMeta([line.brand_name_snapshot, line.variant_name_snapshot, line.identifier_snapshot]) ? (
-                          <div className="mt-1 text-xs text-stone-500">
-                            {buildLineMeta([line.brand_name_snapshot, line.variant_name_snapshot, line.identifier_snapshot])}
+                    <div
+                      key={`${line.product_id}-${index}`}
+                      className={cn(
+                        "px-1 py-1",
+                        index < preparedLines.length - 1 ? "border-b border-stone-100 pb-4" : ""
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3 px-3 py-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white shadow-sm ring-2 ring-stone-900/10">
+                            {index + 1}
                           </div>
-                        ) : null}
-                        <div className="mt-1 text-xs text-stone-500">Qty {line.quantity} • Rate {money(line.unit_price)}</div>
+                        </div>
                       </div>
-                      <div className="text-sm font-semibold text-stone-900">{money(line.line_total)}</div>
+                      <div className="px-3 py-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-stone-900">{line.product_name_snapshot}</div>
+                            {line.variant_name_snapshot ? <div className="mt-1 text-xs font-medium text-stone-500">{line.variant_name_snapshot}</div> : null}
+                            {buildPreviewIdentifierLines(line.identifier_snapshot).length > 0 ? (
+                              <div className="mt-2 space-y-1">
+                                {buildPreviewIdentifierLines(line.identifier_snapshot).map((identifier) => (
+                                  <p key={identifier} className="text-xs font-medium text-stone-500">
+                                    {identifier}
+                                  </p>
+                                ))}
+                              </div>
+                            ) : null}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="inline-flex items-center rounded-md bg-stone-100 px-2.5 py-0.5 text-[11px] font-bold text-stone-700 tabular-nums">
+                                Qty {line.quantity}
+                              </span>
+                              <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 tabular-nums">
+                                Rate {money(line.unit_price)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end justify-center">
+                            <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">Total</span>
+                            <span className="text-base font-black text-stone-900">{money(line.line_total)}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-              <div className="rounded-[1.75rem] border border-stone-200/80 bg-white p-4">
-                <div className="flex items-center justify-between text-sm text-stone-700"><span>Subtotal</span><span>{money(totals.subtotal)}</span></div>
-                <div className="mt-2 flex items-center justify-between text-sm text-stone-700"><span>Discount</span><span>{money(totals.discount)}</span></div>
-                <div className="mt-3 flex items-center justify-between text-base font-semibold text-stone-950"><span>Total</span><span>{money(totals.total)}</span></div>
-              </div>
+              </PreviewCard>
+
+              <PreviewCard title="Totals">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm text-stone-700"><span>Subtotal</span><span>{money(totals.subtotal)}</span></div>
+                  <div className="flex items-center justify-between text-sm text-stone-700"><span>Discount</span><span>{money(totals.discount)}</span></div>
+                  <div className="flex items-center justify-between pt-1 text-base font-semibold text-stone-950"><span>Total</span><span>{money(totals.total)}</span></div>
+                </div>
+              </PreviewCard>
+
+              <PreviewCard title="Notes">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-stone-700">Notes</Label>
+                  <Textarea
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    className="min-h-[112px] rounded-none border-0 bg-transparent px-0 py-1 shadow-none focus-visible:ring-0"
+                    placeholder="Add bill notes"
+                  />
+                </div>
+              </PreviewCard>
             </section>
           ) : null}
 
@@ -1255,68 +1328,95 @@ export function AddBillModal({
         </div>
       </div>
 
-      {isQrScannerOpen ? (
-        <QrScanner
-          onClose={() => setIsQrScannerOpen(false)}
-          onScan={(result) => {
-            setIsQrScannerOpen(false);
-            setScanLoadingCount((current) => current + 1);
-            startTransition(async () => {
-              const resolved = await resolveBillingQrAction(result);
-              setScanLoadingCount((current) => Math.max(current - 1, 0));
-
-              if (resolved.status === "error" || !resolved.data) {
-                setClientError(resolved.message);
-                return;
-              }
-
-              if (
-                resolved.data.kind === "UNIT" &&
-                lines.some((line) => line.inventory_item_id && line.inventory_item_id === resolved.data?.inventory_item_id)
-              ) {
-                setClientError("This device is already added to the bill.");
-                return;
-              }
-
-              setClientError("");
-              applyResolvedQrLine(resolved.data);
-              setCurrentStep("products");
-            });
-          }}
-        />
-      ) : null}
-
-      {isProductDialogOpen && draftLine ? (
+      {isPaymentModalOpen ? (
         <div className="fixed inset-0 z-[60] bg-stone-950/50 px-4 py-6 backdrop-blur-sm">
-          <div className="mx-auto flex h-full max-w-[460px] flex-col overflow-hidden rounded-[2rem] bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.22)]">
+          <div className="mx-auto flex h-auto max-h-[88vh] w-full max-w-[500px] flex-col overflow-hidden rounded-[2rem] border border-stone-200 bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.22)]">
             <div className="flex items-center justify-between border-b border-stone-200/80 bg-[#fffdf9] px-5 py-4">
               <div>
-                <h3 className="text-base font-semibold text-stone-950">{editingLineId ? "Edit Product" : "Add Product"}</h3>
-                <p className="mt-1 text-xs text-stone-500">Choose the product once, then save it into the bill list.</p>
+                <h3 className="text-base font-semibold text-stone-950">Payment Method</h3>
+                <p className="mt-1 text-xs text-stone-500">Choose one or more methods for this bill.</p>
               </div>
-              <button type="button" onClick={closeProductDialog} className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900">
+              <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="overflow-y-auto px-5 py-5">
+              <div className="space-y-5">
+                <div className="rounded-[1.4rem] border border-stone-200 bg-white p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Methods</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {PAYMENT_METHOD_OPTIONS.map((option) => {
+                      const active = pendingPaymentDraft.methods.includes(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => togglePendingPaymentMethod(option.id)}
+                          className={cn(
+                            "rounded-full px-4 py-2 text-sm font-semibold transition",
+                            active ? "bg-stone-950 text-white" : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {pendingPaymentDraft.methods.includes("LOAN") ? (
+                  <LoanProviderPicker
+                    value={pendingPaymentDraft.loan_provider}
+                    loanNumber={pendingPaymentDraft.loan_number}
+                    onProviderChange={(value) => setPendingPaymentDraft((current) => ({ ...current, loan_provider: value }))}
+                    onLoanNumberChange={(value) => setPendingPaymentDraft((current) => ({ ...current, loan_number: value }))}
+                  />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-stone-200/80 bg-white px-5 py-4">
+              <Button type="button" variant="ghost" onClick={() => setIsPaymentModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={savePaymentDraft}>
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isProductDialogOpen && draftLine ? (
+        <div className="fixed inset-0 z-[60] bg-stone-950/50 px-4 py-6 backdrop-blur-sm">
+          <div className="mx-auto flex h-[92vh] max-h-[850px] w-full max-w-[500px] flex-col overflow-hidden rounded-[2.2rem] bg-stone-100 shadow-[0_30px_80px_rgba(15,23,42,0.22)] border border-stone-200">
+            <div className="flex items-center justify-between bg-stone-100/80 px-6 py-5 backdrop-blur-md z-10">
+              <div>
+                <h3 className="text-[17px] font-black tracking-tight text-stone-900">{editingLineId ? "Edit Item Setup" : "Add Bill Item"}</h3>
+                <p className="mt-1 text-[13px] font-semibold text-stone-500">Select specifications before adding to cart.</p>
+              </div>
+              <button type="button" onClick={closeProductDialog} className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-200/60 text-stone-500 transition-colors duration-200 hover:bg-stone-300 hover:text-stone-900">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-2">
               <LineEditor
                 key={draftLine.id}
-                index={editingLineId ? Math.max(lines.findIndex((item) => item.id === editingLineId), 0) : lines.length}
                 line={draftLine}
                 products={products}
-                mode="dialog"
                 onChange={(next) => setDraftLine((current) => (current ? { ...current, ...next } : current))}
-                onRemove={closeProductDialog}
               />
             </div>
 
-            <div className="flex items-center justify-between border-t border-stone-200/80 bg-[#fffdf9] px-4 py-4">
-              <Button type="button" variant="ghost" onClick={closeProductDialog}>
+            <div className="flex items-center justify-between border-t border-stone-200/80 bg-white px-5 py-4 shrink-0 transition-opacity">
+              {clientError ? <p className="mr-3 flex-1 text-sm font-medium text-rose-600">{clientError}</p> : <div className="flex-1" />}
+              <Button type="button" variant="ghost" onClick={closeProductDialog} className="font-bold text-stone-500 hover:text-stone-800">
                 Cancel
               </Button>
-              <Button type="button" onClick={saveDraftLine}>
-                {editingLineId ? "Update Product" : "Add To Bill"}
+              <Button type="button" onClick={saveDraftLine} className="px-6 rounded-xl font-bold bg-stone-900 hover:bg-stone-800 transition-all shadow-sm">
+                {editingLineId ? "Update Requirements" : "Add to Cart"}
               </Button>
             </div>
           </div>
@@ -1331,6 +1431,32 @@ function StepTitle({ step, title }: { step: number; title: string }) {
     <div className="flex items-center gap-2">
       <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Step {step}</span>
       <span className="text-sm font-semibold text-stone-900">{title}</span>
+    </div>
+  );
+}
+
+function PreviewCard({
+  title,
+  children,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  children: React.ReactNode;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[1.3rem] border border-stone-200 bg-stone-50 shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-stone-200 bg-stone-100/50 px-4 py-2.5">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">{title}</span>
+        {actionLabel && onAction ? (
+          <button type="button" onClick={onAction} className="text-sm font-semibold text-teal-700 transition hover:text-teal-800">
+            {actionLabel}
+          </button>
+        ) : null}
+      </div>
+      <div className="bg-white px-4 py-4">{children}</div>
     </div>
   );
 }
@@ -1350,6 +1476,105 @@ function Field({
         {label} {required ? <span className="text-rose-500">*</span> : null}
       </Label>
       {children}
+    </div>
+  );
+}
+
+function QuantityStepper({
+  value,
+  disabled,
+  onDecrease,
+  onIncrease,
+}: {
+  value: string;
+  disabled?: boolean;
+  onDecrease: () => void;
+  onIncrease: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-2">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onDecrease}
+        className={cn(
+          "flex h-11 w-11 items-center justify-center rounded-xl transition",
+          disabled ? "bg-stone-100 text-stone-300" : "bg-white text-stone-900 hover:bg-stone-100"
+        )}
+      >
+        -
+      </button>
+      <div className="flex-1 text-center text-lg font-semibold text-stone-900">{value}</div>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onIncrease}
+        className={cn(
+          "flex h-11 w-11 items-center justify-center rounded-xl transition",
+          disabled ? "bg-stone-100 text-stone-300" : "bg-white text-stone-900 hover:bg-stone-100"
+        )}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function LoanProviderPicker({
+  value,
+  loanNumber,
+  onProviderChange,
+  onLoanNumberChange,
+}: {
+  value: string;
+  loanNumber: string;
+  onProviderChange: (value: string) => void;
+  onLoanNumberChange: (value: string) => void;
+}) {
+  const [query, setQuery] = useState(value);
+  const filteredProviders = useMemo(
+    () =>
+      LOAN_PROVIDER_OPTIONS.filter((provider) =>
+        provider.toLowerCase().includes(query.trim().toLowerCase())
+      ),
+    [query]
+  );
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  return (
+    <div className="rounded-[1.4rem] border border-stone-200 bg-white p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Loan Details</p>
+      <div className="mt-4 space-y-4">
+        <div className="space-y-3">
+          <Label className="text-sm font-medium text-stone-700">Loan Provider</Label>
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search loan provider" />
+          <div className="max-h-48 overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50 p-2">
+            {filteredProviders.map((provider) => (
+              <button
+                key={provider}
+                type="button"
+                onClick={() => {
+                  setQuery(provider);
+                  onProviderChange(provider);
+                }}
+                className={cn(
+                  "w-full rounded-xl px-3 py-2 text-left text-sm transition",
+                  value === provider ? "bg-stone-900 text-white" : "text-stone-700 hover:bg-white"
+                )}
+              >
+                {provider}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Field label="Loan Number" required>
+          <Input value={loanNumber} onChange={(event) => onLoanNumberChange(event.target.value)} placeholder="Enter loan number" />
+        </Field>
+      </div>
     </div>
   );
 }

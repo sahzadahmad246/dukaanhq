@@ -13,7 +13,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
-import { Product } from "@/lib/types/inventory";
+import { Brand, Category, Product } from "@/lib/types/inventory";
 import { matchesSearch, slugifySegment } from "../inventory-utils";
 import { ProductActionsMenu } from "./product-actions-menu";
 
@@ -21,22 +21,20 @@ type InventoryProduct = Product & {
   total_quantity: number;
   brand?: { name?: string | null } | null;
   category?: { name?: string | null } | null;
+  variants?: Array<{
+    id: string;
+    quantity: number | null;
+    name: string | null;
+    color: string | null;
+    storage_label: string | null;
+    purchase_price_override: number | null;
+    selling_price_override: number | null;
+  }> | null;
   has_damaged_activity?: boolean;
   has_return_activity?: boolean;
   damaged_count?: number;
   returned_count?: number;
 };
-
-type ProductTab = "ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED" | "DAMAGED" | "RETURNED";
-
-const tabs: Array<{ id: ProductTab; label: string }> = [
-  { id: "ALL", label: "All" },
-  { id: "MOBILE", label: "Mobile" },
-  { id: "SERIALIZED", label: "Serialized" },
-  { id: "QUANTITY_BASED", label: "Qty Based" },
-  { id: "DAMAGED", label: "Damaged" },
-  { id: "RETURNED", label: "Returned" },
-];
 
 type SharedCardProps = {
   deletingProductId?: string | null;
@@ -45,11 +43,15 @@ type SharedCardProps = {
   onProductEdit?: (id: string) => void;
   onProductDelete?: (id: string) => void;
   onAddStock?: (id: string) => void;
+  onRecordSale?: (id: string) => void;
+  onAdjustStock?: (id: string) => void;
   stockThreshold?: number;
 };
 
 export function ProductList({
   products,
+  categories,
+  brands,
   activeTab,
   searchQuery,
   onActiveTabChange,
@@ -58,21 +60,38 @@ export function ProductList({
   onProductEdit,
   onProductDelete,
   onAddStock,
+  onRecordSale,
+  onAdjustStock,
   deletingProductId,
   stockThreshold = 5,
 }: {
   products: InventoryProduct[];
-  activeTab: ProductTab;
+  categories: Category[];
+  brands: Brand[];
+  activeTab: string;
   searchQuery: string;
-  onActiveTabChange: (value: ProductTab) => void;
-} & SharedCardProps & {
-  onActiveTabChange: (value: ProductTab) => void;
-}) {
+  onActiveTabChange: (value: string) => void;
+} & SharedCardProps) {
+  
+  const tabs = useMemo(() => {
+    return [
+      { id: "ALL", label: "All Products" },
+      ...categories.map(c => ({ id: `CATEGORY_${c.id}`, label: c.name })),
+      ...brands.map(b => ({ id: `BRAND_${b.id}`, label: b.name })),
+    ];
+  }, [categories, brands]);
+
   const tabFilteredProducts = useMemo(() => {
     if (activeTab === "ALL") return products;
-    if (activeTab === "DAMAGED") return products.filter((p) => p.has_damaged_activity);
-    if (activeTab === "RETURNED") return products.filter((p) => p.has_return_activity);
-    return products.filter((p) => p.product_kind === activeTab);
+    if (activeTab.startsWith("CATEGORY_")) {
+      const catId = activeTab.replace("CATEGORY_", "");
+      return products.filter(p => p.category_id === catId);
+    }
+    if (activeTab.startsWith("BRAND_")) {
+      const brandId = activeTab.replace("BRAND_", "");
+      return products.filter(p => p.brand_id === brandId);
+    }
+    return products;
   }, [activeTab, products]);
 
   const searchResults = useMemo(() => {
@@ -85,26 +104,12 @@ export function ProductList({
     );
   }, [searchQuery, tabFilteredProducts]);
 
-  const profileSections = useMemo(() => {
-    if (activeTab !== "ALL") return [];
-    return [
-      { key: "profile-mobile", title: "Mobile Phones", products: products.filter((p) => p.product_kind === "MOBILE") },
-      { key: "profile-serialized", title: "Serialized Products", products: products.filter((p) => p.product_kind === "SERIALIZED") },
-      { key: "profile-qty", title: "Qty Based Products", products: products.filter((p) => p.product_kind === "QUANTITY_BASED") },
-    ].filter((s) => s.products.length > 0);
-  }, [activeTab, products]);
-
-  const brandSections = useMemo(
-    () => buildSections({ products: tabFilteredProducts, sectionPrefix: "brand", getKey: (p) => p.brand?.name?.trim() || "Unbranded", getTitle: (v) => v }),
-    [tabFilteredProducts]
-  );
-
   const categorySections = useMemo(
     () => buildSections({ products: tabFilteredProducts, sectionPrefix: "category", getKey: (p) => p.category?.name?.trim() || "Uncategorized", getTitle: (v) => v }),
     [tabFilteredProducts]
   );
 
-  const sharedProps: SharedCardProps = { deletingProductId, onProductClick, onProductHover, onProductEdit, onProductDelete, onAddStock, stockThreshold };
+  const sharedProps: SharedCardProps = { deletingProductId, onProductClick, onProductHover, onProductEdit, onProductDelete, onAddStock, onRecordSale, onAdjustStock, stockThreshold };
 
   if (products.length === 0) {
     return (
@@ -119,7 +124,7 @@ export function ProductList({
     <div className="min-w-0 space-y-5">
       {/* Tab Bar */}
       <div className="scrollbar-hidden -mx-1 overflow-x-auto px-1">
-        <div className="flex min-w-max gap-1.5">
+        <div className="flex min-w-max gap-1.5 pb-2">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -152,23 +157,16 @@ export function ProductList({
         </section>
       ) : (
         <div className="space-y-6">
-          {profileSections.map((section) => (
-            <CatalogSection key={section.key} title={section.title} groupHref={`/inventory/view/profile/${slugifySegment(section.title)}`} products={section.products} {...sharedProps} />
+          {categorySections.map((section) => (
+            <section key={section.key} className="space-y-2">
+              <h4 className="text-[11px] font-bold uppercase tracking-widest text-stone-400 px-1">{section.title}</h4>
+              <div className="overflow-visible rounded-2xl border border-stone-100 bg-white shadow-sm">
+                {section.products.map((product, index) => (
+                  <ProductCard key={product.id} product={product} isLast={index === section.products.length - 1} {...sharedProps} />
+                ))}
+              </div>
+            </section>
           ))}
-          {brandSections.length > 0 && (
-            <div className="space-y-4">
-              {brandSections.map((section) => (
-                <CatalogSection key={section.key} title={section.title} groupHref={`/inventory/view/brand/${slugifySegment(section.title)}`} products={section.products} {...sharedProps} />
-              ))}
-            </div>
-          )}
-          {categorySections.length > 0 && (
-            <div className="space-y-4">
-              {categorySections.map((section) => (
-                <CatalogSection key={section.key} title={section.title} groupHref={`/inventory/view/category/${slugifySegment(section.title)}`} products={section.products} {...sharedProps} />
-              ))}
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -202,34 +200,6 @@ function buildSections({
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
-function CatalogSection({
-  title,
-  groupHref,
-  products,
-  ...sharedProps
-}: {
-  title: string;
-  groupHref: string;
-  products: InventoryProduct[];
-} & SharedCardProps) {
-  const previewProducts = products.slice(0, 6);
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between px-1">
-        <h4 className="text-[11px] font-bold uppercase tracking-widest text-stone-400">{title}</h4>
-        <Link href={groupHref} className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-stone-400 transition hover:text-stone-700">
-          View All <ChevronRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
-      <div className="overflow-visible rounded-2xl border border-stone-100 bg-white shadow-sm">
-        {previewProducts.map((product, index) => (
-          <ProductCard key={product.id} product={product} isLast={index === previewProducts.length - 1} {...sharedProps} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function ProductCard({
   product,
   isLast = false,
@@ -239,6 +209,8 @@ function ProductCard({
   onProductEdit,
   onProductDelete,
   onAddStock,
+  onRecordSale,
+  onAdjustStock,
   stockThreshold = 5,
 }: {
   product: InventoryProduct;
@@ -246,20 +218,17 @@ function ProductCard({
 } & SharedCardProps) {
   const isOutOfStock = product.total_quantity === 0;
   const isLowStock = !isOutOfStock && product.total_quantity <= stockThreshold;
-  const damagedCount = product.damaged_count ?? 0;
-  const returnedCount = product.returned_count ?? 0;
-  const showUnavailableDamaged = isOutOfStock && damagedCount > 0;
-  const showUnavailableReturned = isOutOfStock && returnedCount > 0;
-
-  const marginPct =
-    product.base_purchase_price > 0
-      ? Math.round(((product.base_selling_price - product.base_purchase_price) / product.base_purchase_price) * 100)
-      : 0;
+  
+  const variantsWithPrice = product.variants?.filter((v) => v.selling_price_override !== null && v.selling_price_override !== undefined) || [];
+  const minPrice = variantsWithPrice.length > 0
+    ? Math.min(...variantsWithPrice.map((v) => Number(v.selling_price_override)))
+    : Number(product.base_selling_price ?? 0);
+  
+  const displayPriceLabel = variantsWithPrice.length > 0 ? "Starting from" : "Price";
 
   return (
     <div
-      className={`group relative ${!isLast ? "border-b border-stone-100" : ""} ${isOutOfStock ? "bg-stone-50" : "bg-white"
-        }`}
+      className={`group relative ${!isLast ? "border-b border-stone-100" : ""} bg-white`}
     >
       {/* Left accent bar */}
       <div
@@ -280,7 +249,7 @@ function ProductCard({
         className={`flex items-start gap-3 px-4 py-3.5 ${isOutOfStock ? "cursor-default" : "cursor-pointer hover:bg-stone-50/70"
           } transition-colors duration-150`}
       >
-        {/* Info block — faded when OOS */}
+        {/* Info block */}
         <div className={`min-w-0 flex-1 transition-opacity duration-200 ${isOutOfStock ? "opacity-35" : ""}`}>
           {/* Brand / Category */}
           <p className="mb-0.5 truncate text-[10px] font-bold uppercase tracking-widest text-stone-400">
@@ -310,56 +279,15 @@ function ProductCard({
               {product.total_quantity} in stock
             </span>
 
-            {damagedCount > 0 || returnedCount > 0 ? (
-              <span className="text-[11px] font-medium text-stone-400">
-                {[
-                  damagedCount > 0 ? `${damagedCount} damaged` : null,
-                  returnedCount > 0 ? `${returnedCount} returned` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" • ")}
-              </span>
-            ) : null}
-
             <span className="text-stone-200 select-none">·</span>
 
-            {/* Cost */}
+            {/* Price */}
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300">Cost</span>
-              <span className="text-xs font-semibold tabular-nums text-stone-500">
-                ₹{product.base_purchase_price.toLocaleString("en-IN")}
-              </span>
-            </div>
-
-            {/* MRP */}
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300">MRP</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300">{displayPriceLabel}</span>
               <span className="text-xs font-bold tabular-nums text-stone-700">
-                ₹{product.base_selling_price.toLocaleString("en-IN")}
+                ₹{minPrice.toLocaleString("en-IN")}
               </span>
             </div>
-
-            {/* Margin */}
-            {marginPct > 0 && !isOutOfStock && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-                <TrendingUp className="h-2.5 w-2.5" />
-                {marginPct}%
-              </span>
-            )}
-
-            {showUnavailableDamaged ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">
-                <ShieldAlert className="h-2.5 w-2.5" />
-                Damaged
-              </span>
-            ) : null}
-
-            {showUnavailableReturned ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
-                <RotateCcw className="h-2.5 w-2.5" />
-                Returned
-              </span>
-            ) : null}
           </div>
         </div>
 
@@ -375,6 +303,8 @@ function ProductCard({
                 compact
                 onEdit={() => onProductEdit?.(product.id)}
                 onDelete={() => onProductDelete?.(product.id)}
+                onRecordSale={() => onRecordSale?.(product.id)}
+                onAdjustStock={() => onAdjustStock?.(product.id)}
               />
             </div>
           )}

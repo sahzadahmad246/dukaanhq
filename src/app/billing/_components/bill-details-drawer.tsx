@@ -19,6 +19,17 @@ function buildLineMeta(parts: Array<string | null | undefined>) {
   return filtered.length > 0 ? filtered.join(" • ") : null;
 }
 
+function buildPaymentMeta(invoice: InvoiceDetails) {
+  const methods = invoice.payment_details?.methods?.filter(Boolean) ?? [];
+  const methodText = methods.length > 0 ? methods.join(", ") : invoice.payment_method ?? "CASH";
+  const extra = [
+    invoice.payment_details?.loan_provider ? `Provider: ${invoice.payment_details.loan_provider}` : null,
+    invoice.payment_details?.loan_number ? `Loan No: ${invoice.payment_details.loan_number}` : null,
+  ].filter(Boolean);
+
+  return { methodText, extra };
+}
+
 export function BillDetailsDrawer({
   invoice,
   open,
@@ -70,6 +81,10 @@ export function BillDetailsDrawer({
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {!invoice ? null : (
             <div className="space-y-5">
+              {(() => {
+                const paymentMeta = buildPaymentMeta(invoice);
+
+                return (
               <section className="rounded-[1.6rem] border border-stone-200 bg-gradient-to-br from-white via-[#fff9ef] to-[#f6efe4] p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -78,7 +93,7 @@ export function BillDetailsDrawer({
                     <div className="mt-2 text-sm text-stone-600">{format(new Date(invoice.invoice_date), "dd MMM yyyy, h:mm a")}</div>
                   </div>
                   <div className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-stone-700 shadow-sm">
-                    {invoice.payment_method ?? "CASH"}
+                    {paymentMeta.methodText}
                   </div>
                 </div>
 
@@ -101,6 +116,22 @@ export function BillDetailsDrawer({
                     <div className="mt-2 whitespace-pre-line">{invoice.billing_address}</div>
                   </div>
                 ) : null}
+              </section>
+                );
+              })()}
+
+              <section className="rounded-[1.6rem] border border-stone-200 bg-white p-4">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-stone-500">Payment Details</div>
+                <div className="mt-3 rounded-2xl bg-stone-50 p-3">
+                  <div className="text-sm font-semibold text-stone-950">{buildPaymentMeta(invoice).methodText}</div>
+                  {buildPaymentMeta(invoice).extra.length > 0 ? (
+                    <div className="mt-2 space-y-1 text-xs text-stone-600">
+                      {buildPaymentMeta(invoice).extra.map((entry) => (
+                        <div key={entry}>{entry}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </section>
 
               <section className="rounded-[1.6rem] border border-stone-200 bg-white p-4">

@@ -45,7 +45,7 @@ export function InventoryManager({
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [isQrExportOpen, setIsQrExportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"ALL" | "MOBILE" | "SERIALIZED" | "QUANTITY_BASED" | "DAMAGED" | "RETURNED">("ALL");
+  const [activeTab, setActiveTab] = useState<string>("ALL");
   const [showHeader, setShowHeader] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -147,6 +147,8 @@ export function InventoryManager({
 
       <ProductList
         products={products}
+        categories={categories}
+        brands={brands}
         activeTab={activeTab}
         searchQuery={searchQuery}
         onActiveTabChange={setActiveTab}
@@ -155,6 +157,8 @@ export function InventoryManager({
         onProductEdit={handleProductEdit}
         onProductDelete={handleDelete}
         onAddStock={handleAddStock}
+        onRecordSale={handleRecordSale}
+        onAdjustStock={handleAdjustStock}
         deletingProductId={isDeleting ? deletingProductId : null}
       />
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronUp,
   ChevronLeft,
@@ -23,6 +24,7 @@ import { AddBillModal } from "./add-bill-modal";
 import { BillDetailsDrawer } from "./bill-details-drawer";
 import { printInvoice, type PrintableInvoice } from "./invoice-print";
 import type { BillingInvoiceSummary } from "../load-billing-data";
+import { productDetailsQueryKey } from "@/app/inventory/queries";
 
 type ProductSummary = Product & {
   total_quantity: number;
@@ -63,6 +65,7 @@ export function BillingManager({
   shopLogoUrl?: string | null;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
@@ -488,7 +491,7 @@ export function BillingManager({
           onClose={() => setIsAddBillOpen(false)}
           products={liveProducts}
           shopLogoUrl={shopLogoUrl}
-          onInvoiceCreated={(items) => {
+          onInvoiceCreated={async (items) => {
             setLiveProducts((current) =>
               current.map((product) => {
                 const lineItems = items.filter((item) => item.product_id === product.id);
@@ -513,6 +516,11 @@ export function BillingManager({
                   variants: nextVariants ?? product.variants,
                 };
               })
+            );
+            await Promise.all(
+              Array.from(new Set(items.map((item) => item.product_id))).map((productId) =>
+                queryClient.invalidateQueries({ queryKey: productDetailsQueryKey(productId) })
+              )
             );
             router.refresh();
           }}
