@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Printer, Receipt, X } from "lucide-react";
+import { Download, PhoneCall, Printer, Receipt, X } from "lucide-react";
 
 import type { PrintableInvoice } from "./invoice-print";
 
@@ -35,11 +35,13 @@ export function BillDetailsDrawer({
   open,
   onClose,
   onReprint,
+  onDownload,
 }: {
   invoice: InvoiceDetails | null;
   open: boolean;
   onClose: () => void;
   onReprint: (invoice: PrintableInvoice) => void;
+  onDownload: (invoice: PrintableInvoice) => void;
 }) {
   return (
     <>
@@ -58,14 +60,36 @@ export function BillDetailsDrawer({
           </div>
           <div className="flex items-center gap-2">
             {invoice ? (
-              <button
-                type="button"
-                onClick={() => onReprint(invoice)}
-                className="flex h-10 items-center gap-2 rounded-full bg-stone-950 px-4 text-sm font-medium text-white"
-              >
-                <Printer className="h-4 w-4" />
-                Reprint
-              </button>
+              <>
+                {invoice.customer_mobile ? (
+                  <a
+                    href={`tel:${invoice.customer_mobile}`}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
+                    aria-label="Call customer"
+                    title="Call customer"
+                  >
+                    <PhoneCall className="h-4 w-4" />
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => onReprint(invoice)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
+                  aria-label="Print bill"
+                  title="Print bill"
+                >
+                  <Printer className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDownload(invoice)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
+                  aria-label="Download bill"
+                  title="Download bill"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+              </>
             ) : null}
             <button
               type="button"

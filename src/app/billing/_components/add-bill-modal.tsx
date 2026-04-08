@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -12,9 +12,9 @@ import { buildVariantLabel } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
 import { createInvoiceAction } from "../actions";
-import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "@/app/inventory/queries";
+import { fetchProductDetails, productDetailsQueryKey, productDetailsQueryOptions, type ProductDetails } from "@/app/inventory/queries";
 import type { ActionResponse } from "@/app/inventory/actions";
-import { printInvoice } from "./invoice-print";
+import { downloadInvoicePdf } from "./invoice-print";
 import { BarcodeScanner } from "@/app/inventory/_components/barcode-scanner";
 
 type StepId = "customer" | "products" | "preview";
@@ -105,6 +105,12 @@ function money(value: number) {
   return `Rs ${Number(value || 0).toFixed(2)}`;
 }
 
+function getStepHint(currentStep: StepId, itemCount: number) {
+  if (currentStep === "customer") return "Fill customer details to continue.";
+  if (currentStep === "products") return itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"} ready. Review products and payment before preview.` : "Add products and payment details to continue.";
+  return "Preview the bill carefully before saving and downloading.";
+}
+
 function Stepper({
   steps,
   currentStep,
@@ -115,27 +121,38 @@ function Stepper({
   onStepChange: (step: StepId) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex items-start justify-between">
       {steps.map((step, index) => {
         const active = step === currentStep;
         const complete = index < steps.indexOf(currentStep);
+        const isLast = index === steps.length - 1;
         return (
-          <button
-            key={step}
-            type="button"
-            onClick={() => onStepChange(step)}
-            className="flex flex-1 flex-col items-center gap-2"
-          >
-            <div
-              className={cn(
-                "flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold transition",
-                active ? "bg-stone-950 text-white" : complete ? "bg-stone-200 text-stone-950" : "bg-stone-100 text-stone-500"
-              )}
+          <div key={step} className="flex flex-1 items-start">
+            <button
+              type="button"
+              onClick={() => onStepChange(step)}
+              className="flex min-w-0 flex-col items-center gap-1.5 text-center"
             >
-              {complete ? <Check className="h-4 w-4" /> : index + 1}
-            </div>
-            <span className="text-[11px] font-medium capitalize text-stone-700">{step}</span>
-          </button>
+              <div
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition",
+                  active
+                    ? "bg-emerald-600 text-white"
+                    : complete
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-stone-100 text-stone-500"
+                )}
+              >
+                {complete ? <Check className="h-4 w-4" /> : index + 1}
+              </div>
+              <span className={cn("text-[10px] font-medium capitalize", active || complete ? "text-emerald-700" : "text-stone-500")}>{step}</span>
+            </button>
+            {!isLast ? (
+              <div className="mx-2 mt-4 h-px flex-1 bg-stone-200">
+                <div className={cn("h-px transition-all", complete ? "w-full bg-emerald-300" : "w-0 bg-transparent")} />
+              </div>
+            ) : null}
+          </div>
         );
       })}
     </div>
@@ -306,6 +323,7 @@ function ProductPicker({
   selectedProductId: string;
   onSelect: (productId: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
@@ -346,6 +364,12 @@ function ProductPicker({
     return ranked.slice(0, 8).map((entry) => entry.product);
   }, [normalizedQuery, products]);
 
+  useEffect(() => {
+    for (const product of filteredProducts.slice(0, 6)) {
+      void queryClient.prefetchQuery(productDetailsQueryOptions(product.id));
+    }
+  }, [filteredProducts, queryClient]);
+
   return (
     <div className="relative">
       <div className="sticky top-0 z-10 pb-3">
@@ -373,6 +397,9 @@ function ProductPicker({
                     type="button"
                     disabled={Boolean(blockReason)}
                     onClick={() => onSelect(product.id)}
+                    onMouseEnter={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
+                    onFocus={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
+                    onTouchStart={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
                     className={cn(
                       "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200",
                       active ? "bg-white text-stone-900 shadow-sm border border-stone-200" : "hover:bg-white/60",
@@ -458,7 +485,7 @@ function LineEditor({
   }, [productDetails, variants]);
 
   const preferredVariant = useMemo(() => {
-    return variants.find((variant) => (variantStockMap.get(variant.id) ?? 0) > 0) ?? variants[0] ?? null;
+    return variants.find((variant) => (variantStockMap.get(variant.id) ?? 0) > 0) ?? null;
   }, [variantStockMap, variants]);
 
   const selectedVariant = variants.find((variant) => variant.id === line.variant_id) ?? preferredVariant;
@@ -487,7 +514,11 @@ function LineEditor({
     if (!selectedProduct || !productDetails) return;
     if (selectedProductBlockReason) return;
 
-    if (variants.length > 0 && (!line.variant_id || !variants.some((variant) => variant.id === line.variant_id))) {
+    const selectedVariantHasStock = line.variant_id
+      ? (variantStockMap.get(line.variant_id) ?? 0) > 0
+      : false;
+
+    if (variants.length > 0 && (!line.variant_id || !variants.some((variant) => variant.id === line.variant_id) || !selectedVariantHasStock)) {
       onChange({
         variant_id: preferredVariant?.id ?? "",
         inventory_item_id: "",
@@ -496,7 +527,7 @@ function LineEditor({
         imei_2: "",
       });
     }
-  }, [line.variant_id, onChange, preferredVariant?.id, productDetails, selectedProduct, selectedProductBlockReason, variants]);
+  }, [line.variant_id, onChange, preferredVariant?.id, productDetails, selectedProduct, selectedProductBlockReason, variantStockMap, variants]);
 
   useEffect(() => {
     if (!selectedProduct) return;
@@ -601,32 +632,44 @@ function LineEditor({
                 {variants.map((variant) => {
                   const stock = variantStockMap.get(variant.id) ?? 0;
                   const isActive = line.variant_id === variant.id;
+                  const isDisabled = stock <= 0;
                   const priceOverride = variant.selling_price_override ?? selectedProduct.base_selling_price;
                   return (
                     <button
                       key={variant.id}
                       type="button"
-                      onClick={() => onChange({ variant_id: variant.id, inventory_item_id: "", identifier_value: "" })}
-                      className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors duration-200 hover:bg-stone-50 ${isActive ? "bg-[#faf9f7]" : "bg-white"}`}
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (isDisabled) return;
+                        onChange({ variant_id: variant.id, inventory_item_id: "", identifier_value: "" });
+                      }}
+                      className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors duration-200 ${
+                        isDisabled ? "cursor-not-allowed bg-stone-50/70 opacity-55" : "hover:bg-stone-50"
+                      } ${isActive ? "bg-[#faf9f7]" : "bg-white"}`}
                     >
                       <div className="flex items-center gap-3 w-full">
-                        <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isActive ? "border-stone-900 bg-stone-900" : "border-stone-300"}`}>
+                        <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isActive ? "border-stone-900 bg-stone-900" : "border-stone-300"} ${isDisabled ? "border-stone-200 bg-stone-100" : ""}`}>
                           {isActive && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
                         </div>
-                        <span className={`text-[13px] font-bold leading-none ${isActive ? "text-stone-900" : "text-stone-700"}`}>
+                        <span className={`text-[13px] font-bold leading-none ${isDisabled ? "text-stone-400" : isActive ? "text-stone-900" : "text-stone-700"}`}>
                           {[variant.color, variant.storage_label, variant.name].filter(Boolean).join(" - ") || "Default Option"}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                         <span className={`text-[13px] font-bold ${isActive ? "text-stone-900" : "text-stone-500"}`}>{money(Number(priceOverride))}</span>
+                         <span className={`text-[13px] font-bold ${isDisabled ? "text-stone-400" : isActive ? "text-stone-900" : "text-stone-500"}`}>{money(Number(priceOverride))}</span>
                          <span className={`text-[11px] font-bold uppercase tracking-wider ${stock > 0 ? (isActive ? "text-emerald-600" : "text-emerald-600/70") : "text-rose-500"}`}>
-                           ({stock})
+                           {stock > 0 ? `(${stock})` : "(Out)"}
                          </span>
                       </div>
                     </button>
                   );
                 })}
               </div>
+            </div>
+          ) : null}
+          {variants.length > 0 && !preferredVariant ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm">
+              All variants are out of stock for this product.
             </div>
           ) : null}
 
@@ -955,6 +998,10 @@ export function AddBillModal({
         setClientError("Mobile number is required.");
         return false;
       }
+      if (!/^\d{10}$/.test(customer.mobile.trim())) {
+        setClientError("Mobile number must be exactly 10 digits.");
+        return false;
+      }
       if (!customer.billing_address.trim()) {
         setClientError("Billing address is required.");
         return false;
@@ -1029,7 +1076,7 @@ export function AddBillModal({
       const result = await createInvoiceAction({ status: "success", message: "" }, formData);
       setState(result);
       if (result.status === "success" && result.data) {
-        printInvoice({ ...(result.data as Parameters<typeof printInvoice>[0]), shop_logo_url: shopLogoUrl ?? null });
+        await downloadInvoicePdf({ ...(result.data as Parameters<typeof downloadInvoicePdf>[0]), shop_logo_url: shopLogoUrl ?? null });
         onInvoiceCreated?.(
           preparedLines.map((line) => ({
             product_id: line.product_id,
@@ -1044,12 +1091,18 @@ export function AddBillModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-stone-950/55 backdrop-blur-sm">
-      <div className="fixed inset-x-0 bottom-0 top-8 mx-auto flex max-w-[450px] flex-col overflow-hidden rounded-t-[2rem] bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.18)] sm:bottom-6 sm:top-6 sm:rounded-[2rem]">
-        <div className="flex items-center justify-between border-b border-stone-200/80 bg-[#fffdf9] px-5 py-4 sm:px-6">
-          <h2 className="text-lg font-semibold text-stone-950">Create Bill</h2>
-          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900">
-            <X className="h-4 w-4" />
+      <div className="fixed inset-x-0 bottom-0 top-0 mx-auto flex h-dvh max-w-[450px] flex-col overflow-hidden bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+        <div className="grid grid-cols-[40px_1fr_40px] items-center border-b border-stone-200/80 bg-[#fffdf9] px-4 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Back"
+            className="flex h-10 w-10 items-center justify-center text-stone-600 transition hover:text-stone-900"
+          >
+            <ChevronLeft className="h-5 w-5" />
           </button>
+          <h2 className="text-center text-lg font-semibold text-stone-950">Create Bill</h2>
+          <div aria-hidden="true" className="h-10 w-10" />
         </div>
 
         <div className="sticky top-0 z-10 border-b border-stone-200/80 bg-[#fffdf9] px-4 py-3 sm:px-6">
@@ -1064,7 +1117,15 @@ export function AddBillModal({
                 <Input value={customer.name} onChange={(event) => setCustomer((current) => ({ ...current, name: event.target.value }))} />
               </Field>
               <Field label="Mobile Number" required>
-                <Input value={customer.mobile} onChange={(event) => setCustomer((current) => ({ ...current, mobile: event.target.value }))} />
+                <Input
+                  value={customer.mobile}
+                  inputMode="numeric"
+                  maxLength={10}
+                  onChange={(event) => {
+                    const digitsOnly = event.target.value.replace(/\D/g, "").slice(0, 10);
+                    setCustomer((current) => ({ ...current, mobile: digitsOnly }));
+                  }}
+                />
               </Field>
               <Field label="Bill To Address" required>
                 <Textarea value={customer.billing_address} onChange={(event) => setCustomer((current) => ({ ...current, billing_address: event.target.value }))} />
@@ -1285,11 +1346,15 @@ export function AddBillModal({
           {state.status === "error" && state.message ? <p className="mt-3 text-sm text-rose-600">{state.message}</p> : null}
         </div>
 
-        <div className="flex items-center justify-between border-t border-stone-200/80 bg-[#fffdf9] px-4 py-4 sm:px-6">
-          <div className="text-sm text-stone-500">
-            {currentStep !== "customer" ? <span>{preparedLines.length} items ready</span> : <span>Fill customer details to continue</span>}
+        <div className="border-t border-stone-200/80 bg-[#fffdf9]">
+          <div className="border-b border-emerald-200/80 bg-emerald-50 px-4 py-2 sm:px-6">
+            <div className="flex items-start gap-2">
+              <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700" />
+              <p className="text-[12px] font-medium leading-5 text-emerald-900">{getStepHint(currentStep, preparedLines.length)}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center justify-between px-4 py-4 sm:px-6">
             <Button type="button" variant="ghost" onClick={stepIndex <= 0 ? onClose : () => moveStep(-1)} disabled={isPending}>
               <ChevronLeft className="h-4 w-4" />
               {stepIndex <= 0 ? "Close" : "Back"}
@@ -1297,7 +1362,7 @@ export function AddBillModal({
             {currentStep === "preview" ? (
               <Button type="button" onClick={submitInvoice} disabled={isPending || preparedLines.length === 0}>
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Save & Print
+                Save & Download PDF
               </Button>
             ) : (
               <Button type="button" onClick={() => moveStep(1)}>

@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { loadBillingData } from "./load-billing-data";
 import { BillingManager } from "./_components/billing-manager";
@@ -23,11 +25,13 @@ export default async function BillingPage({ searchParams }: PageProps) {
       ownerRole={membership?.role ?? profile?.role ?? "customer"}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
-      <BillingManager
-        products={products}
-        invoices={invoices}
-        shopLogoUrl={shop?.logo_url ?? null}
-      />
+      <Suspense fallback={null}>
+        <BillingManager
+          products={products}
+          invoices={invoices}
+          shopLogoUrl={shop?.logo_url ?? null}
+        />
+      </Suspense>
     </WorkspaceShell>
   );
 }

@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans, Sora } from "next/font/google";
 import "./globals.css";
 import { AppToaster } from "@/app/_components/app-toaster";
 import { AppQueryProvider } from "@/app/_components/query-provider";
+import { PwaRegistration } from "@/app/_components/pwa-registration";
 import NextTopLoader from "nextjs-toploader";
 
 const bodyFont = Plus_Jakarta_Sans({
@@ -18,6 +19,12 @@ const displayFont = Sora({
 export const metadata: Metadata = {
   title: "DukaanHQ",
   description: "Mobile-first SaaS for retail shops, billing, inventory, and storefronts.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "DukaanHQ",
+  },
 };
 
 export default function RootLayout({
@@ -29,7 +36,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>
         <AppQueryProvider>
-          <NextTopLoader color="#f5c542" showSpinner={false} shadow="0 0 10px rgba(245,197,66,0.35),0 0 5px rgba(245,197,66,0.25)" />
+          <PwaRegistration />
+          <NextTopLoader color="#f5c542" height={4} showSpinner={false} shadow="0 0 10px rgba(245,197,66,0.35),0 0 5px rgba(245,197,66,0.25)" />
           {children}
           <AppToaster />
         </AppQueryProvider>

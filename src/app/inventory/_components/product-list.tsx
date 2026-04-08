@@ -1,23 +1,19 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ChevronRight,
   LoaderCircle,
-  TrendingUp,
   Package,
   PackagePlus,
   AlertTriangle,
-  RotateCcw,
-  ShieldAlert,
 } from "lucide-react";
 
 import { Brand, Category, Product } from "@/lib/types/inventory";
-import { matchesSearch, slugifySegment } from "../inventory-utils";
+import { buildVariantLabel } from "@/lib/inventory-labels";
+import { matchesSearch } from "../inventory-utils";
 import { ProductActionsMenu } from "./product-actions-menu";
 
-type InventoryProduct = Product & {
+export type InventoryProduct = Product & {
   total_quantity: number;
   brand?: { name?: string | null } | null;
   category?: { name?: string | null } | null;
@@ -200,7 +196,7 @@ function buildSections({
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
-function ProductCard({
+export function ProductCard({
   product,
   isLast = false,
   deletingProductId,
@@ -216,6 +212,68 @@ function ProductCard({
   product: InventoryProduct;
   isLast?: boolean;
 } & SharedCardProps) {
+  const hasMultipleVariants = (product.variants?.length ?? 0) > 1;
+  const alerts = useMemo(() => {
+    const nextAlerts: Array<{ id: string; kind: "out" | "low"; message: string; actionLabel: string }> = [];
+
+    if (product.total_quantity === 0) {
+      nextAlerts.push({
+        id: "total-out",
+        kind: "out",
+        message: "Out of stock — unavailable for sale",
+        actionLabel: "Add Stock",
+      });
+    } else if (product.total_quantity <= stockThreshold) {
+      nextAlerts.push({
+        id: "total-low",
+        kind: "low",
+        message: `Only ${product.total_quantity} left — running low`,
+        actionLabel: "Refill",
+      });
+    }
+
+    if (hasMultipleVariants) {
+      for (const variant of product.variants ?? []) {
+        const variantQuantity = Number(variant.quantity ?? 0);
+        const label = buildVariantLabel(variant) ?? product.name;
+
+        if (variantQuantity === 0) {
+          nextAlerts.push({
+            id: `variant-out-${variant.id}`,
+            kind: "out",
+            message: `${label} is out of stock`,
+            actionLabel: "Add Stock",
+          });
+        } else if (variantQuantity <= stockThreshold) {
+          nextAlerts.push({
+            id: `variant-low-${variant.id}`,
+            kind: "low",
+            message: `${label} has only ${variantQuantity} left`,
+            actionLabel: "Refill",
+          });
+        }
+      }
+    }
+
+    return nextAlerts;
+  }, [hasMultipleVariants, product.name, product.total_quantity, product.variants, stockThreshold]);
+
+  const [activeAlertIndex, setActiveAlertIndex] = useState(0);
+  const alertSignature = `${product.id}:${alerts.map((alert) => alert.id).join("|") || "none"}`;
+
+  useEffect(() => {
+    if (alerts.length <= 1) return;
+
+    const timer = window.setInterval(() => {
+      setActiveAlertIndex((current) => (current + 1) % alerts.length);
+    }, 3200);
+
+    return () => window.clearInterval(timer);
+  }, [alertSignature, alerts.length]);
+
+  const activeAlert = alerts[activeAlertIndex] ?? null;
+  const hasOutAlert = alerts.some((alert) => alert.kind === "out");
+  const hasLowAlert = alerts.some((alert) => alert.kind === "low");
   const isOutOfStock = product.total_quantity === 0;
   const isLowStock = !isOutOfStock && product.total_quantity <= stockThreshold;
   
@@ -232,9 +290,9 @@ function ProductCard({
     >
       {/* Left accent bar */}
       <div
-        className={`absolute left-0 top-0 h-full w-[3px] rounded-r-sm transition-all duration-200 ${isOutOfStock
+        className={`absolute left-0 top-0 h-full w-[3px] rounded-r-sm transition-all duration-200 ${hasOutAlert
             ? "bg-red-300"
-            : isLowStock
+            : hasLowAlert
               ? "bg-amber-400"
               : "bg-transparent group-hover:bg-stone-300"
           }`}
@@ -311,53 +369,61 @@ function ProductCard({
         </div>
       </div>
 
-      {/* ── Out of stock notice ── */}
-      {isOutOfStock && (
-        <div className="mx-3 mb-3 flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500">
-              <span className="text-[10px] font-black leading-none">✕</span>
+      {activeAlert ? (
+        <div
+          key={alertSignature}
+          className={`mx-3 mb-3 rounded-xl px-3 py-2 transition-all duration-300 ${
+            activeAlert.kind === "out" ? "border border-red-100 bg-red-50" : "border border-amber-100 bg-amber-50/70"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              {activeAlert.kind === "out" ? (
+                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500">
+                  <span className="text-[10px] font-black leading-none">✕</span>
+                </div>
+              ) : (
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+              )}
+              <p className={`truncate text-[11px] font-semibold ${activeAlert.kind === "out" ? "text-red-600" : "text-amber-700"}`}>
+                {activeAlert.message}
+              </p>
             </div>
-            <p className="truncate text-[11px] font-semibold text-red-600">
-              Out of stock — unavailable for sale
-            </p>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddStock?.(product.id);
+              }}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold shadow-sm transition-all duration-150 active:scale-95 ${
+                activeAlert.kind === "out"
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "border border-amber-200 bg-white text-amber-700 hover:bg-amber-50"
+              }`}
+            >
+              <PackagePlus className="h-3 w-3" />
+              {activeAlert.actionLabel}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddStock?.(product.id);
-            }}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition-all duration-150 hover:bg-red-700 active:scale-95"
-          >
-            <PackagePlus className="h-3 w-3" />
-            Add Stock
-          </button>
-        </div>
-      )}
 
-      {/* ── Low stock notice ── */}
-      {isLowStock && (
-        <div className="mx-3 mb-3 flex items-center justify-between gap-2 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-            <p className="truncate text-[11px] font-semibold text-amber-700">
-              Only {product.total_quantity} left — running low
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddStock?.(product.id);
-            }}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-700 shadow-sm transition-all duration-150 hover:bg-amber-50 active:scale-95"
-          >
-            <PackagePlus className="h-3 w-3" />
-            Refill
-          </button>
+          {alerts.length > 1 ? (
+            <div className="mt-2 flex items-center justify-center gap-1.5">
+              {alerts.map((alert, index) => (
+                <button
+                  key={alert.id}
+                  type="button"
+                  aria-label={`Show stock alert ${index + 1}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActiveAlertIndex(index);
+                  }}
+                  className={`h-1.5 rounded-full transition-all ${index === activeAlertIndex ? "w-4 bg-stone-700/70" : "w-1.5 bg-stone-300"}`}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

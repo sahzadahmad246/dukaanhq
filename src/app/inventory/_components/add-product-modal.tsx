@@ -14,7 +14,6 @@ import {
   PackageOpen,
   Plus,
   ScanBarcode,
-  Search,
   Smartphone,
   Trash2,
   X,
@@ -94,6 +93,143 @@ const profiles: ProductProfile[] = [
 ];
 
 const createProfileChoices = profiles.filter((profile) => profile.id !== "SERIALIZED");
+
+const PRESET_BRAND_NAMES = [
+  "Apple",
+  "Samsung",
+  "Xiaomi",
+  "Redmi",
+  "POCO",
+  "Realme",
+  "Vivo",
+  "Oppo",
+  "OnePlus",
+  "Nothing",
+  "Motorola",
+  "Google",
+  "Nokia",
+  "Infinix",
+  "Tecno",
+  "iQOO",
+  "Honor",
+  "Itel",
+  "Lava",
+  "Karbonn",
+  "Micromax",
+  "LYF",
+  "Celkon",
+  "Gionee",
+  "Coolpad",
+  "LeEco",
+  "Meizu",
+  "Huawei",
+  "ZTE",
+  "BlackBerry",
+  "HTC",
+  "Alcatel",
+  "TCL",
+  "Doogee",
+  "Ulefone",
+  "Cubot",
+  "Sony",
+  "JBL",
+  "boAt",
+  "Noise",
+  "Mivi",
+  "pTron",
+  "Zebronics",
+  "Logitech",
+  "Portronics",
+  "Anker",
+  "Belkin",
+  "Ambrane",
+  "Spigen",
+  "ESR",
+  "Ugreen",
+  "Baseus",
+  "Oraimo",
+  "Aukey",
+  "HP",
+  "Dell",
+  "Lenovo",
+  "Asus",
+  "Acer",
+  "MSI",
+  "Razer",
+  "Alienware",
+  "LG",
+  "Panasonic",
+  "Philips",
+  "BenQ",
+  "ViewSonic",
+  "Brother",
+  "Canon",
+  "Nikon",
+  "Epson",
+  "D-Link",
+  "TP-Link",
+  "Netgear",
+  "Jio",
+  "Airtel",
+];
+
+const PRESET_CATEGORY_NAMES = [
+  "Mobile Phones",
+  "Feature Phones",
+  "Smartphones",
+  "Chargers",
+  "Fast Chargers",
+  "Charging Adapters",
+  "USB Cables",
+  "Lightning Cables",
+  "Type C Cables",
+  "Micro USB Cables",
+  "Headphones",
+  "Earphones",
+  "Neckbands",
+  "TWS Earbuds",
+  "Bluetooth Speakers",
+  "Wired Speakers",
+  "Power Banks",
+  "Phone Cases",
+  "Back Covers",
+  "Screen Protectors",
+  "Tempered Glass",
+  "Camera Protectors",
+  "Memory Cards",
+  "Pen Drives",
+  "Card Readers",
+  "OTG Adapters",
+  "Mobile Holders",
+  "Car Chargers",
+  "Car Mounts",
+  "Smart Watches",
+  "Fitness Bands",
+  "Laptops",
+  "Laptop Chargers",
+  "Laptop Batteries",
+  "Laptop Bags",
+  "Keyboards",
+  "Mice",
+  "Webcams",
+  "Monitors",
+  "Printers",
+  "Ink Cartridges",
+  "Routers",
+  "Modems",
+  "CCTV Cameras",
+  "TV Accessories",
+  "Remote Controls",
+  "Batteries",
+  "Extension Boards",
+  "Adapters",
+  "Gaming Accessories",
+  "Laptop Accessories",
+  "Mobile Accessories",
+  "Computer Accessories",
+  "Networking Accessories",
+  "Smart Home Devices",
+];
 
 function createIdentifierField(value = ""): IdentifierField {
   return { id: crypto.randomUUID(), value };
@@ -221,6 +357,30 @@ function dataUrlToFile(dataUrl: string, fileName: string, fileType: string) {
   const base64 = parts[1] ?? "";
   const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
   return new File([bytes], fileName, { type: fileType || "image/jpeg" });
+}
+
+function getPresetBrandValue(name: string) {
+  return `preset:${name}`;
+}
+
+function getPresetCategoryValue(name: string) {
+  return `preset-category:${name}`;
+}
+
+function getBrandNameFromSelection(selectedBrandId: string, brands: Brand[]) {
+  if (selectedBrandId.startsWith("preset:")) {
+    return selectedBrandId.slice("preset:".length);
+  }
+
+  return brands.find((brand) => brand.id === selectedBrandId)?.name ?? "";
+}
+
+function getCategoryNameFromSelection(selectedCategoryId: string, categories: Category[]) {
+  if (selectedCategoryId.startsWith("preset-category:")) {
+    return selectedCategoryId.slice("preset-category:".length);
+  }
+
+  return categories.find((category) => category.id === selectedCategoryId)?.name ?? "";
 }
 
 function getStepsForProfile(productKind: ProductKind | null): StepId[] {
@@ -388,6 +548,7 @@ function SearchableSelect({
     function onPointerDown(event: MouseEvent) {
       if (!wrapperRef.current?.contains(event.target as Node)) {
         setOpen(false);
+        setQuery("");
       }
     }
     document.addEventListener("mousedown", onPointerDown);
@@ -396,26 +557,46 @@ function SearchableSelect({
 
   const filtered = options.filter((option) => option.label.toLowerCase().includes(query.trim().toLowerCase()));
   const selected = options.find((option) => option.value === value);
+  const displayValue = open ? query : query || selected?.label || "";
 
   return (
     <div className="space-y-2" ref={wrapperRef}>
       <div className="relative">
+        <Input
+          value={displayValue}
+          onFocus={() => {
+            setOpen(true);
+            setQuery(selected?.label ?? "");
+          }}
+          onChange={(event) => {
+            setOpen(true);
+            setQuery(event.target.value);
+          }}
+          placeholder={placeholder}
+          className="h-11 rounded-xl border-stone-300 bg-white pr-10 text-sm text-stone-900"
+        />
         <button
           type="button"
-          onClick={() => setOpen((current) => !current)}
-          className="flex h-11 w-full items-center justify-between rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 transition hover:bg-stone-50"
+          onClick={() => {
+            setOpen((current) => {
+              const next = !current;
+              if (next) {
+                setQuery(selected?.label ?? "");
+              } else {
+                setQuery("");
+              }
+              return next;
+            });
+          }}
+          className="absolute right-0 top-0 flex h-11 w-10 items-center justify-center text-stone-400"
+          aria-label={open ? "Close options" : "Open options"}
         >
-          <span className={cn(!selected && "text-stone-400")}>{selected?.label || placeholder}</span>
-          <ChevronsUpDown className="h-4 w-4 text-stone-400" />
+          <ChevronsUpDown className="h-4 w-4" />
         </button>
 
         {open ? (
           <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search options" className="pl-9" />
-            </div>
-            <div className="mt-2 max-h-52 overflow-y-auto">
+            <div className="max-h-52 overflow-y-auto">
               {filtered.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-stone-400">{emptyLabel}</p>
               ) : (
@@ -510,7 +691,7 @@ export function AddProductModal({
   const [lowStockThreshold, setLowStockThreshold] = useState("5");
   const [categoryMode, setCategoryMode] = useState<"existing" | "new">("existing");
   const [brandMode, setBrandMode] = useState<"existing" | "new">("existing");
-  const [selectedCategoryId, setSelectedCategoryId] = useState(categories[0]?.id ?? "");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [selectedBrandId, setSelectedBrandId] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newBrandName, setNewBrandName] = useState("");
@@ -522,8 +703,10 @@ export function AddProductModal({
   const [fullscreenImageId, setFullscreenImageId] = useState<string | null>(null);
   const [scanningTarget, setScanningTarget] = useState<{ variantId: string; fieldId: string } | null>(null);
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState<string | null>(null);
+  const [dismissedTemplateProductIds, setDismissedTemplateProductIds] = useState<string[]>([]);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
+  const [variantModalDraft, setVariantModalDraft] = useState<VariantDraft | null>(null);
   const [variantModalErrors, setVariantModalErrors] = useState<Record<string, string>>({});
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -560,11 +743,21 @@ export function AddProductModal({
   const trackingType = selectedProfile === "SERIALIZED" ? "SERIALIZED" : "QUANTITY_BASED";
   const resolvedIdentifierType = selectedProfile === "MOBILE" ? "IMEI" : identifierType;
   const selectedProfileMeta = profiles.find((profile) => profile.id === selectedProfile) ?? profiles[0];
-  const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }));
-  const brandOptions = brands.map((brand) => ({ value: brand.id, label: brand.name }));
+  const categoryOptions = [
+    ...categories.map((category) => ({ value: category.id, label: category.name })),
+    ...PRESET_CATEGORY_NAMES
+      .filter((categoryName) => !categories.some((category) => category.name.trim().toLowerCase() === categoryName.trim().toLowerCase()))
+      .map((categoryName) => ({ value: getPresetCategoryValue(categoryName), label: categoryName })),
+  ].sort((left, right) => left.label.localeCompare(right.label));
+  const brandOptions = [
+    ...brands.map((brand) => ({ value: brand.id, label: brand.name })),
+    ...PRESET_BRAND_NAMES
+      .filter((brandName) => !brands.some((brand) => brand.name.trim().toLowerCase() === brandName.trim().toLowerCase()))
+      .map((brandName) => ({ value: getPresetBrandValue(brandName), label: brandName })),
+  ].sort((left, right) => left.label.localeCompare(right.label));
   const selectedBrandName =
     brandMode === "existing"
-      ? brands.find((brand) => brand.id === selectedBrandId)?.name ?? ""
+      ? getBrandNameFromSelection(selectedBrandId, brands)
       : newBrandName;
   const storagePresets = useMemo(
     () =>
@@ -580,12 +773,13 @@ export function AddProductModal({
         (product) =>
           product.product_kind === "MOBILE" &&
           product.id !== productId &&
+          !dismissedTemplateProductIds.includes(product.id) &&
           matchesSearch(
             [product.name, product.brand?.name ?? "", product.category?.name ?? ""].join(" "),
             name
           )
       ),
-    [name, productId, products]
+    [dismissedTemplateProductIds, name, productId, products]
   );
   const shouldShowMobileSuggestions =
     selectedProfile === "MOBILE" && name.trim().length > 0 && mobileTemplateOptions.length > 0;
@@ -655,7 +849,7 @@ export function AddProductModal({
       setLowStockThreshold(String(editingProduct.low_stock_threshold ?? 0));
       setCategoryMode(editingProduct.category_id ? "existing" : "new");
       setBrandMode(editingProduct.brand_id ? "existing" : "new");
-      setSelectedCategoryId(editingProduct.category_id ?? categories[0]?.id ?? "");
+      setSelectedCategoryId(editingProduct.category_id ?? "");
       setSelectedBrandId(editingProduct.brand_id ?? "");
       setNewCategoryName(editingProduct.category_id ? "" : editingProduct.category?.name ?? "");
       setNewBrandName(editingProduct.brand_id ? "" : editingProduct.brand?.name ?? "");
@@ -667,6 +861,7 @@ export function AddProductModal({
       setClientErrors({});
       setState({ status: "success", message: "" });
       setSelectedTemplateProductId(null);
+      setDismissedTemplateProductIds([]);
 
       const incomingImages: SelectedImage[] = [];
       const seenPublicIds = new Set<string>();
@@ -746,14 +941,15 @@ export function AddProductModal({
     if (!open) {
       hasLoadedEditProductRef.current = null;
       hasLoadedDraftRef.current = false;
+      setDismissedTemplateProductIds([]);
     }
   }, [open]);
 
   useEffect(() => {
-    if (editingVariantId) {
+    if (editingVariantId || variantModalDraft) {
       setVariantModalErrors({});
     }
-  }, [editingVariantId]);
+  }, [editingVariantId, variantModalDraft]);
 
   useEffect(() => {
     if (!open || isEditMode || hasLoadedDraftRef.current) return;
@@ -878,7 +1074,7 @@ export function AddProductModal({
     setLowStockThreshold(draft.lowStockThreshold ?? "5");
     setCategoryMode(draft.categoryMode ?? "existing");
     setBrandMode(draft.brandMode ?? "existing");
-    setSelectedCategoryId(draft.selectedCategoryId ?? categories[0]?.id ?? "");
+    setSelectedCategoryId(draft.selectedCategoryId ?? "");
     setSelectedBrandId(draft.selectedBrandId ?? "");
     setNewCategoryName(draft.newCategoryName ?? "");
     setNewBrandName(draft.newBrandName ?? "");
@@ -915,15 +1111,31 @@ export function AddProductModal({
   function chooseProfile(profile: ProductKind) {
     setSelectedProfile(profile);
     setCurrentStep("basics");
+    setName("");
+    setDescription("");
+    setPurchasePrice("0");
+    setSellingPrice("");
+    setLowStockThreshold("5");
+    setCategoryMode("existing");
+    setBrandMode("existing");
+    setSelectedCategoryId("");
+    setSelectedBrandId("");
+    setNewCategoryName("");
+    setNewBrandName("");
     setIdentifierType(profile === "SERIALIZED" ? "SERIAL_NUMBER" : "IMEI");
     setVariants(getInitialVariants(profile));
     setDraftRestoreCandidate(null);
     setSelectedImages([]);
     setFullscreenImageId(null);
+    setImageTargetVariantKey(null);
+    setScanningTarget(null);
     setClientErrors({});
+    setEditingVariantId(null);
+    setVariantModalDraft(null);
     setVariantModalErrors({});
     setState({ status: "success", message: "" });
     setSelectedTemplateProductId(null);
+    setDismissedTemplateProductIds([]);
   }
 
   function clearClientError(keys: string[]) {
@@ -994,10 +1206,9 @@ export function AddProductModal({
   }
 
   function handleAddVariantClick() {
-    const next = createVariant();
-    setVariants((current) => [...current, next]);
+    setVariantModalDraft(createVariant());
     setVariantModalErrors({});
-    setEditingVariantId(next.id);
+    setEditingVariantId(null);
   }
 
   function removeVariant(variantId: string) {
@@ -1010,6 +1221,19 @@ export function AddProductModal({
 
   function setVariantField(variantId: string, key: "color" | "storage" | "quantity" | "sellingPrice", value: string) {
     setVariants((current) => current.map((variant) => (variant.id === variantId ? { ...variant, [key]: value } : variant)));
+    if (key === "quantity") {
+      clearClientError(["stock"]);
+    }
+    setVariantModalErrors((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function setVariantDraftField(key: "color" | "storage" | "quantity" | "sellingPrice", value: string) {
+    setVariantModalDraft((current) => (current ? { ...current, [key]: value } : current));
     if (key === "quantity") {
       clearClientError(["stock"]);
     }
@@ -1106,9 +1330,9 @@ export function AddProductModal({
 
     if (step === "stock") {
       if (selectedProfile !== "SERIALIZED") {
-        const invalidQuantity = variants.find(v => !(v.quantity ?? "").trim() || Number.isNaN(Number(v.quantity)) || Number(v.quantity) < 0);
+        const invalidQuantity = variants.find(v => !(v.quantity ?? "").trim() || Number.isNaN(Number(v.quantity)) || Number(v.quantity) <= 0);
         if (invalidQuantity) {
-          errors.stock = "Valid opening quantity is required for each variant.";
+          errors.stock = "Add opening stock of at least 1 to continue.";
         }
       } else {
         const hasMissingIdentifiers = variants.some(variant => {
@@ -1221,7 +1445,7 @@ export function AddProductModal({
       setLowStockThreshold(String(template.low_stock_threshold ?? 0));
       setCategoryMode(template.category_id ? "existing" : "new");
       setBrandMode(template.brand_id ? "existing" : "new");
-      setSelectedCategoryId(template.category_id ?? categories[0]?.id ?? "");
+      setSelectedCategoryId(template.category_id ?? "");
       setSelectedBrandId(template.brand_id ?? "");
       setNewCategoryName(template.category_id ? "" : template.category?.name ?? "");
       setNewBrandName(template.brand_id ? "" : template.brand?.name ?? "");
@@ -1240,6 +1464,7 @@ export function AddProductModal({
       ]);
       setClientErrors({});
       setVariantModalErrors({});
+      setDismissedTemplateProductIds([]);
       toast.success("Phone details and images filled from existing product. Set the stock count for this variant to continue.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load that phone template.");
@@ -1295,31 +1520,42 @@ export function AddProductModal({
       return;
     }
 
+    if (editingVariantId) {
+      setVariants((current) => current.map((item) => (item.id === editingVariantId ? variant : item)));
+    } else {
+      setVariants((current) => [...current, variant]);
+    }
+
     setVariantModalErrors({});
     setEditingVariantId(null);
+    setVariantModalDraft(null);
   }
+
+  const isProductFormView = selectedProfile || isEditMode;
 
   return (
     <div className="fixed inset-0 z-50 bg-stone-950/55 backdrop-blur-sm">
       <div
         className={cn(
           "fixed inset-x-0 mx-auto flex max-w-[450px] flex-col overflow-hidden bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.18)]",
-          selectedProfile
-            ? "bottom-0 top-8 rounded-t-[2rem] sm:bottom-6 sm:top-6 sm:rounded-[2rem]"
+          isProductFormView
+            ? "bottom-0 top-0 h-dvh"
             : "top-1/2 max-h-[calc(100vh-3rem)] -translate-y-1/2 rounded-[2rem]"
         )}
       >
-        <div className="flex items-center justify-between border-b border-stone-200/80 bg-[#fffdf9] px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            {selectedProfile ? <selectedProfileMeta.icon className="h-4 w-4 text-teal-700" /> : null}
-            <h2 className="text-lg font-semibold text-stone-950">{isEditMode ? "Edit Product" : "Add Product"}</h2>
+        <div className={cn("border-b border-stone-200/80 bg-[#fffdf9] px-4 py-4 sm:px-6")}>
+          <div className="grid grid-cols-[40px_1fr_40px] items-center">
+            <button
+              type="button"
+              onClick={selectedProfile && !isEditMode ? () => setSelectedProfile(null) : onClose}
+              aria-label={selectedProfile && !isEditMode ? "Back" : "Close"}
+              className="flex h-10 w-10 items-center justify-center text-stone-600 transition hover:text-stone-900"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <h2 className="text-center text-lg font-semibold text-stone-950">{isEditMode ? "Edit Product" : "Add Product"}</h2>
+            <div aria-hidden="true" className="h-10 w-10" />
           </div>
-          <button
-            onClick={selectedProfile && !isEditMode ? () => setSelectedProfile(null) : onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         {!selectedProfile && !isEditMode ? (
@@ -1403,23 +1639,32 @@ export function AddProductModal({
                             </p>
                             <div className="max-h-56 overflow-y-auto">
                               {mobileTemplateOptions.slice(0, 6).map((product) => (
-                                <button
-                                  key={product.id}
-                                  type="button"
-                                  onClick={() => applyMobileTemplate(product.id)}
-                                  disabled={selectedTemplateProductId === product.id}
-                                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-stone-100 disabled:opacity-60"
-                                >
-                                  <div>
-                                    <div className="text-sm font-semibold text-stone-900">{product.name}</div>
-                                    <div className="text-xs text-stone-500">
-                                      {[product.brand?.name, product.category?.name].filter(Boolean).join(" • ") || "Mobile"}
+                                <div key={product.id} className="flex items-center gap-1 rounded-xl transition hover:bg-stone-100">
+                                  <button
+                                    type="button"
+                                    onClick={() => applyMobileTemplate(product.id)}
+                                    disabled={selectedTemplateProductId === product.id}
+                                    className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left disabled:opacity-60"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-semibold text-stone-900">{product.name}</div>
+                                      <div className="text-xs text-stone-500">
+                                        {[product.brand?.name, product.category?.name].filter(Boolean).join(" • ") || "Mobile"}
+                                      </div>
                                     </div>
-                                  </div>
-                                  {selectedTemplateProductId === product.id ? (
-                                    <LoaderCircle className="h-4 w-4 animate-spin text-stone-500" />
-                                  ) : null}
-                                </button>
+                                    {selectedTemplateProductId === product.id ? (
+                                      <LoaderCircle className="h-4 w-4 animate-spin text-stone-500" />
+                                    ) : null}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={`Dismiss ${product.name}`}
+                                    onClick={() => setDismissedTemplateProductIds((current) => [...current, product.id])}
+                                    className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-400 transition hover:bg-stone-200 hover:text-stone-700"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           </div>
@@ -1472,7 +1717,7 @@ export function AddProductModal({
                               clearClientError(["category"]);
                             }}
                             options={categoryOptions}
-                            placeholder="Select category"
+                            placeholder="Add category e.g. cable, charger"
                             emptyLabel="No category found."
                           />
                         }
@@ -1568,6 +1813,7 @@ export function AddProductModal({
                           {selectedImages.map((image) => (
                             <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
                               <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
                               </button>
                               <button
@@ -1621,14 +1867,19 @@ export function AddProductModal({
                                   {variant.sellingPrice ? `₹${Number(variant.sellingPrice).toLocaleString("en-IN")}` : "-"}
                                 </p>
                               )}
-                              <button type="button" onClick={() => setEditingVariantId(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-1 rounded transition hover:bg-teal-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingVariantId(variant.id);
+                                  setVariantModalDraft({ ...variant, identifiers: variant.identifiers.map((field) => ({ ...field })) });
+                                }}
+                                className="text-[11px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-1 rounded transition hover:bg-teal-100"
+                              >
                                 Edit
                               </button>
-                              {variants.length > 1 && (
-                                <button type="button" onClick={() => removeVariant(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-1 rounded transition hover:bg-rose-100">
-                                  Remove
-                                </button>
-                              )}
+                              <button type="button" onClick={() => removeVariant(variant.id)} className="text-[11px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-1 rounded transition hover:bg-rose-100">
+                                Remove
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -1647,14 +1898,6 @@ export function AddProductModal({
               {currentStep === "stock" ? (
                 <section className="space-y-4 py-2">
                   <StepTitle step={stepIndex + 1} title={profileCopy.stockTitle} />
-                  <div className="rounded-[1.6rem] border border-stone-200 bg-white p-4 shadow-sm">
-                    <p className="text-base font-semibold text-stone-900">Step {stepIndex + 1} Opening Stock</p>
-                    <p className="mt-1 text-sm leading-6 text-stone-600">
-                      {selectedProfile === "QUANTITY_BASED"
-                        ? "How many units do you want to add for this product?"
-                        : "Add tracked identifiers for each unit."}
-                    </p>
-                  </div>
                   {selectedProfile === "SERIALIZED" ? <IdentifierTypePicker value={identifierType} onChange={setIdentifierType} /> : null}
                   {clientErrors.stock ? <p className="text-sm text-rose-600">{clientErrors.stock}</p> : null}
                   {state.fieldErrors?.product_payload ? <p className="text-sm text-rose-600">{state.fieldErrors.product_payload}</p> : null}
@@ -1662,8 +1905,14 @@ export function AddProductModal({
                   {variants.map((variant) => (
                     <div key={variant.id} className="space-y-3 border-b border-stone-200 pb-4 last:border-b-0">
                       <div>
-                        <p className="text-sm font-semibold text-stone-900">{selectedProfile === "SERIALIZED" ? "Option" : "Opening Stock"}</p>
-                        <p className="text-sm text-stone-500">{selectedProfile === "SERIALIZED" ? buildVariantName(variant) : name || "This product"}</p>
+                        {selectedProfile === "SERIALIZED" ? (
+                          <>
+                            <p className="text-sm font-semibold text-stone-900">Option</p>
+                            <p className="text-sm text-stone-500">{buildVariantName(variant)}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-semibold text-stone-900">{name || "This product"}</p>
+                        )}
                       </div>
 
                       {selectedProfile !== "SERIALIZED" ? (
@@ -1724,9 +1973,9 @@ export function AddProductModal({
                         {name || "Untitled product"}
                       </h3>
                       <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[13px] font-medium text-stone-500">
-                        <span className="text-stone-700">{(brandMode === "existing" ? brands.find((brand) => brand.id === selectedBrandId)?.name : newBrandName) || "No Brand"}</span>
+                        <span className="text-stone-700">{(brandMode === "existing" ? getBrandNameFromSelection(selectedBrandId, brands) : newBrandName) || "No Brand"}</span>
                         <span className="text-stone-300">•</span>
-                        <span className="text-stone-700">{(categoryMode === "existing" ? categories.find((category) => category.id === selectedCategoryId)?.name : newCategoryName) || "No Category"}</span>
+                        <span className="text-stone-700">{(categoryMode === "existing" ? getCategoryNameFromSelection(selectedCategoryId, categories) : newCategoryName) || "No Category"}</span>
                         <span className="text-stone-300">•</span>
                         <span className="text-stone-700">{variants.reduce((sum, v) => sum + (Number.parseInt(v.quantity || "0", 10) || 0), 0)} Initial Stock</span>
                         <span className="text-stone-300">•</span>
@@ -1820,6 +2069,7 @@ export function AddProductModal({
                             onClick={() => setFullscreenImageId(image.id)}
                             className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white hover:opacity-80 transition"
                           >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
                           </button>
                         ))}
@@ -1846,10 +2096,10 @@ export function AddProductModal({
             <input type="hidden" name="description" value={description} />
             <input type="hidden" name="product_kind" value={selectedProfile ?? ""} />
             <input type="hidden" name="tracking_type" value={trackingType} />
-            <input type="hidden" name="category_id" value={categoryMode === "existing" ? selectedCategoryId : ""} />
-            <input type="hidden" name="category_name" value={categoryMode === "new" ? newCategoryName : ""} />
-            <input type="hidden" name="brand_id" value={brandMode === "existing" ? selectedBrandId : ""} />
-            <input type="hidden" name="brand_name" value={brandMode === "new" ? newBrandName : ""} />
+            <input type="hidden" name="category_id" value={categoryMode === "existing" && !selectedCategoryId.startsWith("preset-category:") ? selectedCategoryId : ""} />
+            <input type="hidden" name="category_name" value={categoryMode === "new" ? newCategoryName : categoryMode === "existing" && selectedCategoryId.startsWith("preset-category:") ? getCategoryNameFromSelection(selectedCategoryId, categories) : ""} />
+            <input type="hidden" name="brand_id" value={brandMode === "existing" && !selectedBrandId.startsWith("preset:") ? selectedBrandId : ""} />
+            <input type="hidden" name="brand_name" value={brandMode === "new" ? newBrandName : brandMode === "existing" && selectedBrandId.startsWith("preset:") ? getBrandNameFromSelection(selectedBrandId, brands) : ""} />
             <input type="hidden" name="base_purchase_price" value={purchasePrice || "0"} />
             <input type="hidden" name="base_selling_price" value={sellingPrice} />
             <input type="hidden" name="low_stock_threshold" value={lowStockThreshold} />
@@ -1907,8 +2157,8 @@ export function AddProductModal({
         </div>
       ) : null}
 
-      {editingVariantId ? (() => {
-        const variant = variants.find(v => v.id === editingVariantId);
+      {variantModalDraft ? (() => {
+        const variant = variantModalDraft;
         if (!variant) return null;
         return (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-sm sm:items-start sm:pt-[10vh]">
@@ -1920,6 +2170,7 @@ export function AddProductModal({
                   onClick={() => {
                     setVariantModalErrors({});
                     setEditingVariantId(null);
+                    setVariantModalDraft(null);
                   }}
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition"
                 >
@@ -1929,7 +2180,7 @@ export function AddProductModal({
               <div className="flex-1 overflow-y-auto p-5 pb-8 space-y-6">
                 <div className="space-y-5">
                   <Field label="Color" required error={variantModalErrors.color}>
-                    <Input value={variant.color} onChange={(event) => setVariantField(variant.id, "color", event.target.value)} placeholder="Black" />
+                    <Input value={variant.color} onChange={(event) => setVariantDraftField("color", event.target.value)} placeholder="Black" />
                   </Field>
                   <Field
                     label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}
@@ -1938,7 +2189,7 @@ export function AddProductModal({
                   >
                     <StoragePresetPicker
                       value={variant.storage}
-                      onChange={(nextValue) => setVariantField(variant.id, "storage", nextValue)}
+                      onChange={(nextValue) => setVariantDraftField("storage", nextValue)}
                       presets={storagePresets}
                       placeholder={selectedProfile === "MOBILE" ? "Select or type storage" : "Select or type size"}
                     />
@@ -1953,7 +2204,7 @@ export function AddProductModal({
                         min="0" 
                         step="0.01"
                         value={variant.sellingPrice}
-                        onChange={(event) => setVariantField(variant.id, "sellingPrice", event.target.value)}
+                        onChange={(event) => setVariantDraftField("sellingPrice", event.target.value)}
                         placeholder="0.00" 
                       />
                     </Field>
@@ -1962,7 +2213,7 @@ export function AddProductModal({
                         type="number" 
                         min="0"
                         value={variant.quantity}
-                        onChange={(event) => setVariantField(variant.id, "quantity", event.target.value)}
+                        onChange={(event) => setVariantDraftField("quantity", event.target.value)}
                         placeholder="0" 
                       />
                     </Field>
@@ -1995,6 +2246,7 @@ export function AddProductModal({
                         .map((image) => (
                           <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
                             <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={image.previewUrl} alt="Selected variant" className="h-full w-full object-cover" />
                             </button>
                             <button
@@ -2040,6 +2292,7 @@ export function AddProductModal({
             >
               <X className="h-4 w-4" />
             </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={selectedImages.find((image) => image.id === fullscreenImageId)?.previewUrl}
               alt="Preview"

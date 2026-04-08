@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { format, isValid } from "date-fns";
+import { toast } from "sonner";
 import {
   Wallet,
-  TrendingUp,
   Receipt,
   Package,
   Archive,
@@ -17,33 +17,25 @@ import {
   CalendarDays,
   ArrowRight,
   Plus,
+  Download,
   PhoneCall,
   User,
   Printer,
 } from "lucide-react";
 
 import type { DashboardStats, RecentInvoice, RecentProduct } from "../load-dashboard-data";
-import type { Product } from "@/lib/types/inventory";
 import type { Brand, Category } from "@/lib/types/inventory";
 import { AddBillModal } from "@/app/billing/_components/add-bill-modal";
 import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
 import { ProductDetailsDrawer } from "@/app/inventory/_components/product-details-drawer";
 import { productDetailsQueryOptions } from "@/app/inventory/queries";
 import { BillDetailsDrawer } from "@/app/billing/_components/bill-details-drawer";
-import { printInvoice, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
-
-type ProductSummary = Product & {
-  total_quantity: number;
-  brand?: { name?: string | null } | null;
-  category?: { name?: string | null } | null;
-  variants?: Array<{
-    id: string;
-    quantity: number | null;
-    name: string | null;
-    color: string | null;
-    storage_label: string | null;
-  }> | null;
-};
+import { downloadInvoicePdf, printInvoice, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
+import { ProductCard, type InventoryProduct } from "@/app/inventory/_components/product-list";
+import { RecordSaleModal } from "@/app/inventory/_components/record-sale-modal";
+import { StockAdjustmentModal } from "@/app/inventory/_components/stock-adjustment-modal";
+import { deleteProductAction } from "@/app/inventory/actions";
+type ProductSummary = InventoryProduct;
 
 function formatCurrency(n: number) {
   const value = Number.isFinite(n) ? n : 0;
@@ -57,6 +49,11 @@ function getGreeting() {
   if (h < 12) return "Good morning,";
   if (h < 17) return "Good afternoon,";
   return "Good evening,";
+}
+
+function getDisplayFirstName(name: string) {
+  const firstName = name.trim().split(/\s+/)[0] ?? "";
+  return firstName || "there";
 }
 
 function formatSafeShortDate(value: string | null | undefined) {
@@ -105,6 +102,7 @@ export function DashboardHome({
   products,
   categories,
   brands,
+  loadError,
 }: {
   ownerName: string;
   shopLogoUrl: string | null;
@@ -114,13 +112,21 @@ export function DashboardHome({
   products: ProductSummary[];
   categories: Category[];
   brands: Brand[];
+  loadError?: string | null;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [saleProductId, setSaleProductId] = useState<string | null>(null);
+  const [adjustmentProductId, setAdjustmentProductId] = useState<string | null>(null);
+  const [adjustmentMode, setAdjustmentMode] = useState<"ADJUSTMENT_ADD" | "ADJUSTMENT_REMOVE">("ADJUSTMENT_REMOVE");
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
+  const [isDeleting, startDeleteTransition] = useTransition();
 
   const recentProductCards = useMemo(
     () => recentProducts.map((recentProduct) => products.find((product) => product.id === recentProduct.id)).filter(Boolean) as ProductSummary[],
@@ -130,6 +136,12 @@ export function DashboardHome({
     () => recentInvoices.find((invoice) => invoice.id === selectedInvoiceId) ?? null,
     [recentInvoices, selectedInvoiceId]
   );
+  const greetingName = useMemo(() => getDisplayFirstName(ownerName), [ownerName]);
+
+  useEffect(() => {
+    if (!loadError) return;
+    toast.error(loadError);
+  }, [loadError]);
 
   function prefetchProduct(productId: string) {
     void queryClient.prefetchQuery(productDetailsQueryOptions(productId));
@@ -140,8 +152,61 @@ export function DashboardHome({
     setSelectedProductId(productId);
   }
 
+  function handleProductEdit(productId: string) {
+    prefetchProduct(productId);
+    setSelectedProductId(null);
+    setEditingProductId(productId);
+    setIsAddProductOpen(true);
+  }
+
+  function handleRecordSale(productId: string) {
+    prefetchProduct(productId);
+    setSaleProductId(productId);
+  }
+
+  function handleAddStock(productId: string) {
+    prefetchProduct(productId);
+    setAdjustmentMode("ADJUSTMENT_ADD");
+    setAdjustmentProductId(productId);
+  }
+
+  function handleAdjustStock(productId: string) {
+    prefetchProduct(productId);
+    setAdjustmentMode("ADJUSTMENT_REMOVE");
+    setAdjustmentProductId(productId);
+  }
+
+  function handleDelete(productId: string) {
+    setConfirmDeleteProductId(productId);
+  }
+
+  function confirmDelete() {
+    if (!confirmDeleteProductId) return;
+    const productId = confirmDeleteProductId;
+    setConfirmDeleteProductId(null);
+    setDeletingProductId(productId);
+    startDeleteTransition(async () => {
+      const result = await deleteProductAction(productId);
+      if (result.status === "success") {
+        toast.success(result.message);
+        if (selectedProductId === productId) {
+          setSelectedProductId(null);
+        }
+        router.refresh();
+        await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", productId] });
+      } else {
+        toast.error(result.message);
+      }
+      setDeletingProductId(null);
+    });
+  }
+
   function handleReprintInvoice(invoice: PrintableInvoice) {
     printInvoice({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
+  }
+
+  function handleDownloadInvoice(invoice: PrintableInvoice) {
+    void downloadInvoicePdf({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
   }
 
   return (
@@ -271,16 +336,34 @@ export function DashboardHome({
 
       <div className="dash-root -mx-3 px-2">
         {/* Greeting — same row */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "10px 2px 18px" }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#a1a1aa" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "10px 2px 18px", minWidth: 0, flexWrap: "nowrap" }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: "#a1a1aa", whiteSpace: "nowrap", flexShrink: 0 }}>
             {getGreeting()}
           </span>
-          <span style={{ fontSize: 20, fontWeight: 900, color: "#18181b", letterSpacing: "-0.02em" }}>
-            {ownerName}
+          <span
+            style={{
+              fontSize: 16,
+              fontWeight: 900,
+              color: "#18181b",
+              letterSpacing: "-0.02em",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {greetingName}
           </span>
         </div>
 
         {/* Low Stock Alert */}
+        {loadError ? (
+          <div className="dash-alert" style={{ background: "#fef2f2", border: "1.5px solid #fecaca", color: "#b91c1c", marginBottom: 14 }}>
+            <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
+            <span>{loadError}</span>
+          </div>
+        ) : null}
+
         {stats.lowStockProducts > 0 && (
           <div className="dash-alert" style={{ background: "#fef3c7", border: "1.5px solid #fcd34d", color: "#92400e", marginBottom: 14 }}>
             <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
@@ -323,7 +406,10 @@ export function DashboardHome({
           </button>
           <button
             type="button"
-            onClick={() => setIsAddProductOpen(true)}
+            onClick={() => {
+              setEditingProductId(null);
+              setIsAddProductOpen(true);
+            }}
             className="dash-chip"
             style={{ background: "#f4f4f5", color: "#18181b", border: "1.5px solid #e4e4e7" }}
           >
@@ -419,20 +505,39 @@ export function DashboardHome({
                     {/* Row 3 */}
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7 }}>
                       {invoice.customer_mobile ? (
-                        <a href={`tel:${invoice.customer_mobile}`} onClick={(e) => e.stopPropagation()}
-                          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 50, fontSize: 11.5, fontWeight: 700, background: "#eff6ff", color: "#2563eb", textDecoration: "none" }}>
-                          <PhoneCall style={{ width: 11, height: 11 }} /> Call
+                        <a
+                          href={`tel:${invoice.customer_mobile}`}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Call customer"
+                          title="Call customer"
+                          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#eff6ff", color: "#2563eb", textDecoration: "none" }}
+                        >
+                          <PhoneCall style={{ width: 11, height: 11 }} />
                         </a>
                       ) : null}
                       <button
                         type="button"
+                        aria-label="Print bill"
+                        title="Print bill"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleReprintInvoice(invoice);
                         }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 50, fontSize: 11.5, fontWeight: 700, background: "#f4f4f5", color: "#52525b", border: "none" }}
+                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
                       >
-                        <Printer style={{ width: 12, height: 12 }} /> Reprint
+                        <Printer style={{ width: 12, height: 12 }} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Download bill"
+                        title="Download bill"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadInvoice(invoice);
+                        }}
+                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
+                      >
+                        <Download style={{ width: 12, height: 12 }} />
                       </button>
                     </div>
                   </article>
@@ -451,118 +556,22 @@ export function DashboardHome({
                 View all <ArrowRight style={{ width: 12, height: 12 }} />
               </Link>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm" style={{ marginBottom: 20 }}>
-              {recentProductCards.map((product, index) => {
-                const isOutOfStock = product.total_quantity === 0;
-                const isLowStock = !isOutOfStock && product.total_quantity <= 5;
-                const marginPct =
-                  product.base_purchase_price > 0
-                    ? Math.round(((product.base_selling_price - product.base_purchase_price) / product.base_purchase_price) * 100)
-                    : 0;
-
-                return (
-                  <div
-                    key={product.id}
-                    className={`group relative ${index !== recentProducts.length - 1 ? "border-b border-stone-100" : ""} ${isOutOfStock ? "bg-stone-50" : "bg-white"}`}
-                  >
-                    {/* Left accent bar */}
-                    <div
-                      className={`absolute left-0 top-0 h-full w-[3px] rounded-r-sm transition-all duration-200 ${
-                        isOutOfStock ? "bg-red-300" : isLowStock ? "bg-amber-400" : "bg-transparent group-hover:bg-stone-300"
-                      }`}
-                    />
-
-                    <div
-                      className={`flex items-start gap-3 px-4 py-3.5 ${isOutOfStock ? "cursor-default" : "cursor-pointer hover:bg-stone-50/70"} transition-colors duration-150`}
-                      onClick={() => !isOutOfStock && handleProductClick(product.id)}
-                      onMouseEnter={() => prefetchProduct(product.id)}
-                      onFocus={() => prefetchProduct(product.id)}
-                      onTouchStart={() => prefetchProduct(product.id)}
-                    >
-                      <div className={`min-w-0 flex-1 transition-opacity duration-200 ${isOutOfStock ? "opacity-35" : ""}`}>
-                        {/* Brand / Category */}
-                        <p className="mb-0.5 truncate text-[10px] font-bold uppercase tracking-widest text-stone-400">
-                          {product.brand?.name || product.category?.name || "—"}
-                        </p>
-
-                        {/* Name */}
-                        <p className="truncate text-sm font-semibold leading-snug text-stone-800">
-                          {product.name}
-                        </p>
-
-                        {/* Stats row */}
-                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                          {/* Stock pill */}
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold tabular-nums ${
-                              isOutOfStock
-                                ? "bg-red-100 text-red-500"
-                                : isLowStock
-                                  ? "bg-amber-50 text-amber-600"
-                                  : "bg-emerald-50 text-emerald-600"
-                            }`}
-                          >
-                            <span
-                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                                isOutOfStock ? "bg-red-400" : isLowStock ? "bg-amber-400" : "bg-emerald-400"
-                              }`}
-                            />
-                            {product.total_quantity} in stock
-                          </span>
-
-                          <span className="text-stone-200 select-none">·</span>
-
-                          {/* Cost */}
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300">Cost</span>
-                            <span className="text-xs font-semibold tabular-nums text-stone-500">
-                              ₹{Number(product.base_purchase_price ?? 0).toLocaleString("en-IN")}
-                            </span>
-                          </div>
-
-                          {/* MRP */}
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300">MRP</span>
-                            <span className="text-xs font-bold tabular-nums text-stone-700">
-                              ₹{Number(product.base_selling_price ?? 0).toLocaleString("en-IN")}
-                            </span>
-                          </div>
-
-                          {/* Margin */}
-                          {marginPct > 0 && !isOutOfStock && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-                              <TrendingUp className="h-2.5 w-2.5" />
-                              {marginPct}%
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Out of stock notice */}
-                    {isOutOfStock && (
-                      <div className="mx-3 mb-3 flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2">
-                        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500">
-                          <span className="text-[10px] font-black leading-none">✕</span>
-                        </div>
-                        <p className="truncate text-[11px] font-semibold text-red-600">
-                          Out of stock — unavailable for sale
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Low stock notice */}
-                    {isLowStock && (
-                      <div className="mx-3 mb-3 flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2">
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                        <p className="truncate text-[11px] font-semibold text-amber-700">
-                          Only {product.total_quantity} left — running low
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="overflow-visible rounded-2xl border border-stone-100 bg-white shadow-sm" style={{ marginBottom: 20 }}>
+              {recentProductCards.map((product, index) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  isLast={index === recentProductCards.length - 1}
+                  deletingProductId={isDeleting ? deletingProductId : null}
+                  onProductClick={handleProductClick}
+                  onProductHover={prefetchProduct}
+                  onProductEdit={handleProductEdit}
+                  onProductDelete={handleDelete}
+                  onAddStock={handleAddStock}
+                  onRecordSale={handleRecordSale}
+                  onAdjustStock={handleAdjustStock}
+                />
+              ))}
             </div>
           </>
         )}
@@ -583,9 +592,15 @@ export function DashboardHome({
       {isAddProductOpen ? (
         <AddProductModal
           open={isAddProductOpen}
-          mode="create"
-          productId={null}
-          onClose={() => setIsAddProductOpen(false)}
+          mode={editingProductId ? "edit" : "create"}
+          productId={editingProductId}
+          onClose={() => {
+            setIsAddProductOpen(false);
+            setEditingProductId(null);
+          }}
+          onSaved={async () => {
+            router.refresh();
+          }}
           categories={categories}
           brands={brands}
           products={products}
@@ -594,19 +609,96 @@ export function DashboardHome({
 
       <ProductDetailsDrawer
         productId={selectedProductId}
-        onEdit={() => {}}
-        onDelete={() => {}}
-        onRecordSale={() => {}}
-        onAdjustStock={() => {}}
+        onEdit={handleProductEdit}
+        onDelete={handleDelete}
+        onRecordSale={handleRecordSale}
+        onAdjustStock={handleAdjustStock}
         onClose={() => setSelectedProductId(null)}
       />
+
+      <RecordSaleModal
+        key={saleProductId ?? "sale-idle"}
+        open={Boolean(saleProductId)}
+        productId={saleProductId}
+        onClose={() => setSaleProductId(null)}
+        onRecorded={async () => {
+          router.refresh();
+          if (saleProductId) {
+            await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", saleProductId] });
+          }
+        }}
+      />
+
+      {adjustmentProductId ? (
+        <StockAdjustmentModal
+          key={`${adjustmentProductId}-${adjustmentMode}`}
+          open
+          productId={adjustmentProductId}
+          initialAdjustmentType={adjustmentMode}
+          onClose={() => setAdjustmentProductId(null)}
+          onAdjusted={async () => {
+            router.refresh();
+            if (adjustmentProductId) {
+              await queryClient.invalidateQueries({ queryKey: ["inventory", "product-details", adjustmentProductId] });
+            }
+          }}
+        />
+      ) : null}
 
       <BillDetailsDrawer
         invoice={selectedInvoice ? { ...selectedInvoice, shop_logo_url: shopLogoUrl ?? null } : null}
         open={Boolean(selectedInvoice)}
         onClose={() => setSelectedInvoiceId(null)}
         onReprint={handleReprintInvoice}
+        onDownload={handleDownloadInvoice}
       />
+
+      {confirmDeleteProductId ? (
+        <DeleteConfirmationDialog
+          isDeleting={isDeleting && deletingProductId === confirmDeleteProductId}
+          onCancel={() => setConfirmDeleteProductId(null)}
+          onConfirm={confirmDelete}
+        />
+      ) : null}
     </>
+  );
+}
+
+function DeleteConfirmationDialog({
+  isDeleting,
+  onCancel,
+  onConfirm,
+}: {
+  isDeleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/35 px-4 pb-6 backdrop-blur-sm sm:items-center sm:pb-0">
+      <div className="w-full max-w-sm rounded-[1.75rem] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+        <h3 className="text-lg font-semibold text-stone-950">Delete Product</h3>
+        <p className="mt-2 text-sm leading-6 text-stone-600">
+          This will permanently remove the product and its related data. This action cannot be undone.
+        </p>
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="rounded-xl bg-stone-100 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-200 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

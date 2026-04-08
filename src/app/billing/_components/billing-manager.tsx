@@ -7,6 +7,7 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
+  Download,
   Printer,
   Receipt,
   Wallet,
@@ -22,7 +23,7 @@ import type { Product } from "@/lib/types/inventory";
 import { InventoryTopBar } from "@/app/inventory/_components/inventory-top-bar";
 import { AddBillModal } from "./add-bill-modal";
 import { BillDetailsDrawer } from "./bill-details-drawer";
-import { printInvoice, type PrintableInvoice } from "./invoice-print";
+import { downloadInvoicePdf, printInvoice, type PrintableInvoice } from "./invoice-print";
 import type { BillingInvoiceSummary } from "../load-billing-data";
 import { productDetailsQueryKey } from "@/app/inventory/queries";
 
@@ -171,6 +172,10 @@ export function BillingManager({
 
   function reprintInvoice(invoice: PrintableInvoice) {
     printInvoice({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
+  }
+
+  function downloadInvoice(invoice: PrintableInvoice) {
+    void downloadInvoicePdf({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
   }
 
   return (
@@ -468,14 +473,33 @@ export function BillingManager({
                       {/* Row 3 */}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7 }}>
                         {invoice.customer_mobile ? (
-                          <a href={`tel:${invoice.customer_mobile}`} onClick={(e) => e.stopPropagation()} className="bm-btn bm-btn-call">
-                            <PhoneCall style={{ width: 11, height: 11 }} /> Call
+                          <a
+                            href={`tel:${invoice.customer_mobile}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bm-btn bm-btn-call"
+                            aria-label="Call customer"
+                            title="Call customer"
+                          >
+                            <PhoneCall style={{ width: 11, height: 11 }} />
                           </a>
                         ) : null}
-                        <button type="button"
+                        <button
+                          type="button"
+                          aria-label="Print bill"
+                          title="Print bill"
                           onClick={(e) => { e.stopPropagation(); reprintInvoice(invoice); }}
-                          className="bm-btn bm-btn-print">
-                          <Printer style={{ width: 12, height: 12 }} /> Reprint
+                          className="bm-btn bm-btn-print"
+                        >
+                          <Printer style={{ width: 12, height: 12 }} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Download bill"
+                          title="Download bill"
+                          onClick={(e) => { e.stopPropagation(); downloadInvoice(invoice); }}
+                          className="bm-btn bm-btn-print"
+                        >
+                          <Download style={{ width: 12, height: 12 }} />
                         </button>
                       </div>
                     </article>
@@ -531,6 +555,7 @@ export function BillingManager({
           open={Boolean(selectedInvoice)}
           onClose={() => setSelectedInvoiceId(null)}
           onReprint={reprintInvoice}
+          onDownload={downloadInvoice}
         />
 
         {showScrollTop && (

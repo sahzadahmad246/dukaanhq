@@ -32,6 +32,7 @@ const ERROR_MAP: Array<[RegExp | string, string]> = [
   [/Product not found/i, "One of the selected products was not found. It may have been removed."],
   [/Customer name is required/i, "Please enter the customer name."],
   [/Customer mobile is required/i, "Please enter the customer mobile number."],
+  [/Customer mobile must be exactly 10 digits/i, "Please enter a valid 10-digit mobile number."],
   [/Billing address is required/i, "Please enter the billing address."],
   [/At least one invoice item/i, "Please add at least one product to the bill."],
 ];

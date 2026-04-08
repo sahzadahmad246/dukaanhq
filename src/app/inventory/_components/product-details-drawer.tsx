@@ -75,8 +75,6 @@ export function ProductDetailsDrawer({
   });
 
   const variants = useMemo(() => product?.variants ?? [], [product?.variants]);
-  const galleryImages = useMemo(() => product?.product_images ?? [], [product?.product_images]);
-  const heroImageUrl = galleryImages[0]?.image_url ?? product?.image_url ?? null;
   const inStockItems = (product?.inventory_items?.filter((item: InventoryItem) => item.status === "IN_STOCK") ?? []);
   const damagedItems = (product?.inventory_items?.filter((item: InventoryItem) => item.status === "DAMAGED") ?? []);
   const returnedItems = (product?.inventory_items?.filter((item: InventoryItem) => item.status === "RETURNED") ?? []);
@@ -103,15 +101,6 @@ export function ProductDetailsDrawer({
     });
   }, [product, variants]);
 
-  const variantImageMap = useMemo(() => {
-    const map = new Map<string, NonNullable<ProductDetails["product_images"]>[number][]>();
-    for (const image of galleryImages) {
-      const key = image.variant_id ?? "shared";
-      map.set(key, [...(map.get(key) ?? []), image]);
-    }
-    return map;
-  }, [galleryImages]);
-
   const allImages = useMemo(() => {
     if (!product) return [];
     const images = [];
@@ -123,6 +112,7 @@ export function ProductDetailsDrawer({
   }, [product]);
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const imageCarouselKey = `${productId ?? "idle"}-${allImages.length}`;
 
   useEffect(() => {
     if (allImages.length <= 1) return;
@@ -131,10 +121,6 @@ export function ProductDetailsDrawer({
     }, 4000);
     return () => clearInterval(interval);
   }, [allImages.length]);
-
-  useEffect(() => {
-    setCurrentImageIndex(0);
-  }, [productId]);
 
   const { minPrice, displayPriceLabel } = useMemo(() => {
     if (!product) return { minPrice: 0, displayPriceLabel: "Price" };
@@ -195,7 +181,7 @@ export function ProductDetailsDrawer({
                 <PackageOpen className="h-5 w-5 text-stone-400" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-stone-700">Couldn't load product</p>
+                <p className="text-sm font-semibold text-stone-700">Couldn&apos;t load product</p>
                 <p className="mt-1 text-xs text-stone-400">{error instanceof Error ? error.message : "Please try again."}</p>
               </div>
             </div>
@@ -208,9 +194,10 @@ export function ProductDetailsDrawer({
             <div className="flex flex-col pb-10">
 
               {/* ── Image Carousel ── */}
-              <div className="mx-4 overflow-hidden rounded-2xl bg-stone-100 relative group" style={{ aspectRatio: "4/3" }}>
+              <div key={imageCarouselKey} className="mx-4 overflow-hidden rounded-2xl bg-stone-100 relative group" style={{ aspectRatio: "4/3" }}>
                 {allImages.length > 0 ? (
                   <div className="h-full w-full relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img key={allImages[currentImageIndex].id} src={allImages[currentImageIndex].image_url} alt={`${product.name} - Image ${currentImageIndex + 1}`} className="h-full w-full object-cover transition-opacity duration-500" />
                     {allImages.length > 1 && (
                       <>

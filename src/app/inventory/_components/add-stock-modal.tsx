@@ -380,6 +380,7 @@ export function AddStockModal({
                   </button>
                   {selectedImages.map((image) => (
                     <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={image.previewUrl} alt="Selected stock" className="h-full w-full object-cover" />
                       <button
                         type="button"

@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { buildVariantLabel } from "@/lib/inventory-labels";
-import { fetchProductDetails, productDetailsQueryKey } from "../queries";
+import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "../queries";
 import { adjustInventoryStockAction, createProductVariantAction } from "../actions";
 
 type AdjustmentType =
@@ -99,7 +99,7 @@ export function StockAdjustmentModal({
   const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>(initialAdjustmentType);
   const [variantId, setVariantId] = useState("");
   const [inventoryItemId, setInventoryItemId] = useState("");
-  const [quantity, setQuantity] = useState("1");
+  const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [clientError, setClientError] = useState("");
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -113,10 +113,22 @@ export function StockAdjustmentModal({
     queryFn: productId ? () => fetchProductDetails(productId) : skipToken,
     enabled: open && Boolean(productId),
     staleTime: 10 * 60 * 1000,
+    gcTime: 2 * 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    placeholderData: productId
+      ? () => queryClient.getQueryData<ProductDetails>(productDetailsQueryKey(productId))
+      : undefined,
   });
 
   const activeVariantId = variantId || product?.variants?.[0]?.id || "";
   const isSerialized = product?.tracking_type === "SERIALIZED";
+  const selectedVariant = useMemo(
+    () => product?.variants?.find((variant) => variant.id === activeVariantId) ?? null,
+    [activeVariantId, product?.variants]
+  );
+  const selectedVariantQuantity = Number(selectedVariant?.quantity ?? 0);
 
   const availableAdjustmentOptions = isSerialized
     ? ADJUSTMENT_OPTIONS.filter((o) => o.serialized)
@@ -131,6 +143,7 @@ export function StockAdjustmentModal({
     });
   }, [activeVariantId, adjustmentType, product?.inventory_items]);
 
+  const quantityValue = quantity || String(selectedVariantQuantity || 0);
 
   if (!open) return null;
 
@@ -138,7 +151,7 @@ export function StockAdjustmentModal({
     if (!product) { setClientError("Product details are still loading."); return false; }
     if (product.tracking_type === "QUANTITY_BASED") {
       if (!activeVariantId) { setClientError("Select the option to adjust."); return false; }
-      const parsed = Number.parseInt(quantity, 10);
+      const parsed = Number.parseInt(quantityValue, 10);
       if (!Number.isInteger(parsed) || parsed <= 0) { setClientError("Quantity must be at least 1."); return false; }
     } else if (!inventoryItemId) {
       setClientError("Select the exact device to adjust."); return false;
@@ -155,7 +168,7 @@ export function StockAdjustmentModal({
         adjustment_type: adjustmentType,
         variant_id: product.tracking_type === "QUANTITY_BASED" ? activeVariantId : activeVariantId || null,
         inventory_item_id: product.tracking_type === "SERIALIZED" ? inventoryItemId : null,
-        quantity: product.tracking_type === "QUANTITY_BASED" ? Number.parseInt(quantity, 10) || 1 : 1,
+        quantity: product.tracking_type === "QUANTITY_BASED" ? Number.parseInt(quantityValue, 10) || 1 : 1,
         reason: reason.trim() || null,
       });
       if (result.status === "success") {
@@ -248,6 +261,14 @@ export function StockAdjustmentModal({
                   <span className="text-stone-700">{product.brand?.name || "No Brand"}</span>
                   <span className="text-stone-300">•</span>
                   <span className="text-stone-700">{product.category?.name || "No Category"}</span>
+                  <span className="text-stone-300">•</span>
+                  <span className="text-stone-700">Total {product.total_quantity}</span>
+                  {product.tracking_type === "QUANTITY_BASED" && selectedVariant ? (
+                    <>
+                      <span className="text-stone-300">•</span>
+                      <span className="text-stone-700">{buildVariantLabel(selectedVariant) ?? product.name}: {selectedVariantQuantity}</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -326,6 +347,10 @@ export function StockAdjustmentModal({
                       value={activeVariantId}
                       onValueChange={(val) => {
                         setVariantId(val);
+                        const nextVariantQuantity = Number(
+                          product.variants?.find((variant) => variant.id === val)?.quantity ?? 0
+                        );
+                        setQuantity(String(nextVariantQuantity));
                         setInventoryItemId("");
                         setClientError("");
                       }}
@@ -352,7 +377,7 @@ export function StockAdjustmentModal({
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setQuantity((q) => String(Math.max(1, Number(q) - 1)))}
+                      onClick={() => setQuantity((q) => String(Math.max(1, Number(q || quantityValue) - 1)))}
                       className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:bg-stone-50"
                     >
                       <MinusCircle className="h-4 w-4" />
@@ -360,13 +385,13 @@ export function StockAdjustmentModal({
                     <Input
                       type="number"
                       min="1"
-                      value={quantity}
+                      value={quantityValue}
                       onChange={(e) => { setQuantity(e.target.value); setClientError(""); }}
                       className="h-11 flex-1 rounded-xl border-stone-200 bg-white text-center text-[15px] font-bold text-stone-900 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                     />
                     <button
                       type="button"
-                      onClick={() => setQuantity((q) => String(Number(q) + 1))}
+                      onClick={() => setQuantity((q) => String(Number(q || quantityValue) + 1))}
                       className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:bg-stone-50"
                     >
                       <PlusCircle className="h-4 w-4" />

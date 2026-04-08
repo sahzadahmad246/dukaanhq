@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
   House,
   Package,
@@ -86,7 +86,9 @@ export function WorkspaceShell({
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-950">
-      <DashboardToastListener />
+      <Suspense fallback={null}>
+        <DashboardToastListener />
+      </Suspense>
       <OwnerDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}

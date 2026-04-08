@@ -19,7 +19,10 @@ export type PaymentDetails = z.infer<typeof PaymentDetailsSchema>;
 
 export const CustomerDraftSchema = z.object({
   name: z.string().min(1, "Customer name is required"),
-  mobile: z.string().min(1, "Customer mobile is required"),
+  mobile: z
+    .string()
+    .min(1, "Customer mobile is required")
+    .regex(/^\d{10}$/, "Customer mobile must be exactly 10 digits"),
   billing_address: z.string().min(1, "Billing address is required"),
   gst_number: z.string().optional().nullable(),
 });
