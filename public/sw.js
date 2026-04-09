@@ -1,5 +1,5 @@
-const CACHE_NAME = "dukaanhq-shell-v1";
-const SHELL_ASSETS = ["/", "/manifest.webmanifest", "/favicon.ico"];
+const CACHE_NAME = "dukaanhq-shell-v2";
+const SHELL_ASSETS = ["/dashboard", "/manifest.webmanifest", "/logo.png", "/favicon.ico"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -55,7 +55,7 @@ self.addEventListener("fetch", (event) => {
         }
 
         if (request.mode === "navigate") {
-          return (await caches.match("/")) || Response.error();
+          return (await caches.match("/dashboard")) || Response.error();
         }
 
         return Response.error();

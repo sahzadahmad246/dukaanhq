@@ -152,7 +152,7 @@ export function StockAdjustmentModal({
     if (product.tracking_type === "QUANTITY_BASED") {
       if (!activeVariantId) { setClientError("Select the option to adjust."); return false; }
       const parsed = Number.parseInt(quantityValue, 10);
-      if (!Number.isInteger(parsed) || parsed <= 0) { setClientError("Quantity must be at least 1."); return false; }
+      if (!Number.isInteger(parsed) || parsed < 0) { setClientError("Quantity cannot be less than 0."); return false; }
     } else if (!inventoryItemId) {
       setClientError("Select the exact device to adjust."); return false;
     }
@@ -168,7 +168,7 @@ export function StockAdjustmentModal({
         adjustment_type: adjustmentType,
         variant_id: product.tracking_type === "QUANTITY_BASED" ? activeVariantId : activeVariantId || null,
         inventory_item_id: product.tracking_type === "SERIALIZED" ? inventoryItemId : null,
-        quantity: product.tracking_type === "QUANTITY_BASED" ? Number.parseInt(quantityValue, 10) || 1 : 1,
+        quantity: product.tracking_type === "QUANTITY_BASED" ? Math.max(0, Number.parseInt(quantityValue, 10) || 0) : 1,
         reason: reason.trim() || null,
       });
       if (result.status === "success") {
@@ -273,53 +273,54 @@ export function StockAdjustmentModal({
               </div>
 
               {/* Action selector */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <SectionLabel>Action</SectionLabel>
-                  <button
-                    type="button"
-                    onClick={() => setShowInfoModal(true)}
-                    className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-400 transition hover:text-stone-600"
-                  >
-                    <Info className="h-3 w-3" /> Info
-                  </button>
-                </div>
+              {isSerialized ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <SectionLabel>Action</SectionLabel>
+                    <button
+                      type="button"
+                      onClick={() => setShowInfoModal(true)}
+                      className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-400 transition hover:text-stone-600"
+                    >
+                      <Info className="h-3 w-3" /> Info
+                    </button>
+                  </div>
 
-                {/* Card-style action picker */}
-                <div className="grid grid-cols-2 gap-2">
-                  {availableAdjustmentOptions.map((opt) => {
-                    const isSelected = adjustmentType === opt.value;
-                    const isAdd = opt.value === "ADJUSTMENT_ADD";
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => {
-                          setAdjustmentType(opt.value);
-                          setInventoryItemId("");
-                          setClientError("");
-                        }}
-                        className={`flex flex-col items-start gap-2 rounded-2xl border p-3.5 text-left transition-all ${isSelected
-                            ? isAdd
-                              ? "border-emerald-300 bg-emerald-50 ring-1 ring-emerald-300"
-                              : "border-red-200 bg-red-50 ring-1 ring-red-200"
-                            : "border-stone-200 bg-white hover:border-stone-300"
-                          }`}
-                      >
-                        <span className={`flex h-7 w-7 items-center justify-center rounded-full ${isSelected ? (isAdd ? "bg-emerald-100" : "bg-red-100") : "bg-stone-100"}`}>
-                          {isAdd
-                            ? <PlusCircle className={`h-4 w-4 ${isSelected ? "text-emerald-600" : "text-stone-400"}`} />
-                            : <MinusCircle className={`h-4 w-4 ${isSelected ? "text-red-500" : "text-stone-400"}`} />
-                          }
-                        </span>
-                        <span className={`text-[12px] font-bold ${isSelected ? (isAdd ? "text-emerald-800" : "text-red-700") : "text-stone-700"}`}>
-                          {opt.label}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  <div className="grid grid-cols-2 gap-2">
+                    {availableAdjustmentOptions.map((opt) => {
+                      const isSelected = adjustmentType === opt.value;
+                      const isAdd = opt.value === "ADJUSTMENT_ADD";
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setAdjustmentType(opt.value);
+                            setInventoryItemId("");
+                            setClientError("");
+                          }}
+                          className={`flex flex-col items-start gap-2 rounded-2xl border p-3.5 text-left transition-all ${isSelected
+                              ? isAdd
+                                ? "border-emerald-300 bg-emerald-50 ring-1 ring-emerald-300"
+                                : "border-red-200 bg-red-50 ring-1 ring-red-200"
+                              : "border-stone-200 bg-white hover:border-stone-300"
+                            }`}
+                        >
+                          <span className={`flex h-7 w-7 items-center justify-center rounded-full ${isSelected ? (isAdd ? "bg-emerald-100" : "bg-red-100") : "bg-stone-100"}`}>
+                            {isAdd
+                              ? <PlusCircle className={`h-4 w-4 ${isSelected ? "text-emerald-600" : "text-stone-400"}`} />
+                              : <MinusCircle className={`h-4 w-4 ${isSelected ? "text-red-500" : "text-stone-400"}`} />
+                            }
+                          </span>
+                          <span className={`text-[12px] font-bold ${isSelected ? (isAdd ? "text-emerald-800" : "text-red-700") : "text-stone-700"}`}>
+                            {opt.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               {/* Variant selector */}
               {product.variants && product.variants.length > 0 && (
@@ -343,29 +344,50 @@ export function StockAdjustmentModal({
                       <p className="text-[13px] font-medium text-stone-600">Waiting for variant details...</p>
                     </div>
                   ) : (
-                    <Select
-                      value={activeVariantId}
-                      onValueChange={(val) => {
-                        setVariantId(val);
-                        const nextVariantQuantity = Number(
-                          product.variants?.find((variant) => variant.id === val)?.quantity ?? 0
-                        );
-                        setQuantity(String(nextVariantQuantity));
-                        setInventoryItemId("");
-                        setClientError("");
-                      }}
-                    >
-                      <SelectTrigger className="h-11 rounded-xl border-stone-200 bg-white text-[13px] font-medium text-stone-800">
-                        <SelectValue placeholder="Select variant" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl">
-                        {product.variants.map((variant) => (
-                          <SelectItem key={variant.id} value={variant.id} className="text-[13px]">
-                            {buildVariantLabel(variant) ?? product.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="overflow-hidden rounded-[1.1rem] border border-stone-200 bg-stone-50">
+                      <div className="border-b border-stone-200 bg-stone-100/50 px-4 py-3">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-stone-500">Select Variant</p>
+                      </div>
+                      <div className="flex flex-col divide-y divide-stone-100 bg-white">
+                        {product.variants.map((variant) => {
+                          const isActive = activeVariantId === variant.id;
+                          const variantQty = Number(variant.quantity ?? 0);
+                          return (
+                            <button
+                              key={variant.id}
+                              type="button"
+                              onClick={() => {
+                                setVariantId(variant.id);
+                                setQuantity(String(variantQty));
+                                setInventoryItemId("");
+                                setClientError("");
+                              }}
+                              className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors duration-200 ${
+                                isActive ? "bg-[#faf9f7]" : "bg-white hover:bg-stone-50"
+                              }`}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                  isActive ? "border-stone-900 bg-stone-900" : "border-stone-300"
+                                }`}>
+                                  {isActive ? <div className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                                </div>
+                                <span className={`truncate text-[13px] font-bold leading-none ${
+                                  isActive ? "text-stone-900" : "text-stone-700"
+                                }`}>
+                                  {buildVariantLabel(variant) ?? product.name}
+                                </span>
+                              </div>
+                              <span className={`shrink-0 text-[11px] font-bold uppercase tracking-wider ${
+                                isActive ? "text-stone-900" : "text-stone-500"
+                              }`}>
+                                Qty {variantQty}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -373,18 +395,18 @@ export function StockAdjustmentModal({
               {/* Quantity or device picker */}
               {product.tracking_type === "QUANTITY_BASED" ? (
                 <div>
-                  <SectionLabel>Quantity</SectionLabel>
+                  <SectionLabel>New Quantity</SectionLabel>
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setQuantity((q) => String(Math.max(1, Number(q || quantityValue) - 1)))}
+                      onClick={() => setQuantity((q) => String(Math.max(0, Number(q || quantityValue) - 1)))}
                       className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:bg-stone-50"
                     >
                       <MinusCircle className="h-4 w-4" />
                     </button>
                     <Input
                       type="number"
-                      min="1"
+                      min="0"
                       value={quantityValue}
                       onChange={(e) => { setQuantity(e.target.value); setClientError(""); }}
                       className="h-11 flex-1 rounded-xl border-stone-200 bg-white text-center text-[15px] font-bold text-stone-900 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"

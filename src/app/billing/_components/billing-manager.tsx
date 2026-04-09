@@ -56,6 +56,36 @@ const CARD_ACCENTS = [
   { top: "#f59e0b", tint: "#fffbeb", textAccent: "#b45309", dotBg: "#fef3c7" },
 ];
 
+function getBillPaymentLabel(invoice: BillingInvoiceSummary) {
+  const methods = invoice.payment_details?.methods?.filter(Boolean) ?? [];
+  if (methods.includes("LOAN")) return "Loan";
+  return methods[0] || invoice.payment_method || "Cash";
+}
+
+function normalizeBillSearchText(invoice: BillingInvoiceSummary) {
+  return [
+    invoice.invoice_number,
+    invoice.customer_name,
+    invoice.customer_mobile,
+    invoice.billing_address,
+    invoice.customer_gst_number,
+    invoice.payment_method,
+    invoice.payment_status,
+    invoice.notes,
+    invoice.payment_details?.methods?.join(" "),
+    invoice.invoice_items?.map((item) => [
+      item.product_name_snapshot,
+      item.brand_name_snapshot,
+      item.category_name_snapshot,
+      item.variant_name_snapshot,
+      item.identifier_snapshot,
+    ].filter(Boolean).join(" ")).join(" "),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 export function BillingManager({
   products,
   invoices,
@@ -153,21 +183,27 @@ export function BillingManager({
     }
   }, [invoices, currentQuery, currentPeriod]);
 
+  const displayedInvoices = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return invoices;
+    return invoices.filter((invoice) => normalizeBillSearchText(invoice).includes(normalizedQuery));
+  }, [invoices, searchQuery]);
+
   const selectedInvoice = useMemo(
-    () => invoices.find((inv) => inv.id === selectedInvoiceId) ?? null,
-    [invoices, selectedInvoiceId]
+    () => displayedInvoices.find((inv) => inv.id === selectedInvoiceId) ?? invoices.find((inv) => inv.id === selectedInvoiceId) ?? null,
+    [displayedInvoices, invoices, selectedInvoiceId]
   );
 
   const stats = useMemo(
     () => ({
-      count: invoices.length,
-      totalValue: invoices.reduce((sum, inv) => sum + Number(inv.grand_total || 0), 0),
+      count: displayedInvoices.length,
+      totalValue: displayedInvoices.reduce((sum, inv) => sum + Number(inv.grand_total || 0), 0),
       avgValue:
-        invoices.length > 0
-          ? invoices.reduce((sum, inv) => sum + Number(inv.grand_total || 0), 0) / invoices.length
+        displayedInvoices.length > 0
+          ? displayedInvoices.reduce((sum, inv) => sum + Number(inv.grand_total || 0), 0) / displayedInvoices.length
           : 0,
     }),
-    [invoices]
+    [displayedInvoices]
   );
 
   function reprintInvoice(invoice: PrintableInvoice) {
@@ -240,27 +276,34 @@ export function BillingManager({
           opacity: 0.3;
         }
 
+        .bm-list {
+          overflow: visible;
+          border-radius: 20px;
+          border: 1px solid #f1f1f3;
+          background: #ffffff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
         .bm-card {
           background: #ffffff;
-          border-radius: 20px;
           padding: 15px 14px 13px;
           position: relative;
           overflow: hidden;
           cursor: pointer;
-          transition: transform 0.17s ease, box-shadow 0.17s ease;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 14px rgba(0,0,0,0.05);
+          transition: background 0.15s ease;
         }
         .bm-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.09), 0 12px 30px rgba(0,0,0,0.07);
+          background: #fafafa;
         }
-        .bm-card:active { transform: translateY(0); }
+        .bm-card + .bm-card {
+          border-top: 1px solid #f1f1f3;
+        }
+        .bm-card:active { background: #f6f6f7; }
 
         .bm-card-topbar {
           position: absolute;
           top: 0; left: 0; bottom: 0;
           width: 3.5px;
-          border-radius: 20px 0 0 20px;
+          border-radius: 2px;
         }
 
         .bm-avatar {
@@ -291,10 +334,6 @@ export function BillingManager({
         .bm-amount {
           font-size: 19px; font-weight: 900;
           letter-spacing: -0.025em; color: #18181b; flex-shrink: 0;
-        }
-        .bm-divider {
-          height: 1px; background: #f1f1f3;
-          margin: 11px 0 10px;
         }
         .bm-btn {
           display: inline-flex; align-items: center; gap: 4px;
@@ -351,6 +390,7 @@ export function BillingManager({
               onSearchChange={setSearchQuery}
               onBack={() => router.back()}
               onAdd={() => setIsAddBillOpen(true)}
+              searchPlaceholder="Search bills by invoice no, customer, mobile, item"
             />
           </div>
         </div>
@@ -418,7 +458,7 @@ export function BillingManager({
           </div>
 
           {/* ── Invoice List ── */}
-          {invoices.length === 0 ? (
+          {displayedInvoices.length === 0 ? (
             <div className="bm-empty">
               <p style={{ color: "#3f3f46", fontWeight: 700, fontSize: 14 }}>No bills found</p>
               <p style={{ color: "#a1a1aa", fontSize: 13, marginTop: 8, lineHeight: 1.6 }}>
@@ -427,9 +467,9 @@ export function BillingManager({
             </div>
           ) : (
             <>
-              <p className="bm-section-label">{invoices.length} invoice{invoices.length !== 1 ? "s" : ""}</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {invoices.map((invoice, i) => {
+              <p className="bm-section-label">{displayedInvoices.length} invoice{displayedInvoices.length !== 1 ? "s" : ""}</p>
+              <div className="bm-list">
+                {displayedInvoices.map((invoice, i) => {
                   const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
                   return (
                     <article key={invoice.id} onClick={() => setSelectedInvoiceId(invoice.id)} className="bm-card">
@@ -447,6 +487,10 @@ export function BillingManager({
                             </div>
                             <span className="bm-inv-num" style={{ background: accent.tint, color: accent.textAccent }}>
                               {invoice.invoice_number}
+
+                            </span>
+                            <span className="bm-inv-num" style={{ background: accent.tint, color: accent.textAccent }}>
+                              {getBillPaymentLabel(invoice)}
                             </span>
                           </div>
                         </div>
@@ -457,21 +501,20 @@ export function BillingManager({
                       </div>
 
                       {/* Row 2 */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
-                        <div className="bm-product-line">
-                          <ShoppingBag style={{ width: 12, height: 12, flexShrink: 0 }} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {invoice.invoice_items?.[0]?.product_name_snapshot ?? "Unknown item"}
-                            {(invoice.invoice_items?.length ?? 0) > 1 ? ` +${invoice.invoice_items!.length - 1}` : ""}
-                          </span>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8, paddingLeft: 43 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="bm-product-line gap-8">
+                            <ShoppingBag style={{ width: 12, height: 12, flexShrink: 0 }} />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {invoice.invoice_items?.[0]?.product_name_snapshot ?? "Unknown item"}
+                              {(invoice.invoice_items?.length ?? 0) > 1 ? ` +${invoice.invoice_items!.length - 1}` : ""}
+                            </span>
+                          </div>
                         </div>
                         <div className="bm-amount">₹{Number(invoice.grand_total).toFixed(0)}</div>
                       </div>
-
-                      <div className="bm-divider" />
-
                       {/* Row 3 */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, marginTop: 12 }}>
                         {invoice.customer_mobile ? (
                           <a
                             href={`tel:${invoice.customer_mobile}`}

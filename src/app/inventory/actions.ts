@@ -729,10 +729,62 @@ export async function adjustInventoryStockAction(input: {
   quantity?: number;
   reason?: string | null;
 }): Promise<ActionResponse> {
-  const { shop } = await getWorkspaceData();
+  const { shop, user } = await getWorkspaceData();
   if (!shop) return { status: "error", message: "No active shop found." };
 
   const supabase = await createSupabaseServerClient();
+
+  if (input.variant_id && !input.inventory_item_id) {
+    const nextQuantity = Math.max(0, Number(input.quantity ?? 0));
+
+    const { data: currentVariant, error: currentVariantError } = await supabase
+      .from("product_variants")
+      .select("id, quantity")
+      .eq("id", input.variant_id)
+      .eq("product_id", input.product_id)
+      .eq("shop_id", shop.id)
+      .single();
+
+    if (currentVariantError || !currentVariant) {
+      return { status: "error", message: "Could not load current stock quantity." };
+    }
+
+    const previousQuantity = Number(currentVariant.quantity ?? 0);
+    const quantityChange = nextQuantity - previousQuantity;
+
+    const { error: updateError } = await supabase
+      .from("product_variants")
+      .update({ quantity: nextQuantity })
+      .eq("id", input.variant_id)
+      .eq("product_id", input.product_id)
+      .eq("shop_id", shop.id);
+
+    if (updateError) {
+      return { status: "error", message: "Could not update stock quantity." };
+    }
+
+    if (quantityChange !== 0) {
+      const movementType =
+        quantityChange > 0
+          ? "ADJUSTMENT_ADD"
+          : "ADJUSTMENT_REMOVE";
+
+      await supabase.from("stock_movements").insert({
+        shop_id: shop.id,
+        product_id: input.product_id,
+        variant_id: input.variant_id,
+        type: movementType,
+        quantity_change: quantityChange,
+        reason: input.reason ?? null,
+        performed_by: user.id,
+      });
+    }
+
+    revalidatePath("/inventory");
+    revalidatePath("/billing");
+    return { status: "success", message: "Stock updated successfully." };
+  }
+
   const { error } = await supabase.rpc("adjust_inventory_stock", {
     p_shop_id: shop.id,
     p_product_id: input.product_id,

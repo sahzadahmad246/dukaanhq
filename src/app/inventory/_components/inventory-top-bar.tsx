@@ -11,6 +11,7 @@ export function InventoryTopBar({
   onQrExport,
   userAvatarUrl,
   avatarFallback,
+  searchPlaceholder = "Search products like Apple iPhone 15",
 }: {
   searchQuery: string;
   onSearchChange: (value: string) => void;
@@ -19,6 +20,7 @@ export function InventoryTopBar({
   onQrExport?: () => void;
   userAvatarUrl?: string | null;
   avatarFallback?: string;
+  searchPlaceholder?: string;
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -35,7 +37,7 @@ export function InventoryTopBar({
         <input
           value={searchQuery}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search products like Apple iPhone 15"
+          placeholder={searchPlaceholder}
           className="block h-10 w-full min-w-0 max-w-full rounded-xl border border-stone-200 bg-stone-50 pl-10 pr-10 text-sm text-stone-900 outline-none transition focus:border-stone-300 focus:bg-white"
         />
         {searchQuery ? (

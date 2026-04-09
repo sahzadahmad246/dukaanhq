@@ -67,6 +67,12 @@ function formatSafeAmount(value: number | null | undefined) {
   return Number.isFinite(amount) ? amount.toFixed(0) : "0";
 }
 
+function getBillPaymentLabel(invoice: RecentInvoice) {
+  const methods = invoice.payment_details?.methods?.filter(Boolean) ?? [];
+  if (methods.includes("LOAN")) return "Loan";
+  return methods[0] || invoice.payment_method || "Cash";
+}
+
 const STAT_CARDS: Array<{
   key: keyof DashboardStats;
   label: string;
@@ -284,27 +290,35 @@ export function DashboardHome({
           box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 14px rgba(0,0,0,0.05);
         }
 
+        .dash-bill-list {
+          overflow: visible;
+          border-radius: 20px;
+          border: 1px solid #f1f1f3;
+          background: #ffffff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+          margin-bottom: 20px;
+        }
         .dash-card {
           background: #ffffff;
-          border-radius: 20px;
           padding: 15px 14px 13px;
           position: relative;
           overflow: hidden;
           cursor: pointer;
-          transition: transform 0.17s ease, box-shadow 0.17s ease;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 14px rgba(0,0,0,0.05);
+          transition: background 0.15s ease;
         }
         .dash-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.09), 0 12px 30px rgba(0,0,0,0.07);
+          background: #fafafa;
         }
-        .dash-card:active { transform: translateY(0); }
+        .dash-card + .dash-card {
+          border-top: 1px solid #f1f1f3;
+        }
+        .dash-card:active { background: #f6f6f7; }
 
         .dash-card-topbar {
           position: absolute;
           top: 0; left: 0; bottom: 0;
           width: 3.5px;
-          border-radius: 20px 0 0 20px;
+          border-radius: 2px;
         }
 
         .dash-avatar {
@@ -458,7 +472,7 @@ export function DashboardHome({
                 View all <ArrowRight style={{ width: 12, height: 12 }} />
               </Link>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+            <div className="dash-bill-list">
               {recentInvoices.map((invoice, i) => {
                 const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
                 return (
@@ -488,22 +502,24 @@ export function DashboardHome({
 
                     {/* Row 2 */}
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 500, color: "#a1a1aa", display: "flex", alignItems: "center", gap: 5, flex: 1, minWidth: 0 }}>
-                        <ShoppingBag style={{ width: 12, height: 12, flexShrink: 0 }} />
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {invoice.invoice_items?.[0]?.product_name_snapshot ?? "Unknown item"}
-                          {(invoice.invoice_items?.length ?? 0) > 1 ? ` +${invoice.invoice_items!.length - 1}` : ""}
-                        </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 500, color: "#a1a1aa", display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                          <ShoppingBag style={{ width: 12, height: 12, flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {invoice.invoice_items?.[0]?.product_name_snapshot ?? "Unknown item"}
+                            {(invoice.invoice_items?.length ?? 0) > 1 ? ` +${invoice.invoice_items!.length - 1}` : ""}
+                          </span>
+                        </div>
+                        <div style={{ marginTop: 4, paddingLeft: 17, fontSize: 11, fontWeight: 700, color: "#71717a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          {getBillPaymentLabel(invoice)}
+                        </div>
                       </div>
                       <div style={{ fontSize: 19, fontWeight: 900, letterSpacing: "-0.025em", color: "#18181b", flexShrink: 0 }}>
                         ₹{formatSafeAmount(invoice.grand_total)}
                       </div>
                     </div>
-
-                    <div style={{ height: 1, background: "#f1f1f3", margin: "11px 0 10px" }} />
-
                     {/* Row 3 */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, marginTop: 12 }}>
                       {invoice.customer_mobile ? (
                         <a
                           href={`tel:${invoice.customer_mobile}`}

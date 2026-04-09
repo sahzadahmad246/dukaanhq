@@ -17,27 +17,19 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     orientation: "portrait",
     background_color: "#f7f5ef",
     theme_color: "#f5c542",
-    icons: branding.iconUrl
-      ? [
-          {
-            src: "/api/pwa-icon?size=192",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "maskable",
-          },
-          {
-            src: "/api/pwa-icon?size=512",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable",
-          },
-        ]
-      : [
-          {
-            src: "/favicon.ico",
-            sizes: "any",
-            type: "image/x-icon",
-          },
-        ],
+    icons: [
+      {
+        src: branding.iconUrl,
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
+      },
+      {
+        src: branding.iconUrl,
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
+    ],
   };
 }

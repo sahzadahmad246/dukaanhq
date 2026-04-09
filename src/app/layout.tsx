@@ -18,8 +18,14 @@ const displayFont = Sora({
 
 export const metadata: Metadata = {
   title: "DukaanHQ",
-  description: "Mobile-first SaaS for retail shops, billing, inventory, and storefronts.",
+  description: "DukaanHQ is a SaaS for electronics shops to manage products, create bills, and generate invoices faster.",
+  applicationName: "DukaanHQ",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+    shortcut: "/logo.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

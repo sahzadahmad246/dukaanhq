@@ -110,13 +110,14 @@ export function WorkspaceShell({
             ].join(" ")}
           >
             <div className="mx-auto flex w-full max-w-3xl items-center justify-between border-b border-stone-200 bg-[#f7f8fb]/95 px-4 py-3 text-stone-950 backdrop-blur">
-              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-stone-900 text-sm font-semibold text-white">
-                {shopLogoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={shopLogoUrl} alt={shopName} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-sm font-semibold">{shopName.slice(0, 1).toUpperCase()}</span>
-                )}
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-[#f5c542]">
+                <Image
+                  src="/logo.png"
+                  alt="DukaanHQ"
+                  width={44}
+                  height={44}
+                  className="h-11 w-11 object-cover"
+                />
               </div>
               <div className="text-sm font-semibold tracking-[0.18em] uppercase">{title}</div>
               <button

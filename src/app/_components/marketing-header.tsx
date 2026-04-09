@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
@@ -41,8 +42,8 @@ export function MarketingHeader({
         ].join(" ")}
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f5c542] text-[#080e1a] text-[10px] font-black tracking-tight">
-            DH
+          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-[#f5c542]">
+            <Image src="/logo.png" alt="DukaanHQ" width={32} height={32} className="h-8 w-8 object-cover" />
           </div>
           <span className={dark ? "text-[14px] font-bold tracking-tight text-white" : "text-[14px] font-bold tracking-tight text-stone-900"}>DukaanHQ</span>
         </div>

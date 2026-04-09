@@ -162,9 +162,42 @@ function wrapText(text: string, maxWidth: number, font: PDFFontLike, fontSize: n
   return lines;
 }
 
+function wrapTextWithLineBreaks(text: string, maxWidth: number, font: PDFFontLike, fontSize: number) {
+  const paragraphs = text.replace(/\r\n/g, "\n").split("\n");
+  const lines: string[] = [];
+
+  for (const paragraph of paragraphs) {
+    if (!paragraph.trim()) {
+      lines.push("");
+      continue;
+    }
+
+    lines.push(...wrapText(paragraph, maxWidth, font, fontSize));
+  }
+
+  return lines.length > 0 ? lines : [""];
+}
+
 type PDFFontLike = {
   widthOfTextAtSize: (text: string, size: number) => number;
 };
+
+function colorFromHex(hex: string) {
+  const normalized = hex.replace("#", "");
+  const value = normalized.length === 3
+    ? normalized.split("").map((part) => `${part}${part}`).join("")
+    : normalized;
+
+  const red = Number.parseInt(value.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(value.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(value.slice(4, 6), 16) / 255;
+
+  return rgb(red, green, blue);
+}
+
+function renderMultilineHtml(text: string) {
+  return escapeHtml(text).replace(/\r\n/g, "\n").replace(/\n/g, "<br />");
+}
 
 type InvoiceDocData = {
   logoUrl: string | null;
@@ -215,9 +248,11 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   }));
 
   const summaryRows = [
-    { label: "Subtotal", value: formatMoney(invoice.subtotal) },
-    { label: "Discount", value: formatMoney(invoice.discount_total) },
-    { label: "Grand Total", value: formatMoney(invoice.grand_total), total: true },
+    { label: "Subtotal (Rs)", value: formatMoney(invoice.subtotal) },
+    ...(Number(invoice.discount_total || 0) > 0
+      ? [{ label: "Discount (Rs)", value: formatMoney(invoice.discount_total) }]
+      : []),
+    { label: "Grand Total (Rs)", value: formatMoney(invoice.grand_total), total: true },
   ];
 
   return {
@@ -272,7 +307,7 @@ function buildInvoiceHtml(invoice: PrintableInvoice, doc: InvoiceDocData) {
   return `
     <html>
       <head>
-        <title></title>
+        <title>${escapeHtml(`${invoice.invoice_number} - ${invoice.shop_name_snapshot}`)}</title>
         <style>
           * { box-sizing: border-box; }
           body {
@@ -536,7 +571,7 @@ function buildInvoiceHtml(invoice: PrintableInvoice, doc: InvoiceDocData) {
             </div>
           </div>
 
-          <div class="footer">${escapeHtml(doc.footerText)}</div>
+          <div class="footer">${renderMultilineHtml(doc.footerText)}</div>
         </div>
       </body>
     </html>
@@ -553,291 +588,448 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   const page = pdf.addPage([INVOICE_LAYOUT.pdfPageWidth, INVOICE_LAYOUT.pdfPageHeight]);
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
-  const margin = INVOICE_LAYOUT.pdfMarginX;
-  const contentWidth = pageWidth - margin * 2;
-  let cursorY = pageHeight - INVOICE_LAYOUT.pdfMarginTop;
+  const outerMarginX = INVOICE_LAYOUT.pdfMarginX;
+  const outerMarginTop = INVOICE_LAYOUT.pdfMarginTop;
+  const outerMarginBottom = INVOICE_LAYOUT.pdfMarginBottom;
+  const pageBoxWidth = pageWidth - outerMarginX * 2;
+  const pageBoxHeight = pageHeight - outerMarginTop - outerMarginBottom;
+  const pageBoxX = outerMarginX;
+  const pageBoxY = outerMarginBottom;
+  const scale = pageBoxWidth / INVOICE_LAYOUT.printPageWidth;
+  const px = (value: number) => value * scale;
+  const pageRight = pageBoxX + pageBoxWidth;
+  const contentX = pageBoxX + px(INVOICE_LAYOUT.printPaddingX);
+  const contentRight = pageRight - px(INVOICE_LAYOUT.printPaddingX);
+  const contentWidth = contentRight - contentX;
+  let cursorY = pageHeight - outerMarginTop - px(INVOICE_LAYOUT.printPaddingTop);
+
+  const headingColor = colorFromHex(INVOICE_LAYOUT.heading);
+  const subtextColor = colorFromHex(INVOICE_LAYOUT.subtext);
+  const mutedColor = colorFromHex(INVOICE_LAYOUT.muted);
+  const borderColor = colorFromHex(INVOICE_LAYOUT.border);
+  const mutedBorderColor = colorFromHex(INVOICE_LAYOUT.mutedBorder);
+  const tableHeadColor = colorFromHex(INVOICE_LAYOUT.tableHead);
+  const summaryBgColor = colorFromHex(INVOICE_LAYOUT.summaryBg);
+  const logoBgColor = rgb(0.972, 0.98, 0.988);
+  const titleRuleColor = rgb(0.314, 0.38, 0.463);
+
+  page.drawRectangle({
+    x: pageBoxX,
+    y: pageBoxY,
+    width: pageBoxWidth,
+    height: pageBoxHeight,
+    color: rgb(1, 1, 1),
+  });
+
+  const logoSize = px(INVOICE_LAYOUT.logoSize);
+  const logoX = contentX;
+  const logoTop = cursorY;
+  const logoY = logoTop - logoSize;
+
+  page.drawRectangle({
+    x: logoX,
+    y: logoY,
+    width: logoSize,
+    height: logoSize,
+    borderColor,
+    borderWidth: 1,
+    color: logoBgColor,
+  });
 
   if (logoImage) {
     page.drawImage(logoImage, {
-      x: margin,
-      y: cursorY - 48,
-      width: 48,
-      height: 48,
+      x: logoX,
+      y: logoY,
+      width: logoSize,
+      height: logoSize,
     });
   } else {
-    page.drawRectangle({
-      x: margin,
-      y: cursorY - 48,
-      width: 48,
-      height: 48,
-      borderColor: rgb(0.82, 0.85, 0.88),
-      borderWidth: 1,
-      color: rgb(0.97, 0.98, 0.99),
-    });
-    page.drawText((invoice.shop_name_snapshot || "D").slice(0, 1).toUpperCase(), {
-      x: margin + 21,
-      y: cursorY - 36,
-      size: 18,
+    const initial = (invoice.shop_name_snapshot || "D").slice(0, 1).toUpperCase();
+    const initialSize = px(26);
+    page.drawText(initial, {
+      x: logoX + logoSize / 2 - fontBold.widthOfTextAtSize(initial, initialSize) / 2,
+      y: logoY + logoSize / 2 - initialSize / 3,
+      size: initialSize,
       font: fontBold,
-      color: rgb(0.15, 0.18, 0.22),
+      color: headingColor,
     });
   }
 
+  const copyX = logoX + logoSize + px(INVOICE_LAYOUT.headerGap);
+  const shopNameSize = px(18);
   page.drawText(invoice.shop_name_snapshot, {
-    x: margin + 60,
-    y: cursorY - 14,
-    size: 15,
+    x: copyX,
+    y: cursorY - shopNameSize,
+    size: shopNameSize,
     font: fontBold,
-    color: rgb(0.13, 0.2, 0.28),
+    color: headingColor,
   });
 
-  let metaY = cursorY - 27;
-  const shopLines = [invoice.shop_address_snapshot ?? "", ...doc.shopMeta].filter(Boolean);
-  for (const line of shopLines) {
-    const wrapped = wrapText(line, contentWidth - 70, fontRegular, 8.7);
+  let shopTextY = cursorY - shopNameSize - px(7);
+  const shopAddressLines = wrapText(invoice.shop_address_snapshot ?? "", contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontRegular, px(12));
+  for (const line of shopAddressLines.filter(Boolean)) {
+    page.drawText(line, {
+      x: copyX,
+      y: shopTextY - px(12),
+      size: px(12),
+      font: fontRegular,
+      color: subtextColor,
+    });
+    shopTextY -= px(12 * 1.45);
+  }
+
+  for (const line of doc.shopMeta) {
+    const wrapped = wrapText(line, contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontRegular, px(11.5));
     for (const row of wrapped) {
       page.drawText(row, {
-        x: margin + 60,
-        y: metaY,
-        size: 8.7,
+        x: copyX,
+        y: shopTextY - px(11.5),
+        size: px(11.5),
         font: fontRegular,
-        color: rgb(0.39, 0.46, 0.54),
+        color: subtextColor,
       });
-      metaY -= 11;
+      shopTextY -= px(11.5 * 1.5);
     }
   }
 
-  cursorY = metaY - 18;
-  page.drawText("INVOICE", {
-    x: margin + contentWidth / 2 - fontBold.widthOfTextAtSize("INVOICE", 14) / 2,
-    y: cursorY,
-    size: 12.5,
+  cursorY = Math.min(logoY, shopTextY) - px(30);
+
+  const title = "INVOICE";
+  const titleSize = px(14);
+  page.drawText(title, {
+    x: pageBoxX + pageBoxWidth / 2 - fontBold.widthOfTextAtSize(title, titleSize) / 2,
+    y: cursorY - titleSize,
+    size: titleSize,
     font: fontBold,
-    color: rgb(0.18, 0.25, 0.33),
+    color: headingColor,
   });
 
-  cursorY -= 11;
+  cursorY -= px(12 + 14);
   page.drawLine({
-    start: { x: margin, y: cursorY },
-    end: { x: pageWidth - margin, y: cursorY },
-    thickness: 1,
-    color: rgb(0.33, 0.4, 0.48),
+    start: { x: contentX, y: cursorY },
+    end: { x: contentRight, y: cursorY },
+    thickness: 1.2,
+    color: titleRuleColor,
   });
 
-  cursorY -= 18;
-  for (const row of doc.infoRows) {
-    const label = row.label;
-    const value = row.value;
+  cursorY -= px(16);
+  const infoGapX = px(36);
+  const infoColWidth = (contentWidth - infoGapX) / 2;
+  const labelWidth = px(88);
+  const labelGap = px(10);
+  const infoFontSize = px(12);
+  const infoLineHeight = px(12 * 1.35);
+  const infoVerticalGap = px(8);
+  const infoRows = doc.infoRows;
+  const halfRows = infoRows.filter((row) => !row.full);
+  const fullRows = infoRows.filter((row) => row.full);
+  let infoLeftY = cursorY;
+  let infoRightY = cursorY;
 
-    page.drawText(`${label}:`, {
-      x: margin,
-      y: cursorY,
-      size: 9.2,
+  for (let index = 0; index < halfRows.length; index += 1) {
+    const row = halfRows[index];
+    const columnX = index % 2 === 0 ? contentX : contentX + infoColWidth + infoGapX;
+    const lineX = columnX + labelWidth + labelGap;
+    const wrapped = wrapText(row.value, infoColWidth - labelWidth - labelGap, fontRegular, infoFontSize);
+    const rowHeight = Math.max(1, wrapped.length) * infoLineHeight;
+    const rowY = index % 2 === 0 ? infoLeftY : infoRightY;
+
+    page.drawText(`${row.label}:`, {
+      x: columnX,
+      y: rowY - infoFontSize,
+      size: infoFontSize,
       font: fontBold,
-      color: rgb(0.13, 0.2, 0.28),
+      color: headingColor,
     });
 
-    const wrapped = wrapText(value, contentWidth - 88, fontRegular, 9.2);
-    for (const [index, line] of wrapped.entries()) {
+    for (const [lineIndex, line] of wrapped.entries()) {
       page.drawText(line, {
-        x: margin + 88,
-        y: cursorY - index * 11,
-        size: 9.2,
+        x: lineX,
+        y: rowY - infoFontSize - lineIndex * infoLineHeight,
+        size: infoFontSize,
         font: fontRegular,
-        color: rgb(0.18, 0.24, 0.31),
+        color: headingColor,
       });
     }
-    cursorY -= Math.max(wrapped.length, 1) * 11 + 5;
+
+    if (index % 2 === 0) {
+      infoLeftY -= rowHeight + infoVerticalGap;
+    } else {
+      infoRightY -= rowHeight + infoVerticalGap;
+    }
   }
 
-  cursorY -= 6;
-  const columns = {
-    sr: margin + 4,
-    item: margin + 42,
-    qty: margin + 292,
-    rate: margin + 356,
-    amount: margin + 438,
-  };
+  cursorY = Math.min(infoLeftY, infoRightY);
+
+  for (const row of fullRows) {
+    if (row.label === "Address") cursorY -= px(2);
+    const wrapped = wrapText(row.value, contentWidth - labelWidth - labelGap, fontRegular, infoFontSize);
+    const rowHeight = Math.max(1, wrapped.length) * infoLineHeight;
+
+    page.drawText(`${row.label}:`, {
+      x: contentX,
+      y: cursorY - infoFontSize,
+      size: infoFontSize,
+      font: fontBold,
+      color: headingColor,
+    });
+
+    for (const [lineIndex, line] of wrapped.entries()) {
+      page.drawText(line, {
+        x: contentX + labelWidth + labelGap,
+        y: cursorY - infoFontSize - lineIndex * infoLineHeight,
+        size: infoFontSize,
+        font: fontRegular,
+        color: headingColor,
+      });
+    }
+
+    cursorY -= rowHeight + infoVerticalGap;
+  }
+
+  cursorY -= px(8);
+  page.drawLine({
+    start: { x: contentX, y: cursorY },
+    end: { x: contentRight, y: cursorY },
+    thickness: 0.8,
+    color: borderColor,
+  });
+
+  const tableTop = cursorY - px(14);
+  const headerHeight = px(34);
+  const cellPaddingX = px(14);
+  const qtyWidth = px(72);
+  const rateWidth = px(106);
+  const amountWidth = px(116);
+  const srWidth = px(38);
+  const itemWidth = contentWidth - srWidth - qtyWidth - rateWidth - amountWidth;
+  const tableX = contentX;
+  const tableWidth = contentWidth;
+  let tableY = tableTop;
 
   page.drawRectangle({
-    x: margin,
-    y: cursorY - 18,
-    width: contentWidth,
-    height: 18,
-    color: rgb(0.985, 0.989, 0.995),
+    x: tableX,
+    y: tableY - headerHeight,
+    width: tableWidth,
+    height: headerHeight,
+    color: summaryBgColor,
+    borderColor: mutedBorderColor,
+    borderWidth: 1,
   });
-  page.drawRectangle({
-    x: margin,
-    y: cursorY - 18,
-    width: contentWidth,
-    height: 18,
-    borderColor: rgb(0.85, 0.88, 0.92),
-    borderWidth: 0.8,
-  });
-  page.drawText("#", { x: columns.sr, y: cursorY - 12, size: 8.2, font: fontBold, color: rgb(0.49, 0.56, 0.63) });
-  page.drawText("ITEM", { x: columns.item, y: cursorY - 12, size: 8.2, font: fontBold, color: rgb(0.49, 0.56, 0.63) });
-  page.drawText("QTY", { x: columns.qty, y: cursorY - 12, size: 8.2, font: fontBold, color: rgb(0.49, 0.56, 0.63) });
-  page.drawText("RATE (RS)", { x: columns.rate, y: cursorY - 12, size: 8.2, font: fontBold, color: rgb(0.49, 0.56, 0.63) });
-  page.drawText("AMOUNT (RS)", { x: columns.amount, y: cursorY - 12, size: 8.2, font: fontBold, color: rgb(0.49, 0.56, 0.63) });
 
-  cursorY -= 24;
+  const headerFontSize = px(11);
+  const headerY = tableY - headerHeight / 2 - headerFontSize / 3;
+  page.drawText("#", { x: tableX + cellPaddingX, y: headerY, size: headerFontSize, font: fontBold, color: tableHeadColor });
+  page.drawText("ITEM", { x: tableX + srWidth + cellPaddingX, y: headerY, size: headerFontSize, font: fontBold, color: tableHeadColor });
+  page.drawText("QTY", {
+    x: tableX + srWidth + itemWidth + qtyWidth - cellPaddingX - fontBold.widthOfTextAtSize("QTY", headerFontSize),
+    y: headerY,
+    size: headerFontSize,
+    font: fontBold,
+    color: tableHeadColor,
+  });
+  page.drawText("RATE (RS)", {
+    x: tableX + srWidth + itemWidth + qtyWidth + rateWidth - cellPaddingX - fontBold.widthOfTextAtSize("RATE (RS)", headerFontSize),
+    y: headerY,
+    size: headerFontSize,
+    font: fontBold,
+    color: tableHeadColor,
+  });
+  page.drawText("AMOUNT (RS)", {
+    x: tableX + tableWidth - cellPaddingX - fontBold.widthOfTextAtSize("AMOUNT (RS)", headerFontSize),
+    y: headerY,
+    size: headerFontSize,
+    font: fontBold,
+    color: tableHeadColor,
+  });
+
+  tableY -= headerHeight;
 
   for (const item of doc.items) {
-    const itemLines = wrapText(item.name, 225, fontBold, 9.4);
-    const metaLines = item.meta ? wrapText(item.meta, 225, fontRegular, 7.5) : [];
-    const rowHeight = Math.max(38, itemLines.length * 10 + metaLines.length * 8 + 10);
+    const nameLines = wrapText(item.name, itemWidth - cellPaddingX * 2, fontBold, px(12));
+    const metaLines = item.meta ? wrapText(item.meta, itemWidth - cellPaddingX * 2, fontRegular, px(10.5)) : [];
+    const rowHeight = Math.max(px(42), px(13) * 2 + nameLines.length * px(12 * 1.4) + metaLines.length * px(10.5 * 1.4));
 
     page.drawRectangle({
-      x: margin,
-      y: cursorY - rowHeight,
-      width: contentWidth,
+      x: tableX,
+      y: tableY - rowHeight,
+      width: tableWidth,
       height: rowHeight,
-      borderColor: rgb(0.88, 0.9, 0.94),
-      borderWidth: 0.8,
+      borderColor: mutedBorderColor,
+      borderWidth: 1,
+      color: rgb(1, 1, 1),
     });
 
+    const baselineY = tableY - px(13) - px(12);
     page.drawText(String(item.index), {
-      x: columns.sr,
-      y: cursorY - 18,
-      size: 8.8,
+      x: tableX + cellPaddingX,
+      y: baselineY,
+      size: px(12),
       font: fontRegular,
-      color: rgb(0.43, 0.5, 0.58),
+      color: mutedColor,
     });
 
-    let lineY = cursorY - 18;
-    for (const line of itemLines) {
+    let itemTextY = baselineY;
+    for (const line of nameLines) {
       page.drawText(line, {
-        x: columns.item,
-        y: lineY,
-        size: 9.4,
+        x: tableX + srWidth + cellPaddingX,
+        y: itemTextY,
+        size: px(12),
         font: fontBold,
-        color: rgb(0.13, 0.2, 0.28),
+        color: headingColor,
       });
-      lineY -= 10;
+      itemTextY -= px(12 * 1.4);
     }
+
     for (const line of metaLines) {
       page.drawText(line, {
-        x: columns.item,
-        y: lineY,
-        size: 7.5,
+        x: tableX + srWidth + cellPaddingX,
+        y: itemTextY,
+        size: px(10.5),
         font: fontRegular,
-        color: rgb(0.43, 0.5, 0.58),
+        color: mutedColor,
       });
-      lineY -= 8;
+      itemTextY -= px(10.5 * 1.4);
     }
 
+    const qtySize = px(12);
+    const unitSize = px(12);
+    const amountSize = px(12);
     page.drawText(item.quantity, {
-      x: columns.qty,
-      y: cursorY - 18,
-      size: 8.8,
+      x: tableX + srWidth + itemWidth + qtyWidth - cellPaddingX - fontRegular.widthOfTextAtSize(item.quantity, qtySize),
+      y: baselineY,
+      size: qtySize,
       font: fontRegular,
-      color: rgb(0.13, 0.2, 0.28),
+      color: headingColor,
     });
     page.drawText(item.unitPrice, {
-      x: columns.rate,
-      y: cursorY - 18,
-      size: 8.8,
+      x: tableX + srWidth + itemWidth + qtyWidth + rateWidth - cellPaddingX - fontRegular.widthOfTextAtSize(item.unitPrice, unitSize),
+      y: baselineY,
+      size: unitSize,
       font: fontRegular,
-      color: rgb(0.13, 0.2, 0.28),
+      color: headingColor,
     });
     page.drawText(item.lineTotal, {
-      x: columns.amount,
-      y: cursorY - 18,
-      size: 8.8,
+      x: tableX + tableWidth - cellPaddingX - fontBold.widthOfTextAtSize(item.lineTotal, amountSize),
+      y: baselineY,
+      size: amountSize,
       font: fontBold,
-      color: rgb(0.13, 0.2, 0.28),
+      color: headingColor,
     });
 
-    cursorY -= rowHeight + 10;
+    tableY -= rowHeight;
   }
 
-  cursorY -= 2;
-  const summaryX = pageWidth - margin - 170;
-  let summaryY = cursorY;
+  const summaryWidth = px(INVOICE_LAYOUT.summaryWidth);
+  const summaryX = contentRight - summaryWidth;
+  const summaryRowHeight = px(32);
+  const footerFontSize = px(11.5);
+  const footerLineHeight = px(11.5 * 1.55);
+  const footerLines = wrapTextWithLineBreaks(doc.footerText, contentWidth, fontRegular, footerFontSize);
+  const footerBlockDepth = px(14) + footerFontSize + Math.max(0, footerLines.length - 1) * footerLineHeight + px(8);
+  const signatureBlockDepth = px(10) + px(11.5) + px(10) + px(10) + px(8);
+  const summaryBlockHeight = doc.summaryRows.length * summaryRowHeight;
+  const minSummaryTop =
+    pageBoxY +
+    footerBlockDepth +
+    px(56) +
+    signatureBlockDepth +
+    px(56) +
+    summaryBlockHeight;
+  let summaryTop = Math.max(tableY - px(14), minSummaryTop);
+
   for (const row of doc.summaryRows) {
     page.drawRectangle({
       x: summaryX,
-      y: summaryY - 20,
-      width: 170,
-      height: 21,
-      borderColor: rgb(0.85, 0.88, 0.92),
-      borderWidth: 0.8,
-      color: row.total ? rgb(0.985, 0.989, 0.995) : rgb(1, 1, 1),
+      y: summaryTop - summaryRowHeight,
+      width: summaryWidth,
+      height: summaryRowHeight,
+      borderColor: borderColor,
+      borderWidth: 1,
+      color: row.total ? summaryBgColor : rgb(1, 1, 1),
     });
-    page.drawText(row.label, {
-      x: summaryX + 10,
-      y: summaryY - 13,
-      size: row.total ? 9.2 : 8.8,
+
+    const labelSize = px(row.total ? 12 : 12);
+    const valueSize = px(row.total ? 13 : 12);
+    page.drawText(`${row.label}:`, {
+      x: summaryX + px(14),
+      y: summaryTop - summaryRowHeight / 2 - labelSize / 3,
+      size: labelSize,
       font: row.total ? fontBold : fontRegular,
-      color: rgb(0.31, 0.38, 0.46),
+      color: row.total ? headingColor : subtextColor,
     });
     page.drawText(row.value, {
-      x: summaryX + 102,
-      y: summaryY - 13,
-      size: row.total ? 9.2 : 8.8,
+      x: summaryX + summaryWidth - px(14) - fontBold.widthOfTextAtSize(row.value, valueSize),
+      y: summaryTop - summaryRowHeight / 2 - valueSize / 3,
+      size: valueSize,
       font: fontBold,
-      color: rgb(0.13, 0.2, 0.28),
+      color: row.total ? headingColor : subtextColor,
     });
-    summaryY -= 20;
+
+    summaryTop -= summaryRowHeight;
   }
 
-  const signatureY = Math.min(summaryY - 44, 195);
-  const signatureLineWidth = 110;
-  const leftSignatureX = margin + 8;
-  const rightSignatureX = pageWidth - margin - 8 - signatureLineWidth;
+  const signaturesTop = summaryTop - summaryBlockHeight - px(56);
+  const signatureLineWidth = px(132);
+  const signaturePaddingX = px(10);
+  const leftSignatureX = contentX + signaturePaddingX;
+  const rightSignatureX = contentRight - signaturePaddingX - signatureLineWidth;
 
   page.drawLine({
-    start: { x: leftSignatureX, y: signatureY },
-    end: { x: leftSignatureX + signatureLineWidth, y: signatureY },
+    start: { x: leftSignatureX, y: signaturesTop },
+    end: { x: leftSignatureX + signatureLineWidth, y: signaturesTop },
     thickness: 1,
-    color: rgb(0.33, 0.4, 0.48),
+    color: titleRuleColor,
   });
   page.drawText("Customer Signature", {
-    x: leftSignatureX + 12,
-    y: signatureY - 14,
-    size: 8.5,
+    x: leftSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize("Customer Signature", px(11.5)) / 2,
+    y: signaturesTop - px(7) - px(11.5),
+    size: px(11.5),
     font: fontBold,
-    color: rgb(0.13, 0.2, 0.28),
+    color: headingColor,
   });
 
   page.drawLine({
-    start: { x: rightSignatureX, y: signatureY },
-    end: { x: rightSignatureX + signatureLineWidth, y: signatureY },
+    start: { x: rightSignatureX, y: signaturesTop },
+    end: { x: rightSignatureX + signatureLineWidth, y: signaturesTop },
     thickness: 1,
-    color: rgb(0.33, 0.4, 0.48),
+    color: titleRuleColor,
   });
   page.drawText("Authorized Signatory", {
-    x: rightSignatureX + 4,
-    y: signatureY - 14,
-    size: 8.5,
+    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize("Authorized Signatory", px(11.5)) / 2,
+    y: signaturesTop - px(7) - px(11.5),
+    size: px(11.5),
     font: fontBold,
-    color: rgb(0.13, 0.2, 0.28),
+    color: headingColor,
   });
   page.drawText(`For ${invoice.shop_name_snapshot}`, {
-    x: rightSignatureX + 10,
-    y: signatureY - 24,
-    size: 7.2,
+    x: rightSignatureX + signatureLineWidth / 2 - fontRegular.widthOfTextAtSize(`For ${invoice.shop_name_snapshot}`, px(10)) / 2,
+    y: signaturesTop - px(10) - px(11.5) - px(10),
+    size: px(10),
     font: fontRegular,
-    color: rgb(0.39, 0.46, 0.54),
+    color: subtextColor,
   });
 
-  const footerLines = wrapText(doc.footerText, contentWidth, fontRegular, 8.4);
-  let footerY = 78;
+  const footerTop = signaturesTop - signatureBlockDepth - px(56);
   page.drawLine({
-    start: { x: margin, y: footerY + 18 },
-    end: { x: pageWidth - margin, y: footerY + 18 },
+    start: { x: contentX, y: footerTop },
+    end: { x: contentRight, y: footerTop },
     thickness: 0.8,
-    color: rgb(0.85, 0.88, 0.92),
+    color: borderColor,
   });
+
+  let footerY = footerTop - px(14) - footerFontSize;
   for (const line of footerLines) {
-    page.drawText(line, {
-      x: margin,
-      y: footerY,
-      size: 8.4,
-      font: fontRegular,
-      color: rgb(0.39, 0.46, 0.54),
-    });
-    footerY -= 10;
+    if (line) {
+      page.drawText(line, {
+        x: contentX,
+        y: footerY,
+        size: footerFontSize,
+        font: fontRegular,
+        color: subtextColor,
+      });
+    }
+    footerY -= footerLineHeight;
   }
 
   const bytes = await pdf.save();
