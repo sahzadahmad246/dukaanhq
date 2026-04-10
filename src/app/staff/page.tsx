@@ -12,6 +12,7 @@ type StaffMemberRow = {
   email: string | null;
   full_name: string | null;
   mobile_number: string | null;
+  avatar_url: string | null;
   joined_at: string | null;
 };
 
@@ -36,7 +37,7 @@ export default async function StaffPage() {
     const [{ data: memberRows }, { data: invitationRows }] = await Promise.all([
       adminSupabase
         .from("shop_members")
-        .select("id, user_id, role, status, email, full_name, mobile_number, joined_at")
+        .select("id, user_id, role, status, email, full_name, mobile_number, avatar_url, joined_at")
         .eq("shop_id", shop.id)
         .in("role", ["owner", "admin"])
         .order("created_at", { ascending: true }),
@@ -49,17 +50,23 @@ export default async function StaffPage() {
     ]);
 
     const membersList = (memberRows ?? []) as StaffMemberRow[];
-    const missingProfileIds = membersList.filter((member) => !member.full_name || !member.email).map((member) => member.user_id);
 
-    let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
+    // Fetch profile data for all members to get avatar_url and fill missing names/emails
+    const allUserIds = membersList.map((m) => m.user_id);
+    let profileMap = new Map<string, { full_name: string | null; email: string | null; avatar_url: string | null }>();
 
-    if (missingProfileIds.length > 0) {
+    if (allUserIds.length > 0) {
       const { data: profiles } = await adminSupabase
         .from("profiles")
-        .select("id, full_name, email")
-        .in("id", missingProfileIds);
+        .select("id, full_name, email, avatar_url")
+        .in("id", allUserIds);
 
-      profileMap = new Map((profiles ?? []).map((entry) => [entry.id, { full_name: entry.full_name, email: entry.email }]));
+      profileMap = new Map(
+        (profiles ?? []).map((entry) => [
+          entry.id,
+          { full_name: entry.full_name, email: entry.email, avatar_url: entry.avatar_url },
+        ])
+      );
     }
 
     members = membersList.map((member) => {
@@ -68,6 +75,7 @@ export default async function StaffPage() {
         ...member,
         full_name: member.full_name ?? fallback?.full_name ?? null,
         email: member.email ?? fallback?.email ?? null,
+        avatar_url: member.avatar_url ?? fallback?.avatar_url ?? null,
       };
     });
 

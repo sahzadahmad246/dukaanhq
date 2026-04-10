@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import type { ActionResponse } from "@/app/inventory/actions";
+import { uploadImageToCloudinary, deleteImageFromCloudinary } from "@/lib/cloudinary";
 import { sendResendEmail } from "@/lib/email/resend";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
@@ -219,6 +220,16 @@ export async function updateStaffMemberAction(formData: FormData): Promise<Actio
     }
 
     const supabase = getAdminSupabase();
+
+    // Get the user_id so we can sync to profiles too
+    const { data: member } = await supabase
+      .from("shop_members")
+      .select("user_id")
+      .eq("id", parsed.data.member_id)
+      .eq("shop_id", shop.id)
+      .neq("role", "owner")
+      .maybeSingle();
+
     const { error } = await supabase
       .from("shop_members")
       .update({
@@ -231,6 +242,14 @@ export async function updateStaffMemberAction(formData: FormData): Promise<Actio
 
     if (error) {
       return { status: "error", message: error.message || "Failed to update staff member." };
+    }
+
+    // Sync name to profiles table so staff sees updated name when logged in
+    if (member?.user_id) {
+      await supabase
+        .from("profiles")
+        .update({ full_name: parsed.data.full_name })
+        .eq("id", member.user_id);
     }
 
     revalidatePath("/staff");
@@ -276,5 +295,119 @@ export async function updateStaffStatusAction(formData: FormData): Promise<Actio
     };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Failed to update staff status." };
+  }
+}
+
+export async function updateStaffAvatarAction(formData: FormData): Promise<ActionResponse> {
+  try {
+    const { shop } = await getWorkspaceData({ requireOwner: true });
+    if (!shop) return { status: "error", message: "Shop access not found." };
+
+    const memberId = formData.get("member_id");
+    const file = formData.get("avatar") as File | null;
+
+    if (!memberId || typeof memberId !== "string") {
+      return { status: "error", message: "Member ID is required." };
+    }
+
+    if (!file || file.size === 0) {
+      return { status: "error", message: "No file provided." };
+    }
+
+    const supabase = getAdminSupabase();
+
+    // Check if there's an existing avatar to delete
+    const { data: existing } = await supabase
+      .from("shop_members")
+      .select("avatar_url")
+      .eq("id", memberId)
+      .eq("shop_id", shop.id)
+      .maybeSingle();
+
+    // Try to clean up old cloudinary image
+    if (existing?.avatar_url && existing.avatar_url.includes("cloudinary.com")) {
+      const parts = existing.avatar_url.split("/upload/");
+      if (parts[1]) {
+        const publicId = parts[1].replace(/^v\d+\//, "").replace(/\.[^.]+$/, "");
+        await deleteImageFromCloudinary(publicId);
+      }
+    }
+
+    const uploaded = await uploadImageToCloudinary(file);
+    if (!uploaded) {
+      return { status: "error", message: "Failed to upload profile picture." };
+    }
+
+    const { error } = await supabase
+      .from("shop_members")
+      .update({ avatar_url: uploaded.url })
+      .eq("id", memberId)
+      .eq("shop_id", shop.id);
+
+    if (error) {
+      return { status: "error", message: error.message || "Failed to save avatar." };
+    }
+
+    revalidatePath("/staff");
+    return { status: "success", message: "Profile picture updated." };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Failed to update avatar." };
+  }
+}
+
+export type StaffActivityItem = {
+  id: string;
+  type: string;
+  quantity_change: number;
+  reason: string | null;
+  created_at: string;
+  product_name: string;
+};
+
+export async function getStaffActivityAction(userId: string): Promise<ActionResponse<StaffActivityItem[]>> {
+  try {
+    const { shop } = await getWorkspaceData({ requireOwner: true });
+    if (!shop) return { status: "error", message: "Shop access not found." };
+
+    const supabase = getAdminSupabase();
+
+    // Fetch stock movements performed by this user
+    const { data: movements, error } = await supabase
+      .from("stock_movements")
+      .select("id, type, quantity_change, reason, created_at, product_id")
+      .eq("shop_id", shop.id)
+      .eq("performed_by", userId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (error) {
+      return { status: "error", message: error.message || "Failed to load activity." };
+    }
+
+    if (!movements || movements.length === 0) {
+      return { status: "success", message: "No activity found.", data: [] };
+    }
+
+    // Fetch product names for all referenced products
+    const productIds = Array.from(new Set(movements.map((m) => m.product_id)));
+    const { data: products } = await supabase
+      .from("products")
+      .select("id, name")
+      .in("id", productIds);
+
+    const productMap = new Map((products ?? []).map((p) => [p.id, p.name]));
+
+    const items: StaffActivityItem[] = movements.map((m) => ({
+      id: m.id,
+      type: m.type,
+      quantity_change: m.quantity_change,
+      reason: m.reason,
+      created_at: m.created_at,
+      product_name: productMap.get(m.product_id) ?? "Unknown product",
+    }));
+
+    return { status: "success", message: "Activity loaded.", data: items };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Failed to load activity." };
   }
 }
