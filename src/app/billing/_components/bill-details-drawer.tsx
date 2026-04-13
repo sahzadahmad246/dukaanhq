@@ -34,13 +34,11 @@ export function BillDetailsDrawer({
   invoice,
   open,
   onClose,
-  onReprint,
   onDownload,
 }: {
   invoice: InvoiceDetails | null;
   open: boolean;
   onClose: () => void;
-  onReprint: (invoice: PrintableInvoice) => void;
   onDownload: (invoice: PrintableInvoice) => void;
 }) {
   return (
@@ -71,15 +69,7 @@ export function BillDetailsDrawer({
                     <PhoneCall className="h-4 w-4" />
                   </a>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => onReprint(invoice)}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
-                  aria-label="Print bill"
-                  title="Print bill"
-                >
-                  <Printer className="h-4 w-4" />
-                </button>
+
                 <button
                   type="button"
                   onClick={() => onDownload(invoice)}

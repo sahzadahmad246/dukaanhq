@@ -23,7 +23,7 @@ import type { Product } from "@/lib/types/inventory";
 import { InventoryTopBar } from "@/app/inventory/_components/inventory-top-bar";
 import { AddBillModal } from "./add-bill-modal";
 import { BillDetailsDrawer } from "./bill-details-drawer";
-import { downloadInvoicePdf, printInvoice, type PrintableInvoice } from "./invoice-print";
+import { downloadInvoicePdf, type PrintableInvoice } from "./invoice-print";
 import type { BillingInvoiceSummary } from "../load-billing-data";
 import { productDetailsQueryKey } from "@/app/inventory/queries";
 
@@ -205,10 +205,6 @@ export function BillingManager({
     }),
     [displayedInvoices]
   );
-
-  function reprintInvoice(invoice: PrintableInvoice) {
-    printInvoice({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
-  }
 
   function downloadInvoice(invoice: PrintableInvoice) {
     void downloadInvoicePdf({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
@@ -526,15 +522,7 @@ export function BillingManager({
                             <PhoneCall style={{ width: 11, height: 11 }} />
                           </a>
                         ) : null}
-                        <button
-                          type="button"
-                          aria-label="Print bill"
-                          title="Print bill"
-                          onClick={(e) => { e.stopPropagation(); reprintInvoice(invoice); }}
-                          className="bm-btn bm-btn-print"
-                        >
-                          <Printer style={{ width: 12, height: 12 }} />
-                        </button>
+
                         <button
                           type="button"
                           aria-label="Download bill"
@@ -597,7 +585,6 @@ export function BillingManager({
           invoice={selectedInvoice ? { ...selectedInvoice, shop_logo_url: shopLogoUrl ?? null } : null}
           open={Boolean(selectedInvoice)}
           onClose={() => setSelectedInvoiceId(null)}
-          onReprint={reprintInvoice}
           onDownload={downloadInvoice}
         />
 

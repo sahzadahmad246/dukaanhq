@@ -30,7 +30,7 @@ import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
 import { ProductDetailsDrawer } from "@/app/inventory/_components/product-details-drawer";
 import { productDetailsQueryOptions } from "@/app/inventory/queries";
 import { BillDetailsDrawer } from "@/app/billing/_components/bill-details-drawer";
-import { downloadInvoicePdf, printInvoice, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
+import { downloadInvoicePdf, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
 import { ProductCard, type InventoryProduct } from "@/app/inventory/_components/product-list";
 import { RecordSaleModal } from "@/app/inventory/_components/record-sale-modal";
 import { StockAdjustmentModal } from "@/app/inventory/_components/stock-adjustment-modal";
@@ -207,9 +207,7 @@ export function DashboardHome({
     });
   }
 
-  function handleReprintInvoice(invoice: PrintableInvoice) {
-    printInvoice({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
-  }
+
 
   function handleDownloadInvoice(invoice: PrintableInvoice) {
     void downloadInvoicePdf({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
@@ -531,18 +529,7 @@ export function DashboardHome({
                           <PhoneCall style={{ width: 11, height: 11 }} />
                         </a>
                       ) : null}
-                      <button
-                        type="button"
-                        aria-label="Print bill"
-                        title="Print bill"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReprintInvoice(invoice);
-                        }}
-                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
-                      >
-                        <Printer style={{ width: 12, height: 12 }} />
-                      </button>
+
                       <button
                         type="button"
                         aria-label="Download bill"
@@ -665,7 +652,6 @@ export function DashboardHome({
         invoice={selectedInvoice ? { ...selectedInvoice, shop_logo_url: shopLogoUrl ?? null } : null}
         open={Boolean(selectedInvoice)}
         onClose={() => setSelectedInvoiceId(null)}
-        onReprint={handleReprintInvoice}
         onDownload={handleDownloadInvoice}
       />
 

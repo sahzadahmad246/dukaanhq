@@ -52,6 +52,24 @@ function formatMoney(value: number) {
   return `${Number(value || 0).toFixed(2)}`;
 }
 
+function numberToWordsINR(amount: number) {
+  const units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  if (amount === 0) return "Zero Only";
+  
+  function convert(num: number): string {
+    if (num < 20) return units[num];
+    if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? " " + units[num % 10] : "");
+    if (num < 1000) return units[Math.floor(num / 100)] + " Hundred" + (num % 100 !== 0 ? " " + convert(num % 100) : "");
+    if (num < 100000) return convert(Math.floor(num / 1000)) + " Thousand" + (num % 1000 !== 0 ? " " + convert(num % 1000) : "");
+    if (num < 10000000) return convert(Math.floor(num / 100000)) + " Lakh" + (num % 100000 !== 0 ? " " + convert(num % 100000) : "");
+    return convert(Math.floor(num / 10000000)) + " Crore" + (num % 10000000 !== 0 ? " " + convert(num % 10000000) : "");
+  }
+
+  return convert(Math.floor(amount)) + " Only";
+}
+
 const INVOICE_LAYOUT = {
   pdfPageWidth: 595.28,
   pdfPageHeight: 841.89,
@@ -59,12 +77,12 @@ const INVOICE_LAYOUT = {
   pdfMarginTop: 28,
   pdfMarginBottom: 28,
   background: "#ffffff",
-  border: "#d8dee8",
-  mutedBorder: "#e7ebf1",
-  heading: "#203247",
-  subtext: "#5f7186",
-  muted: "#8693a3",
-  tableHead: "#6f7c8c",
+  border: "#000000",
+  mutedBorder: "#000000",
+  heading: "#000000",
+  subtext: "#000000",
+  muted: "#000000",
+  tableHead: "#000000",
   summaryBg: "#fbfcfe",
   logoSize: 54,
   headerGap: 16,
@@ -72,7 +90,7 @@ const INVOICE_LAYOUT = {
   printPaddingX: 46,
   printPaddingTop: 34,
   printPaddingBottom: 36,
-  summaryWidth: 182,
+  summaryWidth: 320,
 };
 
 function buildPaymentSummary(paymentMethod?: string | null, paymentDetails?: PrintableInvoice["payment_details"]) {
@@ -216,6 +234,7 @@ type InvoiceDocData = {
   footerText: string;
   formattedDate: string;
   paymentSummary: string;
+  amountInWords: string;
 };
 
 function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
@@ -241,17 +260,30 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   const items = (invoice.invoice_items ?? []).map((item, index) => ({
     index: index + 1,
     name: item.product_name_snapshot,
-    meta: [item.variant_name_snapshot, item.identifier_snapshot].filter(Boolean).join(" • "),
+    meta: [
+      item.variant_name_snapshot,
+      ...(item.identifier_snapshot ? item.identifier_snapshot.split(" / ") : []),
+    ]
+      .filter(Boolean)
+      .join("\n"),
     quantity: String(item.quantity),
-    unitPrice: formatMoney(item.unit_price),
-    lineTotal: formatMoney(item.line_total),
+    unitPrice: formatMoney(Number(item.unit_price) / 1.18),
+    lineTotal: formatMoney(Number(item.line_total) / 1.18),
   }));
 
+  const taxRate = 0.18;
+  const exSubtotal = Number(invoice.subtotal) / (1 + taxRate);
+  const exDiscount = Number(invoice.discount_total || 0) / (1 + taxRate);
+  const taxableAmount = Number(invoice.grand_total) / (1 + taxRate);
+  const halfTax = (Number(invoice.grand_total) - taxableAmount) / 2;
+
   const summaryRows = [
-    { label: "Subtotal (Rs)", value: formatMoney(invoice.subtotal) },
+    { label: "Subtotal (Rs)", value: formatMoney(exSubtotal) },
     ...(Number(invoice.discount_total || 0) > 0
-      ? [{ label: "Discount (Rs)", value: formatMoney(invoice.discount_total) }]
+      ? [{ label: "Discount (Rs)", value: formatMoney(exDiscount) }]
       : []),
+    { label: "SGST @9% (Rs)", value: formatMoney(halfTax) },
+    { label: "CGST @9% (Rs)", value: formatMoney(halfTax) },
     { label: "Grand Total (Rs)", value: formatMoney(invoice.grand_total), total: true },
   ];
 
@@ -265,318 +297,10 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
     footerText: invoice.invoice_footer_snapshot ?? "Goods once sold will not be taken back without original bill.",
     formattedDate,
     paymentSummary,
+    amountInWords: numberToWordsINR(invoice.grand_total),
   };
 }
 
-function buildInvoiceHtml(invoice: PrintableInvoice, doc: InvoiceDocData) {
-  const rows = doc.items
-    .map((item) => {
-      return `
-        <tr>
-          <td class="cell muted">${item.index}</td>
-          <td class="cell">
-            <div class="item-name">${escapeHtml(item.name)}</div>
-            ${item.meta ? `<div class="item-meta">${escapeHtml(item.meta)}</div>` : ""}
-          </td>
-          <td class="cell right">${escapeHtml(item.quantity)}</td>
-          <td class="cell right">${escapeHtml(item.unitPrice)}</td>
-          <td class="cell right total-cell">${escapeHtml(item.lineTotal)}</td>
-        </tr>
-      `;
-    })
-    .join("");
-
-  const infoRowsHtml = doc.infoRows
-    .map((row) => `
-      <div class="info-row${row.full ? " full" : ""}${row.label === "Address" ? " address-row" : ""}">
-        <div class="info-label">${escapeHtml(row.label)}:</div>
-        <div class="info-value">${escapeHtml(row.value)}</div>
-      </div>
-    `)
-    .join("");
-
-  const summaryHtml = doc.summaryRows
-    .map((row) => `
-      <div class="summary-row${row.total ? " summary-total" : ""}">
-        <span>${escapeHtml(row.label)}:</span>
-        <strong>${escapeHtml(row.value)}</strong>
-      </div>
-    `)
-    .join("");
-
-  return `
-    <html>
-      <head>
-        <title>${escapeHtml(`${invoice.invoice_number} - ${invoice.shop_name_snapshot}`)}</title>
-        <style>
-          * { box-sizing: border-box; }
-          body {
-            margin: 0;
-            padding: 24px;
-            background: ${INVOICE_LAYOUT.background};
-            color: ${INVOICE_LAYOUT.heading};
-            font-family: Arial, sans-serif;
-          }
-          .page {
-            width: ${INVOICE_LAYOUT.printPageWidth}px;
-            margin: 0 auto;
-            background: #ffffff;
-            border: 1px solid ${INVOICE_LAYOUT.border};
-            padding: ${INVOICE_LAYOUT.printPaddingTop}px ${INVOICE_LAYOUT.printPaddingX}px ${INVOICE_LAYOUT.printPaddingBottom}px;
-          }
-          .header {
-            display: flex;
-            align-items: center;
-            gap: ${INVOICE_LAYOUT.headerGap}px;
-          }
-          .logo {
-            width: ${INVOICE_LAYOUT.logoSize}px;
-            height: ${INVOICE_LAYOUT.logoSize}px;
-            border-radius: 14px;
-            overflow: hidden;
-            border: 1px solid ${INVOICE_LAYOUT.border};
-            background: #f8fafc;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 26px;
-            color: ${INVOICE_LAYOUT.heading};
-            flex-shrink: 0;
-          }
-          .logo img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-          }
-          .shop-block {
-            display: flex;
-            gap: 16px;
-            align-items: flex-start;
-            flex: 1;
-          }
-          .shop-copy {
-            flex: 1;
-          }
-          .shop-name {
-            margin: 0;
-            font-size: 18px;
-            font-weight: 700;
-            line-height: 1.25;
-            color: ${INVOICE_LAYOUT.heading};
-          }
-          .shop-address {
-            margin-top: 7px;
-            font-size: 12px;
-            line-height: 1.45;
-            color: ${INVOICE_LAYOUT.subtext};
-          }
-          .shop-meta {
-            margin-top: 3px;
-            font-size: 11.5px;
-            line-height: 1.5;
-            color: ${INVOICE_LAYOUT.subtext};
-          }
-          .title {
-            margin: 30px 0 12px;
-            text-align: center;
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: ${INVOICE_LAYOUT.heading};
-          }
-          .title-rule {
-            border-top: 1.5px solid #506176;
-          }
-          .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px 36px;
-            padding: 16px 0 16px;
-            border-bottom: 1px solid ${INVOICE_LAYOUT.border};
-          }
-          .info-row {
-            display: grid;
-            grid-template-columns: 88px 1fr;
-            gap: 10px;
-            font-size: 12px;
-            line-height: 1.35;
-          }
-          .info-row.full { grid-column: 1 / -1; }
-          .info-row.address-row { margin-top: 2px; }
-          .info-label { font-weight: 700; color: ${INVOICE_LAYOUT.heading}; }
-          .info-value { color: ${INVOICE_LAYOUT.heading}; }
-          .table-wrap {
-            margin-top: 14px;
-            border: 1px solid ${INVOICE_LAYOUT.border};
-            overflow: hidden;
-            background: white;
-          }
-          table { width: 100%; border-collapse: collapse; }
-          thead { background: #fbfcfe; }
-          th {
-            padding: 11px 14px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-weight: 600;
-            text-align: left;
-            color: ${INVOICE_LAYOUT.tableHead};
-            border-bottom: 1px solid ${INVOICE_LAYOUT.mutedBorder};
-          }
-          th.right, .cell.right, .right { text-align: right; }
-          .cell {
-            padding: 13px 14px;
-            border-top: 1px solid ${INVOICE_LAYOUT.mutedBorder};
-            vertical-align: middle;
-            font-size: 12px;
-            color: ${INVOICE_LAYOUT.heading};
-          }
-          .muted { color: ${INVOICE_LAYOUT.muted}; width: 38px; }
-          .item-name {
-            font-weight: 600;
-            color: ${INVOICE_LAYOUT.heading};
-            line-height: 1.4;
-            margin-bottom: 3px;
-          }
-          .item-meta {
-            margin-top: 3px;
-            color: ${INVOICE_LAYOUT.muted};
-            font-size: 10.5px;
-            line-height: 1.4;
-          }
-          .total-cell { font-weight: 700; color: ${INVOICE_LAYOUT.heading}; }
-          .summary {
-            margin-top: 14px;
-            margin-left: auto;
-            width: ${INVOICE_LAYOUT.summaryWidth}px;
-            border: 1px solid ${INVOICE_LAYOUT.border};
-            border-radius: 12px;
-            overflow: hidden;
-            background: #ffffff;
-          }
-          .summary-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-            margin-top: 0;
-            padding: 10px 14px;
-            font-size: 12px;
-            color: ${INVOICE_LAYOUT.subtext};
-            border-top: 1px solid ${INVOICE_LAYOUT.mutedBorder};
-          }
-          .summary-row:first-child { border-top: none; }
-          .summary-total {
-            background: ${INVOICE_LAYOUT.summaryBg};
-            font-size: 12px;
-            font-weight: 700;
-            color: ${INVOICE_LAYOUT.heading};
-          }
-          .summary-total strong { font-size: 13px; }
-          .footer {
-            margin-top: 42px;
-            padding-top: 14px;
-            border-top: 1px solid ${INVOICE_LAYOUT.border};
-            font-size: 11.5px;
-            color: ${INVOICE_LAYOUT.subtext};
-            line-height: 1.55;
-            white-space: pre-line;
-          }
-          .signatures {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 56px;
-            padding: 0 10px 10px;
-          }
-          .signature-block { text-align: center; }
-          .signature-line {
-            border-top: 1px solid #506176;
-            width: 132px;
-            margin-bottom: 7px;
-          }
-          .signature-title {
-            font-size: 11.5px;
-            font-weight: 600;
-            color: ${INVOICE_LAYOUT.heading};
-          }
-          .signature-subtitle {
-            font-size: 10px;
-            color: ${INVOICE_LAYOUT.subtext};
-            margin-top: 3px;
-          }
-          @media print {
-            body { background: white; padding: 0; margin: 0; }
-            .page {
-              width: 100%;
-              max-width: none;
-              margin: 0;
-              padding: 24px 28px 28px;
-              border: none;
-              box-shadow: none;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="page">
-          <div class="header">
-            <div class="shop-block">
-              <div class="logo">
-                ${
-                  doc.logoUrl
-                    ? `<img id="print-shop-logo" src="${escapeHtml(doc.logoUrl)}" alt="${escapeHtml(invoice.shop_name_snapshot)}" />`
-                    : escapeHtml(invoice.shop_name_snapshot.slice(0, 1).toUpperCase())
-                }
-              </div>
-              <div class="shop-copy">
-                <div class="shop-name">${escapeHtml(invoice.shop_name_snapshot)}</div>
-                <div class="shop-address">${escapeHtml(invoice.shop_address_snapshot ?? "")}</div>
-                ${doc.shopMeta.length ? `<div class="shop-meta">${doc.shopMeta.map((item) => escapeHtml(String(item))).join("<br />")}</div>` : ""}
-              </div>
-            </div>
-          </div>
-
-          <div class="title">Invoice</div>
-          <div class="title-rule"></div>
-
-          <div class="info-grid">${infoRowsHtml}</div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Item</th>
-                  <th class="right">Qty</th>
-                  <th class="right">Rate (Rs)</th>
-                  <th class="right">Amount (Rs)</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-
-          <div class="summary">${summaryHtml}</div>
-
-          <div class="signatures">
-            <div class="signature-block">
-              <div class="signature-line"></div>
-              <div class="signature-title">Customer Signature</div>
-            </div>
-            <div class="signature-block">
-              <div class="signature-line"></div>
-              <div class="signature-title">Authorized Signatory</div>
-              <div class="signature-subtitle">For ${escapeHtml(invoice.shop_name_snapshot)}</div>
-            </div>
-          </div>
-
-          <div class="footer">${renderMultilineHtml(doc.footerText)}</div>
-        </div>
-      </body>
-    </html>
-  `;
-}
 
 export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   const doc = buildInvoiceDocData(invoice);
@@ -656,7 +380,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   }
 
   const copyX = logoX + logoSize + px(INVOICE_LAYOUT.headerGap);
-  const shopNameSize = px(18);
+  const shopNameSize = px(26);
   page.drawText(invoice.shop_name_snapshot, {
     x: copyX,
     y: cursorY - shopNameSize,
@@ -666,36 +390,36 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   });
 
   let shopTextY = cursorY - shopNameSize - px(7);
-  const shopAddressLines = wrapText(invoice.shop_address_snapshot ?? "", contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontRegular, px(12));
+  const shopAddressLines = wrapText(invoice.shop_address_snapshot ?? "", contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontBold, px(16));
   for (const line of shopAddressLines.filter(Boolean)) {
     page.drawText(line, {
       x: copyX,
-      y: shopTextY - px(12),
-      size: px(12),
-      font: fontRegular,
+      y: shopTextY - px(16),
+      size: px(16),
+      font: fontBold,
       color: subtextColor,
     });
-    shopTextY -= px(12 * 1.45);
+    shopTextY -= px(16 * 1.45);
   }
 
   for (const line of doc.shopMeta) {
-    const wrapped = wrapText(line, contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontRegular, px(11.5));
+    const wrapped = wrapText(line, contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontBold, px(15));
     for (const row of wrapped) {
       page.drawText(row, {
         x: copyX,
-        y: shopTextY - px(11.5),
-        size: px(11.5),
-        font: fontRegular,
+        y: shopTextY - px(15),
+        size: px(15),
+        font: fontBold,
         color: subtextColor,
       });
-      shopTextY -= px(11.5 * 1.5);
+      shopTextY -= px(15 * 1.5);
     }
   }
 
   cursorY = Math.min(logoY, shopTextY) - px(30);
 
   const title = "INVOICE";
-  const titleSize = px(14);
+  const titleSize = px(24);
   page.drawText(title, {
     x: pageBoxX + pageBoxWidth / 2 - fontBold.widthOfTextAtSize(title, titleSize) / 2,
     y: cursorY - titleSize,
@@ -704,7 +428,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     color: headingColor,
   });
 
-  cursorY -= px(12 + 14);
+  cursorY -= px(18 + 16);
   page.drawLine({
     start: { x: contentX, y: cursorY },
     end: { x: contentRight, y: cursorY },
@@ -715,10 +439,10 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   cursorY -= px(16);
   const infoGapX = px(36);
   const infoColWidth = (contentWidth - infoGapX) / 2;
-  const labelWidth = px(88);
+  const labelWidth = px(110);
   const labelGap = px(10);
-  const infoFontSize = px(12);
-  const infoLineHeight = px(12 * 1.35);
+  const infoFontSize = px(16);
+  const infoLineHeight = px(16 * 1.35);
   const infoVerticalGap = px(8);
   const infoRows = doc.infoRows;
   const halfRows = infoRows.filter((row) => !row.full);
@@ -730,7 +454,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     const row = halfRows[index];
     const columnX = index % 2 === 0 ? contentX : contentX + infoColWidth + infoGapX;
     const lineX = columnX + labelWidth + labelGap;
-    const wrapped = wrapText(row.value, infoColWidth - labelWidth - labelGap, fontRegular, infoFontSize);
+    const wrapped = wrapText(row.value, infoColWidth - labelWidth - labelGap, fontBold, infoFontSize);
     const rowHeight = Math.max(1, wrapped.length) * infoLineHeight;
     const rowY = index % 2 === 0 ? infoLeftY : infoRightY;
 
@@ -747,7 +471,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
         x: lineX,
         y: rowY - infoFontSize - lineIndex * infoLineHeight,
         size: infoFontSize,
-        font: fontRegular,
+        font: fontBold,
         color: headingColor,
       });
     }
@@ -763,7 +487,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
 
   for (const row of fullRows) {
     if (row.label === "Address") cursorY -= px(2);
-    const wrapped = wrapText(row.value, contentWidth - labelWidth - labelGap, fontRegular, infoFontSize);
+    const wrapped = wrapText(row.value, contentWidth - labelWidth - labelGap, fontBold, infoFontSize);
     const rowHeight = Math.max(1, wrapped.length) * infoLineHeight;
 
     page.drawText(`${row.label}:`, {
@@ -779,21 +503,13 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
         x: contentX + labelWidth + labelGap,
         y: cursorY - infoFontSize - lineIndex * infoLineHeight,
         size: infoFontSize,
-        font: fontRegular,
+        font: fontBold,
         color: headingColor,
       });
     }
 
     cursorY -= rowHeight + infoVerticalGap;
   }
-
-  cursorY -= px(8);
-  page.drawLine({
-    start: { x: contentX, y: cursorY },
-    end: { x: contentRight, y: cursorY },
-    thickness: 0.8,
-    color: borderColor,
-  });
 
   const tableTop = cursorY - px(14);
   const headerHeight = px(34);
@@ -814,10 +530,10 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     height: headerHeight,
     color: summaryBgColor,
     borderColor: mutedBorderColor,
-    borderWidth: 1,
+    borderWidth: 0.5,
   });
 
-  const headerFontSize = px(11);
+  const headerFontSize = px(15);
   const headerY = tableY - headerHeight / 2 - headerFontSize / 3;
   page.drawText("#", { x: tableX + cellPaddingX, y: headerY, size: headerFontSize, font: fontBold, color: tableHeadColor });
   page.drawText("ITEM", { x: tableX + srWidth + cellPaddingX, y: headerY, size: headerFontSize, font: fontBold, color: tableHeadColor });
@@ -846,9 +562,9 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   tableY -= headerHeight;
 
   for (const item of doc.items) {
-    const nameLines = wrapText(item.name, itemWidth - cellPaddingX * 2, fontBold, px(12));
-    const metaLines = item.meta ? wrapText(item.meta, itemWidth - cellPaddingX * 2, fontRegular, px(10.5)) : [];
-    const rowHeight = Math.max(px(42), px(13) * 2 + nameLines.length * px(12 * 1.4) + metaLines.length * px(10.5 * 1.4));
+    const nameLines = wrapText(item.name, itemWidth - cellPaddingX * 2, fontBold, px(16));
+    const metaLines = item.meta ? wrapTextWithLineBreaks(item.meta, itemWidth - cellPaddingX * 2, fontBold, px(14)) : [];
+    const rowHeight = Math.max(px(42), px(17) * 2 + nameLines.length * px(16 * 1.4) + metaLines.length * px(14 * 1.4));
 
     page.drawRectangle({
       x: tableX,
@@ -856,16 +572,16 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
       width: tableWidth,
       height: rowHeight,
       borderColor: mutedBorderColor,
-      borderWidth: 1,
+      borderWidth: 0.5,
       color: rgb(1, 1, 1),
     });
 
-    const baselineY = tableY - px(13) - px(12);
+    const baselineY = tableY - px(17) - px(16);
     page.drawText(String(item.index), {
       x: tableX + cellPaddingX,
       y: baselineY,
-      size: px(12),
-      font: fontRegular,
+      size: px(16),
+      font: fontBold,
       color: mutedColor,
     });
 
@@ -874,39 +590,39 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
       page.drawText(line, {
         x: tableX + srWidth + cellPaddingX,
         y: itemTextY,
-        size: px(12),
+        size: px(16),
         font: fontBold,
         color: headingColor,
       });
-      itemTextY -= px(12 * 1.4);
+      itemTextY -= px(16 * 1.4);
     }
 
     for (const line of metaLines) {
       page.drawText(line, {
         x: tableX + srWidth + cellPaddingX,
         y: itemTextY,
-        size: px(10.5),
-        font: fontRegular,
+        size: px(14),
+        font: fontBold,
         color: mutedColor,
       });
-      itemTextY -= px(10.5 * 1.4);
+      itemTextY -= px(14 * 1.4);
     }
 
-    const qtySize = px(12);
-    const unitSize = px(12);
-    const amountSize = px(12);
+    const qtySize = px(16);
+    const unitSize = px(16);
+    const amountSize = px(16);
     page.drawText(item.quantity, {
-      x: tableX + srWidth + itemWidth + qtyWidth - cellPaddingX - fontRegular.widthOfTextAtSize(item.quantity, qtySize),
+      x: tableX + srWidth + itemWidth + qtyWidth - cellPaddingX - fontBold.widthOfTextAtSize(item.quantity, qtySize),
       y: baselineY,
       size: qtySize,
-      font: fontRegular,
+      font: fontBold,
       color: headingColor,
     });
     page.drawText(item.unitPrice, {
-      x: tableX + srWidth + itemWidth + qtyWidth + rateWidth - cellPaddingX - fontRegular.widthOfTextAtSize(item.unitPrice, unitSize),
+      x: tableX + srWidth + itemWidth + qtyWidth + rateWidth - cellPaddingX - fontBold.widthOfTextAtSize(item.unitPrice, unitSize),
       y: baselineY,
       size: unitSize,
-      font: fontRegular,
+      font: fontBold,
       color: headingColor,
     });
     page.drawText(item.lineTotal, {
@@ -920,14 +636,30 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     tableY -= rowHeight;
   }
 
-  const summaryWidth = px(INVOICE_LAYOUT.summaryWidth);
+  const verticalLineXs = [
+    tableX + srWidth,
+    tableX + srWidth + itemWidth,
+    tableX + srWidth + itemWidth + qtyWidth,
+    tableX + srWidth + itemWidth + qtyWidth + rateWidth,
+  ];
+
+  for (const vx of verticalLineXs) {
+    page.drawLine({
+      start: { x: vx, y: tableTop },
+      end: { x: vx, y: tableY },
+      thickness: 0.5,
+      color: borderColor,
+    });
+  }
+
+  const summaryWidth = px(INVOICE_LAYOUT.summaryWidth + 30);
   const summaryX = contentRight - summaryWidth;
   const summaryRowHeight = px(32);
-  const footerFontSize = px(11.5);
-  const footerLineHeight = px(11.5 * 1.55);
+  const footerFontSize = px(13);
+  const footerLineHeight = px(13 * 1.55);
   const footerLines = wrapTextWithLineBreaks(doc.footerText, contentWidth, fontRegular, footerFontSize);
   const footerBlockDepth = px(14) + footerFontSize + Math.max(0, footerLines.length - 1) * footerLineHeight + px(8);
-  const signatureBlockDepth = px(10) + px(11.5) + px(10) + px(10) + px(8);
+  const signatureBlockDepth = px(10) + px(13) + px(10) + px(12) + px(8);
   const summaryBlockHeight = doc.summaryRows.length * summaryRowHeight;
   const minSummaryTop =
     pageBoxY +
@@ -937,6 +669,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     px(56) +
     summaryBlockHeight;
   let summaryTop = Math.max(tableY - px(14), minSummaryTop);
+  const summaryTopOrig = summaryTop;
 
   for (const row of doc.summaryRows) {
     page.drawRectangle({
@@ -945,17 +678,17 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
       width: summaryWidth,
       height: summaryRowHeight,
       borderColor: borderColor,
-      borderWidth: 1,
+      borderWidth: 0.5,
       color: row.total ? summaryBgColor : rgb(1, 1, 1),
     });
 
-    const labelSize = px(row.total ? 12 : 12);
-    const valueSize = px(row.total ? 13 : 12);
+    const labelSize = px(row.total ? 16 : 16);
+    const valueSize = px(row.total ? 18 : 16);
     page.drawText(`${row.label}:`, {
       x: summaryX + px(14),
       y: summaryTop - summaryRowHeight / 2 - labelSize / 3,
       size: labelSize,
-      font: row.total ? fontBold : fontRegular,
+      font: fontBold,
       color: row.total ? headingColor : subtextColor,
     });
     page.drawText(row.value, {
@@ -969,11 +702,25 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     summaryTop -= summaryRowHeight;
   }
 
-  const signaturesTop = summaryTop - summaryBlockHeight - px(56);
+  const amountWordsLines = wrapTextWithLineBreaks(`Amount in Words:\nRupees ${doc.amountInWords}`, contentWidth - summaryWidth - px(40), fontBold, px(15));
+  let awY = summaryTopOrig - px(16);
+  for(const awLine of amountWordsLines) {
+     page.drawText(awLine, {
+        x: contentX,
+        y: awY,
+        size: px(15),
+        font: fontBold,
+        color: headingColor,
+     });
+     awY -= px(15 * 1.4);
+  }
+
+  const signaturesTop = Math.min(awY, summaryTop) - signatureBlockDepth - px(56);
   const signatureLineWidth = px(132);
   const signaturePaddingX = px(10);
   const leftSignatureX = contentX + signaturePaddingX;
   const rightSignatureX = contentRight - signaturePaddingX - signatureLineWidth;
+  const footerTop = signaturesTop - signatureBlockDepth - px(56);
 
   page.drawLine({
     start: { x: leftSignatureX, y: signaturesTop },
@@ -982,9 +729,9 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     color: titleRuleColor,
   });
   page.drawText("Customer Signature", {
-    x: leftSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize("Customer Signature", px(11.5)) / 2,
-    y: signaturesTop - px(7) - px(11.5),
-    size: px(11.5),
+    x: leftSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize("Customer Signature", px(15)) / 2,
+    y: signaturesTop - px(7) - px(15),
+    size: px(15),
     font: fontBold,
     color: headingColor,
   });
@@ -996,21 +743,20 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     color: titleRuleColor,
   });
   page.drawText("Authorized Signatory", {
-    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize("Authorized Signatory", px(11.5)) / 2,
-    y: signaturesTop - px(7) - px(11.5),
-    size: px(11.5),
+    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize("Authorized Signatory", px(15)) / 2,
+    y: signaturesTop - px(7) - px(15),
+    size: px(15),
     font: fontBold,
     color: headingColor,
   });
   page.drawText(`For ${invoice.shop_name_snapshot}`, {
-    x: rightSignatureX + signatureLineWidth / 2 - fontRegular.widthOfTextAtSize(`For ${invoice.shop_name_snapshot}`, px(10)) / 2,
-    y: signaturesTop - px(10) - px(11.5) - px(10),
-    size: px(10),
-    font: fontRegular,
+    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize(`For ${invoice.shop_name_snapshot}`, px(14)) / 2,
+    y: signaturesTop - px(10) - px(15) - px(14),
+    size: px(14),
+    font: fontBold,
     color: subtextColor,
   });
 
-  const footerTop = signaturesTop - signatureBlockDepth - px(56);
   page.drawLine({
     start: { x: contentX, y: footerTop },
     end: { x: contentRight, y: footerTop },
@@ -1024,8 +770,8 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
       page.drawText(line, {
         x: contentX,
         y: footerY,
-        size: footerFontSize,
-        font: fontRegular,
+        size: px(15),
+        font: fontBold,
         color: subtextColor,
       });
     }
@@ -1036,35 +782,4 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), doc.filename);
 }
 
-export function printInvoice(invoice: PrintableInvoice) {
-  const popup = window.open("", "_blank", "width=920,height=760");
-  if (!popup) return;
-  const doc = buildInvoiceDocData(invoice);
-  popup.document.write(buildInvoiceHtml(invoice, doc));
 
-  popup.document.close();
-
-  const triggerPrint = () => {
-    popup.focus();
-    popup.print();
-  };
-
-  if (!doc.logoUrl) {
-    popup.setTimeout(triggerPrint, 150);
-    return;
-  }
-
-  const logo = popup.document.getElementById("print-shop-logo") as HTMLImageElement | null;
-  if (!logo) {
-    popup.setTimeout(triggerPrint, 150);
-    return;
-  }
-
-  if (logo.complete) {
-    popup.setTimeout(triggerPrint, 150);
-    return;
-  }
-
-  logo.addEventListener("load", () => popup.setTimeout(triggerPrint, 150), { once: true });
-  logo.addEventListener("error", () => popup.setTimeout(triggerPrint, 150), { once: true });
-}
