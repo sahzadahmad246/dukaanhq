@@ -57,7 +57,7 @@ function numberToWordsINR(amount: number) {
   const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
 
   if (amount === 0) return "Zero Only";
-  
+
   function convert(num: number): string {
     if (num < 20) return units[num];
     if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? " " + units[num % 10] : "");
@@ -262,8 +262,15 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
     name: item.product_name_snapshot,
     meta: [
       item.variant_name_snapshot,
-      ...(item.identifier_snapshot ? item.identifier_snapshot.split(" / ") : []),
+      ...(item.identifier_snapshot
+        ? item.identifier_snapshot
+            .replace(/(?:\s*,\s*|\s*\/\s*|\s+)(imei\s*2)/i, "\n$1")
+            .split("\n")
+            .flatMap((s) => s.split(" / "))
+        : []),
     ]
+      .filter(Boolean)
+      .map((s) => String(s).trim())
       .filter(Boolean)
       .join("\n"),
     quantity: String(item.quantity),
@@ -536,7 +543,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   const headerFontSize = px(15);
   const headerY = tableY - headerHeight / 2 - headerFontSize / 3;
   page.drawText("#", { x: tableX + cellPaddingX, y: headerY, size: headerFontSize, font: fontBold, color: tableHeadColor });
-  page.drawText("ITEM", { x: tableX + srWidth + cellPaddingX, y: headerY, size: headerFontSize, font: fontBold, color: tableHeadColor });
+  page.drawText("PARTICULARS", { x: tableX + srWidth + cellPaddingX, y: headerY, size: headerFontSize, font: fontBold, color: tableHeadColor });
   page.drawText("QTY", {
     x: tableX + srWidth + itemWidth + qtyWidth - cellPaddingX - fontBold.widthOfTextAtSize("QTY", headerFontSize),
     y: headerY,
@@ -704,15 +711,15 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
 
   const amountWordsLines = wrapTextWithLineBreaks(`Amount in Words:\nRupees ${doc.amountInWords}`, contentWidth - summaryWidth - px(40), fontBold, px(15));
   let awY = summaryTopOrig - px(16);
-  for(const awLine of amountWordsLines) {
-     page.drawText(awLine, {
-        x: contentX,
-        y: awY,
-        size: px(15),
-        font: fontBold,
-        color: headingColor,
-     });
-     awY -= px(15 * 1.4);
+  for (const awLine of amountWordsLines) {
+    page.drawText(awLine, {
+      x: contentX,
+      y: awY,
+      size: px(15),
+      font: fontBold,
+      color: headingColor,
+    });
+    awY -= px(15 * 1.4);
   }
 
   const signaturesTop = Math.min(awY, summaryTop) - signatureBlockDepth - px(56);
