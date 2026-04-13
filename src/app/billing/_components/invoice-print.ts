@@ -264,9 +264,10 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
       item.variant_name_snapshot,
       ...(item.identifier_snapshot
         ? item.identifier_snapshot
-            .replace(/(?:\s*,\s*|\s*\/\s*|\s+)(imei\s*2)/i, "\n$1")
+            .replace(/(?:\s*,\s*|\s*\/\s*|\s*•\s*|\s+)(imei\s*2)/i, "\n$1")
             .split("\n")
             .flatMap((s) => s.split(" / "))
+            .flatMap((s) => s.split(" • "))
         : []),
     ]
       .filter(Boolean)
