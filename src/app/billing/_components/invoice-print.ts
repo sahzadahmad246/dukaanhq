@@ -48,10 +48,15 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-/** Strip characters that WinAnsi (Helvetica) can't encode (anything outside 0x0020–0x00FF) */
+/** Strip characters that WinAnsi (Helvetica) can't encode (allowing newlines and tabs) */
 function sanitizeForPdf(text: string): string {
   // biome-ignore lint: simple regex replace
-  return text.replace(/[^\x20-\xFF]/g, "").replace(/\s+/g, " ").trim() || text.replace(/[^\x20-\xFF]/g, "?").replace(/\s+/g, " ").trim() || "-";
+  return text
+    // Replace non-WinAnsi characters, but keep \n (0x0A), \r (0x0D), and \t (0x09)
+    .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, "")
+    // Normalize spaces and tabs without destroying newlines
+    .replace(/[ \t]+/g, " ")
+    .trim() || "-";
 }
 
 function formatMoney(value: number) {
@@ -90,7 +95,7 @@ const INVOICE_LAYOUT = {
   muted: "#000000",
   tableHead: "#000000",
   summaryBg: "#fbfcfe",
-  logoSize: 54,
+  logoSize: 84,
   headerGap: 16,
   printPageWidth: 820,
   printPaddingX: 46,
@@ -245,19 +250,22 @@ type InvoiceDocData = {
 
 function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   const paymentSummary = sanitizeForPdf(buildPaymentSummary(invoice.payment_method, invoice.payment_details));
-  const formattedDate = new Date(invoice.invoice_date).toLocaleDateString();
+  
+  const dateObj = new Date(invoice.invoice_date);
+  const formattedDate = `${dateObj.toLocaleDateString("en-GB")} ${dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  
   const shopMeta = [invoice.shop_gst_snapshot ? `GST: ${sanitizeForPdf(invoice.shop_gst_snapshot)}` : null, invoice.shop_phone_snapshot ? sanitizeForPdf(invoice.shop_phone_snapshot) : null]
     .filter(Boolean) as string[];
 
   const infoRows: InvoiceDocData["infoRows"] = [
     { label: "Invoice No", value: sanitizeForPdf(invoice.invoice_number) },
     { label: "Date", value: formattedDate },
-    { label: "Client Name", value: sanitizeForPdf(invoice.customer_name) },
-    { label: "Client No", value: sanitizeForPdf(invoice.customer_mobile ?? "-") },
+    { label: "Name", value: sanitizeForPdf(invoice.customer_name) },
+    { label: "Mobile No.", value: sanitizeForPdf(invoice.customer_mobile ?? "-") },
   ];
 
   if (invoice.customer_gst_number) {
-    infoRows.push({ label: "Client GST", value: sanitizeForPdf(invoice.customer_gst_number) });
+    infoRows.push({ label: "GST", value: sanitizeForPdf(invoice.customer_gst_number) });
   }
 
   infoRows.push({ label: "Payment", value: paymentSummary, full: true });
@@ -442,7 +450,27 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     color: headingColor,
   });
 
-  cursorY -= px(18 + 16);
+  cursorY -= titleSize + px(12);
+
+  page.drawLine({
+    start: { x: contentX, y: cursorY },
+    end: { x: contentRight, y: cursorY },
+    thickness: 1.2,
+    color: titleRuleColor,
+  });
+
+  cursorY -= px(10);
+  const subtitle = "Composition dealer not eligible to collect tax separately";
+  const subtitleSize = px(15);
+  page.drawText(subtitle, {
+    x: pageBoxX + pageBoxWidth / 2 - fontBold.widthOfTextAtSize(subtitle, subtitleSize) / 2,
+    y: cursorY - subtitleSize,
+    size: subtitleSize,
+    font: fontBold,
+    color: subtextColor,
+  });
+
+  cursorY -= subtitleSize + px(16);
   page.drawLine({
     start: { x: contentX, y: cursorY },
     end: { x: contentRight, y: cursorY },
