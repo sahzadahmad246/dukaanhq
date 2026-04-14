@@ -21,6 +21,10 @@ import {
   PhoneCall,
   User,
   Printer,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 
 import type { DashboardStats, RecentInvoice, RecentProduct } from "../load-dashboard-data";
@@ -35,6 +39,7 @@ import { ProductCard, type InventoryProduct } from "@/app/inventory/_components/
 import { RecordSaleModal } from "@/app/inventory/_components/record-sale-modal";
 import { StockAdjustmentModal } from "@/app/inventory/_components/stock-adjustment-modal";
 import { deleteProductAction } from "@/app/inventory/actions";
+import { deleteInvoiceAction } from "@/app/billing/actions";
 type ProductSummary = InventoryProduct;
 
 function formatCurrency(n: number) {
@@ -134,6 +139,12 @@ export function DashboardHome({
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
 
+  const [editingInvoice, setEditingInvoice] = useState<RecentInvoice | null>(null);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [confirmDeleteInvoiceId, setConfirmDeleteInvoiceId] = useState<string | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<Set<string>>(new Set());
+
   const recentProductCards = useMemo(
     () => recentProducts.map((recentProduct) => products.find((product) => product.id === recentProduct.id)).filter(Boolean) as ProductSummary[],
     [products, recentProducts]
@@ -208,6 +219,26 @@ export function DashboardHome({
   }
 
 
+  function confirmDeleteInvoice(restockItems: boolean = true) {
+    if (!confirmDeleteInvoiceId) return;
+    const invoiceId = confirmDeleteInvoiceId;
+    setDeletingInvoiceId(invoiceId);
+    startDeleteTransition(async () => {
+      const result = await deleteInvoiceAction(invoiceId, restockItems);
+      if (result.status === "success") {
+        toast.success(result.message);
+        if (selectedInvoiceId === invoiceId) {
+          setSelectedInvoiceId(null);
+        }
+        setDeletedInvoiceIds((prev) => new Set(prev).add(invoiceId));
+        setConfirmDeleteInvoiceId(null);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+      setDeletingInvoiceId(null);
+    });
+  }
 
   function handleDownloadInvoice(invoice: PrintableInvoice) {
     void downloadInvoicePdf({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
@@ -300,7 +331,7 @@ export function DashboardHome({
           background: #ffffff;
           padding: 15px 14px 13px;
           position: relative;
-          overflow: hidden;
+          overflow: visible;
           cursor: pointer;
           transition: background 0.15s ease;
         }
@@ -471,10 +502,10 @@ export function DashboardHome({
               </Link>
             </div>
             <div className="dash-bill-list">
-              {recentInvoices.map((invoice, i) => {
+              {recentInvoices.filter(i => !deletedInvoiceIds.has(i.id)).map((invoice, i) => {
                 const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
                 return (
-                  <article key={invoice.id} className="dash-card" onClick={() => setSelectedInvoiceId(invoice.id)}>
+                  <article key={invoice.id} className="dash-card" style={{ zIndex: openDropdownId === invoice.id ? 50 : 1 }} onClick={() => setSelectedInvoiceId(invoice.id)}>
                     <div className="dash-card-topbar" style={{ background: accent.top }} />
 
                     {/* Row 1 */}
@@ -538,10 +569,55 @@ export function DashboardHome({
                           e.stopPropagation();
                           handleDownloadInvoice(invoice);
                         }}
-                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
+                        style={{ display: "inline-flex", alignItems: "center", justifyItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
                       >
                         <Download style={{ width: 12, height: 12 }} />
                       </button>
+
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenDropdownId(openDropdownId === invoice.id ? null : invoice.id);
+                          }}
+                          style={{ padding: "8px", background: "transparent", color: "#52525b", border: "none", cursor: "pointer" }}
+                          aria-label="More options"
+                        >
+                          <MoreVertical style={{ width: 14, height: 14 }} />
+                        </button>
+                        {openDropdownId === invoice.id && (
+                          <div className="absolute right-0 top-10 z-[60] w-36 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDropdownId(null);
+                                setEditingInvoice(invoice);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDropdownId(null);
+                                setConfirmDeleteInvoiceId(invoice.id);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                        {openDropdownId === invoice.id && (
+                          <div className="fixed inset-0 z-50" onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); }} />
+                        )}
+                      </div>
                     </div>
                   </article>
                 );
@@ -585,8 +661,12 @@ export function DashboardHome({
 
       {/* Modals */}
       <AddBillModal
-        open={isAddBillOpen}
-        onClose={() => setIsAddBillOpen(false)}
+        open={isAddBillOpen || !!editingInvoice}
+        onClose={() => {
+          setIsAddBillOpen(false);
+          setEditingInvoice(null);
+        }}
+        invoiceToEdit={editingInvoice as any}
         products={products}
         shopLogoUrl={shopLogoUrl}
         onInvoiceCreated={() => router.refresh()}
@@ -653,13 +733,34 @@ export function DashboardHome({
         open={Boolean(selectedInvoice)}
         onClose={() => setSelectedInvoiceId(null)}
         onDownload={handleDownloadInvoice}
+        onEdit={(inv) => {
+          setSelectedInvoiceId(null);
+          setEditingInvoice(inv as any);
+        }}
+        onDelete={(id) => {
+          setSelectedInvoiceId(null);
+          setConfirmDeleteInvoiceId(id);
+        }}
       />
 
       {confirmDeleteProductId ? (
         <DeleteConfirmationDialog
           isDeleting={isDeleting && deletingProductId === confirmDeleteProductId}
+          title="Delete Product"
+          description="This will permanently remove the product and its related data. This action cannot be undone."
           onCancel={() => setConfirmDeleteProductId(null)}
           onConfirm={confirmDelete}
+        />
+      ) : null}
+
+      {confirmDeleteInvoiceId ? (
+        <DeleteConfirmationDialog
+          isDeleting={isDeleting && deletingInvoiceId === confirmDeleteInvoiceId}
+          title="Delete Bill"
+          description="Are you sure you want to delete this bill? This action will permanently remove the invoice."
+          showRestockOption={true}
+          onCancel={() => setConfirmDeleteInvoiceId(null)}
+          onConfirm={(restock) => confirmDeleteInvoice(restock)}
         />
       ) : null}
     </>
@@ -668,20 +769,41 @@ export function DashboardHome({
 
 function DeleteConfirmationDialog({
   isDeleting,
+  title,
+  description,
+  showRestockOption,
   onCancel,
   onConfirm,
 }: {
   isDeleting: boolean;
+  title: string;
+  description: string;
+  showRestockOption?: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (restock?: boolean) => void;
 }) {
+  const [restock, setRestock] = useState(true);
+
   return (
     <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/35 px-4 pb-6 backdrop-blur-sm sm:items-center sm:pb-0">
       <div className="w-full max-w-sm rounded-[1.75rem] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
-        <h3 className="text-lg font-semibold text-stone-950">Delete Product</h3>
+        <h3 className="text-lg font-semibold text-stone-950">{title}</h3>
         <p className="mt-2 text-sm leading-6 text-stone-600">
-          This will permanently remove the product and its related data. This action cannot be undone.
+          {description}
         </p>
+        
+        {showRestockOption && (
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3 transition hover:bg-stone-100">
+            <input 
+              type="checkbox" 
+              checked={restock} 
+              onChange={e => setRestock(e.target.checked)} 
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900" 
+            />
+            <span className="text-sm font-medium text-stone-700">Restock deleted items back to inventory automatically</span>
+          </label>
+        )}
+
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
             type="button"
@@ -693,10 +815,11 @@ function DeleteConfirmationDialog({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => onConfirm(showRestockOption ? restock : undefined)}
             disabled={isDeleting}
-            className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+            className="flex items-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
           >
+            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {isDeleting ? "Deleting..." : "Delete"}
           </button>
         </div>

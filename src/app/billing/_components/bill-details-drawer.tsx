@@ -1,7 +1,8 @@
 "use client";
 
 import { format } from "date-fns";
-import { Download, PhoneCall, Printer, Receipt, X } from "lucide-react";
+import { Download, MoreVertical, Pencil, PhoneCall, Printer, Receipt, Trash2, X } from "lucide-react";
+import { useState } from "react";
 
 import type { PrintableInvoice } from "./invoice-print";
 
@@ -35,12 +36,18 @@ export function BillDetailsDrawer({
   open,
   onClose,
   onDownload,
+  onEdit,
+  onDelete,
 }: {
   invoice: InvoiceDetails | null;
   open: boolean;
   onClose: () => void;
   onDownload: (invoice: PrintableInvoice) => void;
+  onEdit: (invoice: InvoiceDetails) => void;
+  onDelete: (invoiceId: string) => void;
 }) {
+  const [showMenu, setShowMenu] = useState(false);
+
   return (
     <>
       <div
@@ -79,6 +86,48 @@ export function BillDetailsDrawer({
                 >
                   <Download className="h-4 w-4" />
                 </button>
+                
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
+                    aria-label="More options"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                  {showMenu && (
+                    <div className="absolute right-0 top-12 z-[60] w-36 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowMenu(false);
+                          onEdit(invoice);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowMenu(false);
+                          onDelete(invoice.id);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                  {showMenu && (
+                    <div className="fixed inset-0 z-50" onClick={() => setShowMenu(false)} />
+                  )}
+                </div>
               </>
             ) : null}
             <button

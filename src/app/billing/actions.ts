@@ -8,6 +8,7 @@ import { QrPayloadSchema } from "@/lib/qr";
 import { CreateInvoicePayloadSchema } from "@/lib/types/billing";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import type { ActionResponse } from "@/app/inventory/actions";
+import { UpdateInvoicePayloadSchema } from "@/lib/types/billing";
 
 function parseJsonField<T>(value: FormDataEntryValue | null, schema: z.ZodSchema<T>) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -111,6 +112,86 @@ export async function createInvoiceAction(
   return {
     status: "success",
     message: "Invoice created successfully.",
+    data: invoice,
+  };
+}
+
+export async function deleteInvoiceAction(invoiceId: string, restockItems: boolean = true): Promise<ActionResponse> {
+  const { shop } = await getWorkspaceData();
+  if (!shop) return { status: "error", message: "No active shop found." };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("delete_inventory_invoice", { 
+    p_invoice_id: invoiceId, 
+    p_restock_items: restockItems 
+  });
+
+  if (error) {
+    return { status: "error", message: error.message || "Failed to delete bill." };
+  }
+
+  revalidatePath("/billing");
+  revalidatePath("/dashboard");
+  revalidatePath("/inventory");
+
+  return { status: "success", message: "Bill deleted successfully." };
+}
+
+export async function updateInvoiceAction(
+  _prevState: ActionResponse,
+  formData: FormData
+): Promise<ActionResponse> {
+  const { shop } = await getWorkspaceData();
+  if (!shop) return { status: "error", message: "No active shop found." };
+
+  const payloadResult = parseJsonField(formData.get("invoice_payload"), UpdateInvoicePayloadSchema);
+  if (!payloadResult.success) {
+    return {
+      status: "error",
+      message: payloadResult.error.issues[0]?.message ?? "Invalid invoice payload.",
+      fieldErrors: {
+        invoice_payload: payloadResult.error.issues[0]?.message ?? "Invalid invoice payload.",
+      },
+    };
+  }
+
+  const payload = payloadResult.data;
+  const supabase = await createSupabaseServerClient();
+
+  const { data: updatedId, error } = await supabase.rpc("update_invoice_details", {
+    p_invoice_id: payload.invoice_id,
+    p_customer: payload.customer,
+    p_items: payload.items,
+    p_payment_method: payload.payment_method,
+    p_payment_details: payload.payment_details,
+    p_notes: payload.notes ?? null,
+  });
+
+  if (error || !updatedId) {
+    return { status: "error", message: mapInvoiceError(error?.message || "Failed to edit invoice.") };
+  }
+
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select(`
+      *,
+      invoice_items (
+        id, invoice_id, product_name_snapshot, brand_name_snapshot,
+        category_name_snapshot, variant_name_snapshot, identifier_snapshot,
+        quantity, unit_price, tax_rate, discount_amount, line_total
+      )
+    `)
+    .eq("id", updatedId)
+    .eq("shop_id", shop.id)
+    .single();
+
+  revalidatePath("/billing");
+  revalidatePath("/dashboard");
+  revalidatePath("/inventory");
+
+  return {
+    status: "success",
+    message: "Invoice updated successfully.",
     data: invoice,
   };
 }

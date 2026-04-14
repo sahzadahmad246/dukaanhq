@@ -54,6 +54,11 @@ export const CreateInvoicePayloadSchema = z.object({
 });
 export type CreateInvoicePayload = z.infer<typeof CreateInvoicePayloadSchema>;
 
+export const UpdateInvoicePayloadSchema = CreateInvoicePayloadSchema.extend({
+  invoice_id: z.string().uuid(),
+});
+export type UpdateInvoicePayload = z.infer<typeof UpdateInvoicePayloadSchema>;
+
 export const InvoiceSchema = z.object({
   id: z.string().uuid(),
   invoice_number: z.string().min(1),

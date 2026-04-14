@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,20 +10,26 @@ import {
   Download,
   Printer,
   Receipt,
+  MoreVertical,
+  Pencil,
+  Trash2,
   Wallet,
   PhoneCall,
   TrendingUp,
   ShoppingBag,
   User,
   CalendarDays,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 import type { Product } from "@/lib/types/inventory";
 import { InventoryTopBar } from "@/app/inventory/_components/inventory-top-bar";
 import { AddBillModal } from "./add-bill-modal";
 import { BillDetailsDrawer } from "./bill-details-drawer";
 import { downloadInvoicePdf, type PrintableInvoice } from "./invoice-print";
+import { deleteInvoiceAction } from "../actions";
 import type { BillingInvoiceSummary } from "../load-billing-data";
 import { productDetailsQueryKey } from "@/app/inventory/queries";
 
@@ -108,7 +114,14 @@ export function BillingManager({
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<BillingInvoiceSummary | null>(null);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [liveProducts, setLiveProducts] = useState(products);
+
+  const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<Set<string>>(new Set());
+  const [confirmDeleteInvoiceId, setConfirmDeleteInvoiceId] = useState<string | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const [isDeleting, startDeleteTransition] = useTransition();
 
   const chipScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -185,9 +198,10 @@ export function BillingManager({
 
   const displayedInvoices = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) return invoices;
-    return invoices.filter((invoice) => normalizeBillSearchText(invoice).includes(normalizedQuery));
-  }, [invoices, searchQuery]);
+    const visibleInvoices = invoices.filter(inv => !deletedInvoiceIds.has(inv.id));
+    if (!normalizedQuery) return visibleInvoices;
+    return visibleInvoices.filter((invoice) => normalizeBillSearchText(invoice).includes(normalizedQuery));
+  }, [invoices, searchQuery, deletedInvoiceIds]);
 
   const selectedInvoice = useMemo(
     () => displayedInvoices.find((inv) => inv.id === selectedInvoiceId) ?? invoices.find((inv) => inv.id === selectedInvoiceId) ?? null,
@@ -208,6 +222,27 @@ export function BillingManager({
 
   function downloadInvoice(invoice: PrintableInvoice) {
     void downloadInvoicePdf({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
+  }
+
+  function confirmDeleteInvoice(restockItems: boolean = true) {
+    if (!confirmDeleteInvoiceId) return;
+    const invoiceId = confirmDeleteInvoiceId;
+    setDeletingInvoiceId(invoiceId);
+    startDeleteTransition(async () => {
+      const result = await deleteInvoiceAction(invoiceId, restockItems);
+      if (result.status === "success") {
+        toast.success(result.message);
+        setDeletedInvoiceIds((prev) => new Set(prev).add(invoiceId));
+        if (selectedInvoiceId === invoiceId) {
+          setSelectedInvoiceId(null);
+        }
+        setConfirmDeleteInvoiceId(null);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+      setDeletingInvoiceId(null);
+    });
   }
 
   return (
@@ -283,7 +318,7 @@ export function BillingManager({
           background: #ffffff;
           padding: 15px 14px 13px;
           position: relative;
-          overflow: hidden;
+          overflow: visible;
           cursor: pointer;
           transition: background 0.15s ease;
         }
@@ -468,7 +503,7 @@ export function BillingManager({
                 {displayedInvoices.map((invoice, i) => {
                   const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
                   return (
-                    <article key={invoice.id} onClick={() => setSelectedInvoiceId(invoice.id)} className="bm-card">
+                    <article key={invoice.id} onClick={() => setSelectedInvoiceId(invoice.id)} className="bm-card" style={{ zIndex: openDropdownId === invoice.id ? 50 : 1 }}>
                       <div className="bm-card-topbar" style={{ background: accent.top }} />
 
                       {/* Row 1 */}
@@ -532,6 +567,48 @@ export function BillingManager({
                         >
                           <Download style={{ width: 12, height: 12 }} />
                         </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === invoice.id ? null : invoice.id); }}
+                            className="bm-btn"
+                            style={{ padding: "8px", background: "transparent", color: "#52525b" }}
+                            aria-label="More options"
+                          >
+                            <MoreVertical style={{ width: 14, height: 14 }} />
+                          </button>
+                          {openDropdownId === invoice.id && (
+                            <div className="absolute right-0 top-10 z-[60] w-36 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenDropdownId(null);
+                                  setEditingInvoice(invoice);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenDropdownId(null);
+                                  setConfirmDeleteInvoiceId(invoice.id);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                          {openDropdownId === invoice.id && (
+                            <div className="fixed inset-0 z-50" onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); }} />
+                          )}
+                        </div>
                       </div>
                     </article>
                   );
@@ -542,8 +619,12 @@ export function BillingManager({
         </section>
 
         <AddBillModal
-          open={isAddBillOpen}
-          onClose={() => setIsAddBillOpen(false)}
+          open={isAddBillOpen || !!editingInvoice}
+          onClose={() => {
+            setIsAddBillOpen(false);
+            setEditingInvoice(null);
+          }}
+          invoiceToEdit={editingInvoice}
           products={liveProducts}
           shopLogoUrl={shopLogoUrl}
           onInvoiceCreated={async (items) => {
@@ -586,6 +667,14 @@ export function BillingManager({
           open={Boolean(selectedInvoice)}
           onClose={() => setSelectedInvoiceId(null)}
           onDownload={downloadInvoice}
+          onEdit={(inv) => {
+            setSelectedInvoiceId(null);
+            setEditingInvoice(inv as any);
+          }}
+          onDelete={(id) => {
+            setSelectedInvoiceId(null);
+            setConfirmDeleteInvoiceId(id);
+          }}
         />
 
         {showScrollTop && (
@@ -595,6 +684,78 @@ export function BillingManager({
           </button>
         )}
       </div>
+
+      {confirmDeleteInvoiceId ? (
+        <DeleteConfirmationDialog
+          isDeleting={isDeleting && deletingInvoiceId === confirmDeleteInvoiceId}
+          title="Delete Bill"
+          description="Are you sure you want to delete this bill? This action will permanently remove the invoice."
+          showRestockOption={true}
+          onCancel={() => setConfirmDeleteInvoiceId(null)}
+          onConfirm={(restock) => confirmDeleteInvoice(restock)}
+        />
+      ) : null}
     </>
+  );
+}
+
+function DeleteConfirmationDialog({
+  isDeleting,
+  title,
+  description,
+  showRestockOption,
+  onCancel,
+  onConfirm,
+}: {
+  isDeleting: boolean;
+  title: string;
+  description: string;
+  showRestockOption?: boolean;
+  onCancel: () => void;
+  onConfirm: (restock?: boolean) => void;
+}) {
+  const [restock, setRestock] = useState(true);
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/35 px-4 pb-6 backdrop-blur-sm sm:items-center sm:pb-0">
+      <div className="w-full max-w-sm rounded-[1.75rem] bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+        <h3 className="text-lg font-semibold text-stone-950">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-stone-600">
+          {description}
+        </p>
+
+        {showRestockOption && (
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3 transition hover:bg-stone-100">
+            <input 
+              type="checkbox" 
+              checked={restock} 
+              onChange={e => setRestock(e.target.checked)} 
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900" 
+            />
+            <span className="text-sm font-medium text-stone-700">Restock deleted items back to inventory automatically</span>
+          </label>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="rounded-xl bg-stone-100 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-200 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(showRestockOption ? restock : undefined)}
+            disabled={isDeleting}
+            className="flex items-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+          >
+            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isDeleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

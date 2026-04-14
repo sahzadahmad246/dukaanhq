@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { buildVariantLabel } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
-import { createInvoiceAction } from "../actions";
+import { createInvoiceAction, updateInvoiceAction } from "../actions";
+import type { BillingInvoiceSummary } from "../load-billing-data";
 import { fetchProductDetails, productDetailsQueryKey, productDetailsQueryOptions, type ProductDetails } from "@/app/inventory/queries";
 import type { ActionResponse } from "@/app/inventory/actions";
 import { downloadInvoicePdf } from "./invoice-print";
@@ -538,21 +539,7 @@ function LineEditor({
 
   }, [line.quantity, onChange, selectedProduct]);
 
-  useEffect(() => {
-    if (!selectedProduct) return;
-    if (!selectedVariant) {
-      if (line.unit_price === "0") {
-        onChange({ unit_price: String(selectedProduct.base_selling_price) });
-      }
-      return;
-    }
 
-    if ((Number.parseFloat(line.unit_price || "0") || 0) === selectedVariantPrice) {
-      return;
-    }
-
-    onChange({ unit_price: String(selectedVariantPrice) });
-  }, [line.unit_price, onChange, selectedProduct, selectedVariant, selectedVariantPrice]);
 
   function adjustAccessoryQuantity(delta: 1 | -1) {
     if (!selectedProduct || selectedProduct.product_kind === "MOBILE") return;
@@ -641,7 +628,7 @@ function LineEditor({
                       disabled={isDisabled}
                       onClick={() => {
                         if (isDisabled) return;
-                        onChange({ variant_id: variant.id, inventory_item_id: "", identifier_value: "" });
+                        onChange({ variant_id: variant.id, inventory_item_id: "", identifier_value: "", unit_price: String(priceOverride) });
                       }}
                       className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors duration-200 ${
                         isDisabled ? "cursor-not-allowed bg-stone-50/70 opacity-55" : "hover:bg-stone-50"
@@ -688,11 +675,17 @@ function LineEditor({
                             onChange={(e) => {
                               const val = e.target.value;
                               const matchedUnit = availableUnits.find(u => buildInventoryItemLabel(u) === val || u.identifiers?.some(id => id.identifier_value === val));
+                              const nextVariantId = matchedUnit?.variant_id ?? line.variant_id;
+                              const variantPrice = matchedUnit && nextVariantId 
+                                ? (variants.find(v => v.id === nextVariantId)?.selling_price_override ?? selectedProduct.base_selling_price)
+                                : Number(line.unit_price);
+
                               onChange({
                                 identifier_value: val,
                                 inventory_item_id: matchedUnit ? matchedUnit.id : "",
                                 quantity: "1",
-                                variant_id: matchedUnit?.variant_id ?? line.variant_id
+                                variant_id: nextVariantId,
+                                unit_price: String(variantPrice)
                               });
                             }}
                             placeholder="Scan or enter exactly..."
@@ -725,9 +718,9 @@ function LineEditor({
                   <Field label="Unit Price">
                     <Input
                       type="number"
-                      readOnly
                       value={line.unit_price}
                       className="rounded-xl border-stone-100 bg-stone-100/50 text-stone-600 font-medium"
+                      onChange={(e) => onChange({ unit_price: e.target.value })}
                     />
                   </Field>
 
@@ -800,11 +793,17 @@ function LineEditor({
           onScan={(result) => {
             if (scanningField === "identifier") {
               const matchedUnit = availableUnits.find((u) => buildInventoryItemLabel(u) === result || u.identifiers?.some((id) => id.identifier_value === result));
+              const nextVariantId = matchedUnit?.variant_id ?? line.variant_id;
+              const variantPrice = matchedUnit && nextVariantId 
+                ? (variants.find(v => v.id === nextVariantId)?.selling_price_override ?? selectedProduct?.base_selling_price ?? 0)
+                : Number(line.unit_price);
+
               onChange({
                 identifier_value: result,
                 inventory_item_id: matchedUnit ? matchedUnit.id : "",
                 quantity: "1",
-                variant_id: matchedUnit?.variant_id ?? line.variant_id
+                variant_id: nextVariantId,
+                unit_price: String(variantPrice)
               });
             } else if (scanningField === "imei_1") {
               onChange({ imei_1: result });
@@ -825,12 +824,14 @@ export function AddBillModal({
   products,
   shopLogoUrl,
   onInvoiceCreated,
+  invoiceToEdit,
 }: {
   open: boolean;
   onClose: () => void;
   products: ProductSummary[];
   shopLogoUrl?: string | null;
   onInvoiceCreated?: (items: Array<{ product_id: string; variant_id: string | null; quantity: number }>) => void;
+  invoiceToEdit?: BillingInvoiceSummary | null;
 }) {
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
@@ -847,6 +848,58 @@ export function AddBillModal({
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const steps: StepId[] = ["customer", "products", "preview"];
   const stepIndex = steps.indexOf(currentStep);
+
+  useEffect(() => {
+    if (open) {
+      if (invoiceToEdit) {
+        setCustomer({
+          name: invoiceToEdit.customer_name || "",
+          mobile: invoiceToEdit.customer_mobile || "",
+          billing_address: invoiceToEdit.billing_address || "",
+          gst_number: invoiceToEdit.customer_gst_number || "",
+        });
+        setPaymentDraft({
+          methods: (invoiceToEdit.payment_details?.methods as PaymentMethodChoice[]) || [invoiceToEdit.payment_method as PaymentMethodChoice],
+          loan_provider: invoiceToEdit.payment_details?.loan_provider || "",
+          loan_number: invoiceToEdit.payment_details?.loan_number || "",
+        });
+        setPendingPaymentDraft({
+          methods: (invoiceToEdit.payment_details?.methods as PaymentMethodChoice[]) || [invoiceToEdit.payment_method as PaymentMethodChoice],
+          loan_provider: invoiceToEdit.payment_details?.loan_provider || "",
+          loan_number: invoiceToEdit.payment_details?.loan_number || "",
+        });
+        setNotes(invoiceToEdit.notes || "");
+        setLines(
+          (invoiceToEdit.invoice_items || []).map((item) => {
+            const imeiParts = (item.identifier_snapshot || "").split(" • ").map(p => p.split(": ")[1] || p.trim());
+            return {
+              id: item.id,
+              product_id: item.product_id || "",
+              variant_id: item.variant_id || "",
+              inventory_item_id: item.inventory_item_id || "",
+              identifier_value: item.identifier_snapshot || "",
+              imei_1: imeiParts[0] || "",
+              imei_2: imeiParts[1] || "",
+              quantity: String(item.quantity || "1"),
+              unit_price: String(item.unit_price || "0"),
+              discount_amount: String(item.discount_amount || "0"),
+            };
+          })
+        );
+        setCurrentStep("customer");
+      } else {
+        setCustomer({ name: "", mobile: "", billing_address: "", gst_number: "" });
+        setPaymentDraft(createEmptyPaymentDraft());
+        setPendingPaymentDraft(createEmptyPaymentDraft());
+        setNotes("");
+        setLines([]);
+        setCurrentStep("customer");
+      }
+      setClientError("");
+      setState({ status: "success", message: "" });
+    }
+  }, [open, invoiceToEdit]);
+
   if (!open) return null;
 
   const preparedLines = lines
@@ -1071,9 +1124,28 @@ export function AddBillModal({
         notes,
       })
     );
+      if (invoiceToEdit) {
+        formData.set(
+          "invoice_payload",
+          JSON.stringify({
+            invoice_id: invoiceToEdit.id,
+            customer,
+            items: preparedLines,
+            payment_method: deriveInvoicePaymentMethod(paymentDraft),
+            payment_details: {
+              methods: paymentDraft.methods,
+              loan_provider: paymentDraft.loan_provider || null,
+              loan_number: paymentDraft.loan_number || null,
+            },
+            notes,
+          })
+        );
+      }
 
     startTransition(async () => {
-      const result = await createInvoiceAction({ status: "success", message: "" }, formData);
+      const result = invoiceToEdit 
+        ? await updateInvoiceAction({ status: "success", message: "" }, formData)
+        : await createInvoiceAction({ status: "success", message: "" }, formData);
       setState(result);
       if (result.status === "success" && result.data) {
         await downloadInvoicePdf({ ...(result.data as Parameters<typeof downloadInvoicePdf>[0]), shop_logo_url: shopLogoUrl ?? null });

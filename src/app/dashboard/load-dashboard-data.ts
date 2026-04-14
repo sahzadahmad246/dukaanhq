@@ -41,6 +41,9 @@ export type RecentInvoice = {
   invoice_footer_snapshot?: string | null;
   invoice_items?: Array<{
     id: string;
+    product_id: string | null;
+    variant_id: string | null;
+    inventory_item_id: string | null;
     product_name_snapshot: string;
     brand_name_snapshot?: string | null;
     category_name_snapshot?: string | null;
@@ -48,6 +51,8 @@ export type RecentInvoice = {
     identifier_snapshot?: string | null;
     quantity: number;
     unit_price: number;
+    tax_rate: number;
+    discount_amount: number;
     line_total: number;
   }>;
 };
@@ -175,8 +180,8 @@ export async function loadDashboardData() {
       subtotal, tax_total, discount_total, grand_total, payment_method, payment_details, payment_status, notes,
       shop_name_snapshot, shop_address_snapshot, shop_phone_snapshot, shop_gst_snapshot, invoice_footer_snapshot,
       invoice_items (
-        id, product_name_snapshot, brand_name_snapshot, category_name_snapshot,
-        variant_name_snapshot, identifier_snapshot, quantity, unit_price, line_total
+        id, product_id, variant_id, inventory_item_id, product_name_snapshot, brand_name_snapshot, category_name_snapshot,
+        variant_name_snapshot, identifier_snapshot, quantity, unit_price, tax_rate, discount_amount, line_total
       )
     `)
     .eq("shop_id", shopId)
