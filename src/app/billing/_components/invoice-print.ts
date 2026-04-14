@@ -48,6 +48,12 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
+/** Strip characters that WinAnsi (Helvetica) can't encode (anything outside 0x0020–0x00FF) */
+function sanitizeForPdf(text: string): string {
+  // biome-ignore lint: simple regex replace
+  return text.replace(/[^\x20-\xFF]/g, "").replace(/\s+/g, " ").trim() || text.replace(/[^\x20-\xFF]/g, "?").replace(/\s+/g, " ").trim() || "-";
+}
+
 function formatMoney(value: number) {
   return `${Number(value || 0).toFixed(2)}`;
 }
@@ -238,32 +244,32 @@ type InvoiceDocData = {
 };
 
 function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
-  const paymentSummary = buildPaymentSummary(invoice.payment_method, invoice.payment_details);
+  const paymentSummary = sanitizeForPdf(buildPaymentSummary(invoice.payment_method, invoice.payment_details));
   const formattedDate = new Date(invoice.invoice_date).toLocaleDateString();
-  const shopMeta = [invoice.shop_gst_snapshot ? `GST: ${invoice.shop_gst_snapshot}` : null, invoice.shop_phone_snapshot]
+  const shopMeta = [invoice.shop_gst_snapshot ? `GST: ${sanitizeForPdf(invoice.shop_gst_snapshot)}` : null, invoice.shop_phone_snapshot ? sanitizeForPdf(invoice.shop_phone_snapshot) : null]
     .filter(Boolean) as string[];
 
   const infoRows: InvoiceDocData["infoRows"] = [
-    { label: "Invoice No", value: invoice.invoice_number },
+    { label: "Invoice No", value: sanitizeForPdf(invoice.invoice_number) },
     { label: "Date", value: formattedDate },
-    { label: "Client Name", value: invoice.customer_name },
-    { label: "Client No", value: invoice.customer_mobile ?? "-" },
+    { label: "Client Name", value: sanitizeForPdf(invoice.customer_name) },
+    { label: "Client No", value: sanitizeForPdf(invoice.customer_mobile ?? "-") },
   ];
 
   if (invoice.customer_gst_number) {
-    infoRows.push({ label: "Client GST", value: invoice.customer_gst_number });
+    infoRows.push({ label: "Client GST", value: sanitizeForPdf(invoice.customer_gst_number) });
   }
 
   infoRows.push({ label: "Payment", value: paymentSummary, full: true });
-  infoRows.push({ label: "Address", value: invoice.billing_address ?? "-", full: true });
+  infoRows.push({ label: "Address", value: sanitizeForPdf(invoice.billing_address ?? "-"), full: true });
 
   const items = (invoice.invoice_items ?? []).map((item, index) => ({
     index: index + 1,
-    name: item.product_name_snapshot,
+    name: sanitizeForPdf(item.product_name_snapshot),
     meta: [
-      item.variant_name_snapshot,
+      item.variant_name_snapshot ? sanitizeForPdf(item.variant_name_snapshot) : null,
       ...(item.identifier_snapshot
-        ? item.identifier_snapshot
+        ? sanitizeForPdf(item.identifier_snapshot)
             .replace(/(?:\s*,\s*|\s*\/\s*|\s*•\s*|\s+)(imei\s*2)/i, "\n$1")
             .split("\n")
             .flatMap((s) => s.split(" / "))
@@ -302,7 +308,7 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
     infoRows,
     items,
     summaryRows,
-    footerText: invoice.invoice_footer_snapshot ?? "Goods once sold will not be taken back without original bill.",
+    footerText: sanitizeForPdf(invoice.invoice_footer_snapshot ?? "Goods once sold will not be taken back without original bill."),
     formattedDate,
     paymentSummary,
     amountInWords: numberToWordsINR(invoice.grand_total),
@@ -376,7 +382,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
       height: logoSize,
     });
   } else {
-    const initial = (invoice.shop_name_snapshot || "D").slice(0, 1).toUpperCase();
+    const initial = sanitizeForPdf((invoice.shop_name_snapshot || "D").slice(0, 1).toUpperCase()) || "D";
     const initialSize = px(26);
     page.drawText(initial, {
       x: logoX + logoSize / 2 - fontBold.widthOfTextAtSize(initial, initialSize) / 2,
@@ -389,7 +395,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
 
   const copyX = logoX + logoSize + px(INVOICE_LAYOUT.headerGap);
   const shopNameSize = px(26);
-  page.drawText(invoice.shop_name_snapshot, {
+  page.drawText(sanitizeForPdf(invoice.shop_name_snapshot), {
     x: copyX,
     y: cursorY - shopNameSize,
     size: shopNameSize,
@@ -398,7 +404,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   });
 
   let shopTextY = cursorY - shopNameSize - px(7);
-  const shopAddressLines = wrapText(invoice.shop_address_snapshot ?? "", contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontBold, px(16));
+  const shopAddressLines = wrapText(sanitizeForPdf(invoice.shop_address_snapshot ?? ""), contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontBold, px(16));
   for (const line of shopAddressLines.filter(Boolean)) {
     page.drawText(line, {
       x: copyX,
@@ -757,8 +763,9 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     font: fontBold,
     color: headingColor,
   });
-  page.drawText(`For ${invoice.shop_name_snapshot}`, {
-    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize(`For ${invoice.shop_name_snapshot}`, px(14)) / 2,
+  const safeShopName = sanitizeForPdf(invoice.shop_name_snapshot);
+  page.drawText(`For ${safeShopName}`, {
+    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize(`For ${safeShopName}`, px(14)) / 2,
     y: signaturesTop - px(10) - px(15) - px(14),
     size: px(14),
     font: fontBold,

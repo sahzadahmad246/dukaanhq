@@ -520,15 +520,33 @@ function LineEditor({
       : false;
 
     if (variants.length > 0 && (!line.variant_id || !variants.some((variant) => variant.id === line.variant_id) || !selectedVariantHasStock)) {
+      const autoVariant = preferredVariant;
+      const autoPrice = autoVariant
+        ? (autoVariant.selling_price_override ?? selectedProduct.base_selling_price)
+        : selectedProduct.base_selling_price;
       onChange({
-        variant_id: preferredVariant?.id ?? "",
+        variant_id: autoVariant?.id ?? "",
         inventory_item_id: "",
         identifier_value: "",
         imei_1: "",
         imei_2: "",
+        unit_price: String(autoPrice),
       });
     }
   }, [line.variant_id, onChange, preferredVariant?.id, productDetails, selectedProduct, selectedProductBlockReason, variantStockMap, variants]);
+
+  // Auto-fill price when it's still at the default "0" and we have product/variant info
+  useEffect(() => {
+    if (!selectedProduct) return;
+    if (line.unit_price !== "0") return; // user already has a price set, don't override
+
+    if (selectedVariant) {
+      const price = selectedVariant.selling_price_override ?? selectedProduct.base_selling_price;
+      onChange({ unit_price: String(price) });
+    } else {
+      onChange({ unit_price: String(selectedProduct.base_selling_price) });
+    }
+  }, [selectedProduct, selectedVariant, line.unit_price, onChange]);
 
   useEffect(() => {
     if (!selectedProduct) return;
@@ -849,6 +867,23 @@ export function AddBillModal({
   const steps: StepId[] = ["customer", "products", "preview"];
   const stepIndex = steps.indexOf(currentStep);
 
+  const queryClient = useQueryClient();
+
+  // Prefetch product details for top products when modal opens (cached for 30 min)
+  useEffect(() => {
+    if (open && products.length > 0) {
+      // Prefetch first 10 to avoid hammering server
+      const toPrefetch = products.slice(0, 10);
+      for (const product of toPrefetch) {
+        queryClient.prefetchQuery({
+          queryKey: productDetailsQueryKey(product.id),
+          queryFn: () => fetchProductDetails(product.id),
+          staleTime: 30 * 60 * 1000,
+        });
+      }
+    }
+  }, [open, products, queryClient]);
+
   useEffect(() => {
     if (open) {
       if (invoiceToEdit) {
@@ -1143,20 +1178,42 @@ export function AddBillModal({
       }
 
     startTransition(async () => {
-      const result = invoiceToEdit 
-        ? await updateInvoiceAction({ status: "success", message: "" }, formData)
-        : await createInvoiceAction({ status: "success", message: "" }, formData);
-      setState(result);
-      if (result.status === "success" && result.data) {
-        await downloadInvoicePdf({ ...(result.data as Parameters<typeof downloadInvoicePdf>[0]), shop_logo_url: shopLogoUrl ?? null });
-        onInvoiceCreated?.(
-          preparedLines.map((line) => ({
-            product_id: line.product_id,
-            variant_id: line.variant_id,
-            quantity: line.quantity,
-          }))
-        );
-        onClose();
+      try {
+        const result = invoiceToEdit 
+          ? await updateInvoiceAction({ status: "success", message: "" }, formData)
+          : await createInvoiceAction({ status: "success", message: "" }, formData);
+        
+        console.log("[Bill Submit] Server action result:", JSON.stringify(result, null, 2));
+        setState(result);
+        
+        if (result.status === "success" && result.data) {
+          try {
+            await downloadInvoicePdf({ ...(result.data as Parameters<typeof downloadInvoicePdf>[0]), shop_logo_url: shopLogoUrl ?? null });
+          } catch (pdfError) {
+            console.error("[Bill Submit] PDF download failed:", pdfError);
+            // PDF failed but invoice was created, still close
+          }
+          onInvoiceCreated?.(
+            preparedLines.map((line) => ({
+              product_id: line.product_id,
+              variant_id: line.variant_id,
+              quantity: line.quantity,
+            }))
+          );
+          // Invalidate cached product details so stock numbers refresh
+          for (const line of preparedLines) {
+            queryClient.invalidateQueries({ queryKey: productDetailsQueryKey(line.product_id) });
+          }
+          onClose();
+        } else if (result.status === "error") {
+          console.error("[Bill Submit] Server returned error:", result.message);
+        }
+      } catch (err) {
+        console.error("[Bill Submit] Uncaught error during submission:", err);
+        setState({ 
+          status: "error", 
+          message: err instanceof Error ? err.message : "An unexpected error occurred. Check browser console for details." 
+        });
       }
     });
   }

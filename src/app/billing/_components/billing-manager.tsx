@@ -220,8 +220,13 @@ export function BillingManager({
     [displayedInvoices]
   );
 
-  function downloadInvoice(invoice: PrintableInvoice) {
-    void downloadInvoicePdf({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
+  async function downloadInvoice(invoice: PrintableInvoice) {
+    try {
+      await downloadInvoicePdf({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
+    } catch (err) {
+      console.error("[Download] PDF generation failed:", err);
+      toast.error(`Download failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
   }
 
   function confirmDeleteInvoice(restockItems: boolean = true) {

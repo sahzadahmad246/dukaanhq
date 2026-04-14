@@ -240,8 +240,13 @@ export function DashboardHome({
     });
   }
 
-  function handleDownloadInvoice(invoice: PrintableInvoice) {
-    void downloadInvoicePdf({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
+  async function handleDownloadInvoice(invoice: PrintableInvoice) {
+    try {
+      await downloadInvoicePdf({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
+    } catch (err) {
+      console.error("[Download] PDF generation failed:", err);
+      toast.error(`Download failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
   }
 
   return (
