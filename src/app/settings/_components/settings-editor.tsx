@@ -14,6 +14,7 @@ type EditableField =
   | "addressLine2"
   | "city"
   | "state"
+  | "postalCode"
   | "invoicePrefix"
   | "currency"
   | "taxMode"
@@ -50,6 +51,7 @@ type SettingsState = {
   addressLine2: string;
   city: string;
   state: string;
+  postalCode: string;
   invoicePrefix: string;
   currency: string;
   taxMode: string;
@@ -158,6 +160,7 @@ function formatFieldLabel(field: EditableField) {
     addressLine2: "Address line 2",
     city: "City",
     state: "State",
+    postalCode: "Postal code",
     invoicePrefix: "Invoice prefix",
     currency: "Currency",
     taxMode: "Tax mode",
@@ -215,6 +218,7 @@ export function SettingsEditor({
         { label: "Address line 2", value: state.addressLine2, field: "addressLine2" as const },
         { label: "City", value: state.city, field: "city" as const },
         { label: "State", value: state.state, field: "state" as const },
+        { label: "Postal code", value: state.postalCode, field: "postalCode" as const },
       ],
       billing: [
         { label: "Invoice prefix", value: state.invoicePrefix, field: "invoicePrefix" as const },
@@ -387,6 +391,7 @@ export function SettingsEditor({
         ...(editingField === "addressLine2" ? { addressLine2: nextValue } : {}),
         ...(editingField === "city" ? { city: nextValue } : {}),
         ...(editingField === "state" ? { state: nextValue } : {}),
+        ...(editingField === "postalCode" ? { postalCode: nextValue } : {}),
         ...(editingField === "invoicePrefix" ? { invoicePrefix: nextValue } : {}),
         ...(editingField === "currency" ? { currency: nextValue } : {}),
         ...(editingField === "taxMode" ? { taxMode: nextValue } : {}),

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { X, Loader2, TrendingUp, TrendingDown, Clock, ShieldCheck, Mail, Phone } from "lucide-react";
 import { format } from "date-fns";
+import { formatShopMemberRole } from "@/lib/auth/display-role";
+
 import { getStaffActivityAction, type StaffActivityItem } from "../actions";
 
 type StaffMember = {
@@ -139,7 +141,7 @@ export function StaffDetailDrawer({
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1 text-[11px] font-semibold tracking-wide text-stone-700 ring-1 ring-stone-200/60">
                     <ShieldCheck className="h-3 w-3" />
-                    {member.role === "owner" ? "Owner" : "Staff"}
+                    {formatShopMemberRole(member.role)}
                   </span>
                 </div>
               </div>

@@ -44,7 +44,7 @@ with check (
     from public.shop_members
     where shop_members.shop_id = product_images.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -58,6 +58,6 @@ using (
     from public.shop_members
     where shop_members.shop_id = product_images.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );

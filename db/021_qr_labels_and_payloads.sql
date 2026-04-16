@@ -52,7 +52,7 @@ for all using (
     from public.shop_members
     where shop_members.shop_id = shop_qr_counters.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 ) with check (
   exists (
@@ -60,7 +60,7 @@ for all using (
     from public.shop_members
     where shop_members.shop_id = shop_qr_counters.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -99,7 +99,7 @@ begin
     from public.shop_members
     where shop_members.shop_id = p_shop_id
       and shop_members.user_id = v_user_id
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   ) then
     raise exception 'Access denied';
   end if;

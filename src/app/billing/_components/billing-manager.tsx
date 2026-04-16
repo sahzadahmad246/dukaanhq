@@ -96,10 +96,12 @@ export function BillingManager({
   products,
   invoices,
   shopLogoUrl,
+  shopPostalCode,
 }: {
   products: ProductSummary[];
   invoices: BillingInvoiceSummary[];
   shopLogoUrl?: string | null;
+  shopPostalCode?: string | null;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -222,7 +224,11 @@ export function BillingManager({
 
   async function downloadInvoice(invoice: PrintableInvoice) {
     try {
-      await downloadInvoicePdf({ ...(invoice as PrintableInvoice), shop_logo_url: shopLogoUrl ?? null });
+      await downloadInvoicePdf({
+        ...(invoice as PrintableInvoice),
+        shop_logo_url: shopLogoUrl ?? null,
+        shop_postal_code: shopPostalCode ?? null,
+      });
     } catch (err) {
       console.error("[Download] PDF generation failed:", err);
       toast.error(`Download failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -632,6 +638,7 @@ export function BillingManager({
           invoiceToEdit={editingInvoice}
           products={liveProducts}
           shopLogoUrl={shopLogoUrl}
+          shopPostalCode={shopPostalCode}
           onInvoiceCreated={async (items) => {
             setLiveProducts((current) =>
               current.map((product) => {

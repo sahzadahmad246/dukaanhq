@@ -14,8 +14,10 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
     hasWorkspaceAccess,
     canManageStaff,
     hasCompletedOnboarding,
-  } =
-    await getUserAppState(supabase);
+    canUseShopProduct,
+    saasPlatform,
+    shopEntitlement,
+  } = await getUserAppState(supabase);
 
   if (!user) {
     redirect("/auth/login");
@@ -29,13 +31,17 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
     redirect("/onboarding");
   }
 
+  if (!canUseShopProduct) {
+    redirect("/subscribe");
+  }
+
   if (options?.requireOwner && !canManageStaff) {
     redirect("/dashboard");
   }
 
   const { data: shop } = await supabase
     .from("shops")
-    .select("id, name, slug, city, state, status, logo_url, address_line_1, address_line_2, category, latitude, longitude")
+    .select("id, name, slug, city, state, postal_code, status, logo_url, address_line_1, address_line_2, category, latitude, longitude")
     .eq("id", membership.shop_id)
     .maybeSingle();
 
@@ -52,5 +58,8 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
     shop,
     shopSettings: fullShopSettings ?? shopSettings,
     membership,
+    saasPlatform,
+    shopEntitlement,
+    canUseShopProduct,
   };
 }

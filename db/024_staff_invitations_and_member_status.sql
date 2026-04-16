@@ -11,7 +11,7 @@ create table if not exists public.shop_member_invitations (
   shop_id uuid not null references public.shops(id) on delete cascade,
   email text not null,
   full_name text,
-  role text not null check (role in ('owner', 'admin')),
+  role text not null check (role in ('owner', 'staff')),
   status text not null default 'PENDING' check (status in ('PENDING', 'ACCEPTED', 'CANCELLED', 'EXPIRED')),
   invite_token text not null unique,
   invited_by uuid references auth.users(id) on delete set null,

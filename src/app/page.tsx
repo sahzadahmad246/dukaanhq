@@ -16,24 +16,40 @@ function getInitials(name: string) {
 
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
-  const { user, profile, isOwner, hasWorkspaceAccess, hasCompletedOnboarding } = await getUserAppState(supabase);
+  const {
+    user,
+    profile,
+    isOwner,
+    isSuperAdmin,
+    hasWorkspaceAccess,
+    hasCompletedOnboarding,
+    canUseShopProduct,
+  } = await getUserAppState(supabase);
 
   const displayName = profile?.full_name ?? user?.user_metadata.full_name ?? user?.email ?? "there";
   const userEmail = profile?.email ?? user?.email ?? "";
   const initials = getInitials(displayName || "DukaanHQ");
   const primaryHref = user
     ? hasWorkspaceAccess && hasCompletedOnboarding
-      ? "/dashboard"
+      ? canUseShopProduct
+        ? "/dashboard"
+        : "/subscribe"
       : isOwner
         ? "/onboarding"
-        : "/"
+        : isSuperAdmin
+          ? "/admin/saas"
+          : "/"
     : "/auth/login";
   const primaryLabel = user
     ? hasWorkspaceAccess && hasCompletedOnboarding
-      ? "Open Dashboard"
+      ? canUseShopProduct
+        ? "Open Dashboard"
+        : "Subscribe to continue"
       : isOwner
         ? "Set Up Your Shop"
-        : "Open Home"
+        : isSuperAdmin
+          ? "SaaS admin"
+          : "Open Home"
     : "Get Started Free";
   const secondaryHref = "/auth/login";
   const secondaryLabel = "Sign In";

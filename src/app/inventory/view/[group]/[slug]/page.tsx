@@ -51,6 +51,7 @@ export default async function InventoryGroupPage({
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
       ownerRole={membership?.role ?? profile?.role ?? "customer"}
+      saasAdminHref={profile?.role === "superadmin" ? "/admin/saas" : undefined}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <InventoryGroupView

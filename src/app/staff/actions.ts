@@ -13,7 +13,7 @@ import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 const InviteStaffSchema = z.object({
   full_name: z.string().trim().min(1, "Name is required."),
   email: z.string().trim().email("Enter a valid email."),
-  role: z.enum(["owner", "admin"]),
+  role: z.enum(["owner", "staff"]),
 });
 
 const UpdateStaffMemberSchema = z.object({
@@ -74,8 +74,8 @@ function buildInviteEmail(input: {
   `;
 }
 
-function getRoleLabel(role: "owner" | "admin") {
-  return role === "owner" ? "Full Permission" : "Full Access Staff";
+function getRoleLabel(role: "owner" | "staff") {
+  return role === "owner" ? "Owner (full access)" : "Staff (bills & inventory)";
 }
 
 function escapeHtml(value: string) {

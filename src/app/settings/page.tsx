@@ -15,11 +15,12 @@ export default async function SettingsPage() {
       title="Settings"
       activeNav="staff"
       shopName={shop?.name ?? "Shop"}
-      shopAddress={[shop?.address_line_1, shop?.city, shop?.state].filter(Boolean).join(", ")}
+      shopAddress={[shop?.address_line_1, shop?.city, shop?.state, shop?.postal_code].filter(Boolean).join(", ")}
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
       ownerRole={membership?.role ?? profile?.role ?? "customer"}
+      saasAdminHref={profile?.role === "superadmin" ? "/admin/saas" : undefined}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <SettingsEditor
@@ -33,6 +34,7 @@ export default async function SettingsPage() {
           addressLine2: shop?.address_line_2 ?? "",
           city: shop?.city ?? "",
           state: shop?.state ?? "",
+          postalCode: shop?.postal_code ?? "",
           invoicePrefix: shopSettings?.invoice_prefix ?? "",
           currency: shopSettings?.currency ?? "",
           taxMode: shopSettings?.tax_mode ?? "",

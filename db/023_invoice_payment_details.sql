@@ -50,7 +50,7 @@ begin
     select 1 from public.shop_members
     where shop_members.shop_id = p_shop_id
       and shop_members.user_id = v_user_id
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   ) then
     raise exception 'Not allowed to create invoices';
   end if;

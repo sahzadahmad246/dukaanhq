@@ -35,7 +35,7 @@ begin
     from public.shop_members
     where shop_id = p_shop_id
       and user_id = v_user_id
-      and role in ('owner', 'admin')
+      and role in ('owner', 'staff')
   ) then
     raise exception 'Access denied';
   end if;

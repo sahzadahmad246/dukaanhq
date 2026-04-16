@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
+import { formatShopMemberRole } from "@/lib/auth/display-role";
 
 async function signOut() {
   "use server";
@@ -25,6 +26,7 @@ export default async function ProfilePage() {
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
       ownerRole={membership?.role ?? profile?.role ?? "customer"}
+      saasAdminHref={profile?.role === "superadmin" ? "/admin/saas" : undefined}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <section className="grid gap-3">
@@ -40,7 +42,9 @@ export default async function ProfilePage() {
             </div>
             <div className="rounded-2xl bg-stone-50 px-4 py-4">
               <div className="text-xs uppercase tracking-[0.18em] text-stone-500">Role</div>
-              <div className="mt-1 text-sm font-medium capitalize text-stone-950">{membership?.role ?? profile?.role ?? "customer"}</div>
+              <div className="mt-1 text-sm font-medium text-stone-950">
+                {formatShopMemberRole(membership?.role ?? profile?.role ?? "customer")}
+              </div>
             </div>
             <div className="rounded-2xl bg-stone-50 px-4 py-4">
               <div className="text-xs uppercase tracking-[0.18em] text-stone-500">Shop</div>

@@ -31,6 +31,10 @@ function buildPaymentMeta(invoice: InvoiceDetails) {
   return { methodText, extra };
 }
 
+function isFreeQuickItem(item: NonNullable<InvoiceDetails["invoice_items"]>[number]) {
+  return !item.product_id && Number(item.line_total ?? 0) === 0 && Number(item.unit_price ?? 0) > 0;
+}
+
 export function BillDetailsDrawer({
   invoice,
   open,
@@ -207,18 +211,48 @@ export function BillDetailsDrawer({
                     <div key={`${invoice.id}-${index}`} className="rounded-2xl bg-stone-50 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-stone-950">{item.product_name_snapshot}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-sm font-semibold text-stone-950">{item.product_name_snapshot}</div>
+                            {!item.product_id ? (
+                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                                Quick Add
+                              </span>
+                            ) : null}
+                            {isFreeQuickItem(item) ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                                Free
+                              </span>
+                            ) : null}
+                          </div>
                           {buildLineMeta([item.brand_name_snapshot, item.variant_name_snapshot, item.identifier_snapshot]) ? (
                             <div className="mt-1 text-xs text-stone-500">
                               {buildLineMeta([item.brand_name_snapshot, item.variant_name_snapshot, item.identifier_snapshot])}
                             </div>
                           ) : null}
                         </div>
-                        <div className="text-right text-sm font-semibold text-stone-950">{money(item.line_total)}</div>
+                        <div className="text-right">
+                          {isFreeQuickItem(item) ? (
+                            <div className="space-y-0.5">
+                              <div className="text-xs font-semibold text-stone-400 line-through">
+                                {money(item.quantity * item.unit_price)}
+                              </div>
+                              <div className="text-sm font-semibold text-emerald-700">Free</div>
+                            </div>
+                          ) : (
+                            <div className="text-sm font-semibold text-stone-950">{money(item.line_total)}</div>
+                          )}
+                        </div>
                       </div>
                       <div className="mt-2 flex items-center justify-between text-xs text-stone-500">
                         <span>Qty {item.quantity}</span>
-                        <span>Rate {money(item.unit_price)}</span>
+                        {isFreeQuickItem(item) ? (
+                          <span className="font-medium">
+                            <span className="line-through text-stone-400">{money(item.unit_price)}</span>{" "}
+                            <span className="text-emerald-700">Free</span>
+                          </span>
+                        ) : (
+                          <span>Rate {money(item.unit_price)}</span>
+                        )}
                       </div>
                     </div>
                   ))}

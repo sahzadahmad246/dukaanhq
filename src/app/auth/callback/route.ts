@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getSignedInLandingPath } from "@/lib/auth/user-flow";
+import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function acceptInviteForUser(input: {
@@ -30,7 +30,7 @@ async function acceptInviteForUser(input: {
       shop_id: string;
       email: string;
       full_name: string | null;
-      role: "owner" | "admin";
+      role: "owner" | "staff";
       status: string;
       invited_by: string | null;
       expires_at: string;
@@ -84,6 +84,29 @@ async function acceptInviteForUser(input: {
     })
     .eq("id", invitation.id);
 
+  const { data: existingProfile } = await adminSupabase
+    .from("profiles")
+    .select("role")
+    .eq("id", input.user.id)
+    .maybeSingle<{ role: string }>();
+
+  // Keep profiles.role aligned for shop operators; do not downgrade an existing owner
+  // (e.g. second-shop invites). Owner onboarding still sets profile.role to owner.
+  if (
+    invitation.role === "staff" &&
+    existingProfile?.role !== "superadmin" &&
+    existingProfile?.role !== "owner"
+  ) {
+    const { error: profileRoleError } = await adminSupabase
+      .from("profiles")
+      .update({ role: "staff" })
+      .eq("id", input.user.id);
+
+    if (profileRoleError) {
+      console.error("Failed to sync profiles.role after invite accept:", profileRoleError);
+    }
+  }
+
   return null;
 }
 
@@ -129,24 +152,14 @@ export async function GET(request: Request) {
       }
     }
 
-    const { data: membership } = await supabase
-      .from("shop_members")
-      .select("shop_id, role, status")
-      .eq("user_id", user.id)
-      .maybeSingle<{ shop_id: string; role: string; status?: "ACTIVE" | "SUSPENDED" | null }>();
-
-    const { data: shopSettings } = membership
-      ? await supabase
-          .from("shop_settings")
-          .select("onboarding_completed")
-          .eq("shop_id", membership.shop_id)
-          .maybeSingle<{ onboarding_completed: boolean }>()
-      : { data: null };
-
-    const isOwner = membership?.role === "owner";
-    const hasWorkspaceAccess = Boolean(membership && membership.status !== "SUSPENDED" && ["owner", "admin"].includes(membership.role));
-    const hasCompletedOnboarding = Boolean(shopSettings?.onboarding_completed);
-    const nextPath = getSignedInLandingPath({ isOwner, hasWorkspaceAccess, hasCompletedOnboarding });
+    const appState = await getUserAppState(supabase);
+    const nextPath = getSignedInLandingPath({
+      hasWorkspaceAccess: appState.hasWorkspaceAccess,
+      isOwner: appState.isOwner,
+      hasCompletedOnboarding: appState.hasCompletedOnboarding,
+      canUseShopProduct: appState.canUseShopProduct,
+      isSuperAdmin: appState.isSuperAdmin,
+    });
     cookieStore.delete("dukaanhq_invite_token");
 
     return NextResponse.redirect(new URL(nextPath, requestUrl.origin));
@@ -172,24 +185,13 @@ export async function GET(request: Request) {
         return inviteResponse;
       }
 
-      const { data: membership } = await supabase
-        .from("shop_members")
-        .select("shop_id, role, status")
-        .eq("user_id", user.id)
-        .maybeSingle<{ shop_id: string; role: string; status?: "ACTIVE" | "SUSPENDED" | null }>();
-
-      const { data: shopSettings } = membership
-        ? await supabase
-            .from("shop_settings")
-            .select("onboarding_completed")
-            .eq("shop_id", membership.shop_id)
-            .maybeSingle<{ onboarding_completed: boolean }>()
-        : { data: null };
-
+      const appState = await getUserAppState(supabase);
       const nextPath = getSignedInLandingPath({
-        isOwner: membership?.role === "owner",
-        hasWorkspaceAccess: Boolean(membership && membership.status !== "SUSPENDED" && ["owner", "admin"].includes(membership.role)),
-        hasCompletedOnboarding: Boolean(shopSettings?.onboarding_completed),
+        hasWorkspaceAccess: appState.hasWorkspaceAccess,
+        isOwner: appState.isOwner,
+        hasCompletedOnboarding: appState.hasCompletedOnboarding,
+        canUseShopProduct: appState.canUseShopProduct,
+        isSuperAdmin: appState.isSuperAdmin,
       });
 
       cookieStore.delete("dukaanhq_invite_token");

@@ -9,6 +9,7 @@ import {
   ChartColumn,
   ChevronRight,
   CircleHelp,
+  CreditCard,
   ReceiptText,
   Settings2,
   ShoppingBag,
@@ -18,7 +19,8 @@ import {
   LogOut,
 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useState } from "react";
+import { formatShopMemberRole } from "@/lib/auth/display-role";
+import { useMemo, useState } from "react";
 
 type DrawerSection = {
   title: string;
@@ -30,7 +32,7 @@ type DrawerSection = {
   }>;
 };
 
-const drawerSections: DrawerSection[] = [
+const operationsAndGrowthSections: DrawerSection[] = [
   {
     title: "Operations",
     items: [
@@ -46,15 +48,6 @@ const drawerSections: DrawerSection[] = [
       { href: "/dashboard", label: "Reports and analytics", icon: ChartColumn },
     ],
   },
-  {
-    title: "Support",
-    items: [
-      { href: "/profile", label: "Owner profile", icon: SquareUserRound },
-      { href: "/dashboard", label: "Help centre", icon: CircleHelp },
-      { href: "/dashboard", label: "Support tickets", icon: Tickets },
-      { href: "/settings", label: "Shop settings", icon: Settings2 },
-    ],
-  },
 ];
 
 export function OwnerDrawer({
@@ -67,6 +60,7 @@ export function OwnerDrawer({
   ownerEmail,
   ownerRole,
   userAvatarUrl,
+  saasAdminHref,
 }: {
   open: boolean;
   onClose: () => void;
@@ -77,8 +71,22 @@ export function OwnerDrawer({
   ownerEmail: string;
   ownerRole: string;
   userAvatarUrl: string | null;
+  saasAdminHref?: string;
 }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const drawerSections = useMemo(() => {
+    const supportItems: DrawerSection["items"] = [
+      { href: "/profile", label: "Owner profile", icon: SquareUserRound },
+      { href: "/dashboard", label: "Help centre", icon: CircleHelp },
+      { href: "/dashboard", label: "Support tickets", icon: Tickets },
+    ];
+    if (ownerRole === "owner") {
+      supportItems.push({ href: "/subscription", label: "Manage subscription", icon: CreditCard });
+    }
+    supportItems.push({ href: "/settings", label: "Shop settings", icon: Settings2 });
+    return [...operationsAndGrowthSections, { title: "Support", items: supportItems }];
+  }, [ownerRole]);
 
   const handleLogout = async () => {
     try {
@@ -173,7 +181,7 @@ export function OwnerDrawer({
                   <span className="text-sm font-medium">{ownerName}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold capitalize">{ownerRole}</span>
+                  <span className="text-sm font-semibold">{formatShopMemberRole(ownerRole)}</span>
                   <ChevronRight className="h-4 w-4 text-stone-300" />
                 </div>
               </div>
@@ -194,6 +202,19 @@ export function OwnerDrawer({
               <div className="mt-1 text-xs text-stone-600">Stock</div>
             </Link>
           </section>
+
+          {saasAdminHref ? (
+            <section className="mx-4 mt-4 rounded-[1.5rem] border border-amber-200 bg-amber-50 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+              <Link
+                href={saasAdminHref}
+                onClick={onClose}
+                className="flex items-center justify-between gap-3 text-sm font-semibold text-amber-950"
+              >
+                SaaS admin (plans & trials)
+                <ChevronRight className="h-4 w-4 text-amber-700" />
+              </Link>
+            </section>
+          ) : null}
 
           {drawerSections.map((section) => (
             <section key={section.title} className="mx-4 mt-4 rounded-[1.5rem] bg-white px-4 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">

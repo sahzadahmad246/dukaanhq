@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Gift, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -50,8 +50,13 @@ type PaymentDraft = {
   loan_number: string;
 };
 
+type BillingLineType = "inventory" | "quick";
+
 type BillingLineDraft = {
   id: string;
+  line_type: BillingLineType;
+  is_free_gift: boolean;
+  quick_item_name: string;
   product_id: string;
   variant_id: string;
   inventory_item_id: string;
@@ -87,9 +92,14 @@ const LOAN_PROVIDER_OPTIONS = [
   "Other",
 ];
 
+const BILL_DRAFT_STORAGE_KEY = "dukaanhq:create-bill:draft:v1";
+
 function createLine(): BillingLineDraft {
   return {
     id: crypto.randomUUID(),
+    line_type: "inventory",
+    is_free_gift: false,
+    quick_item_name: "",
     product_id: "",
     variant_id: "",
     inventory_item_id: "",
@@ -100,6 +110,108 @@ function createLine(): BillingLineDraft {
     unit_price: "0",
     discount_amount: "0",
   };
+}
+
+function createQuickLine(): BillingLineDraft {
+  return {
+    id: crypto.randomUUID(),
+    line_type: "quick",
+    is_free_gift: false,
+    quick_item_name: "",
+    product_id: "",
+    variant_id: "",
+    inventory_item_id: "",
+    identifier_value: "",
+    imei_1: "",
+    imei_2: "",
+    quantity: "1",
+    unit_price: "0",
+    discount_amount: "0",
+  };
+}
+
+function isQuickLine(line: BillingLineDraft) {
+  return line.line_type === "quick";
+}
+
+function isQuickGiftLine(line: BillingLineDraft | null) {
+  return Boolean(line?.line_type === "quick" && line?.is_free_gift);
+}
+
+function normalizeDraftLine(line: Partial<BillingLineDraft> | null | undefined): BillingLineDraft {
+  return {
+    id: line?.id || crypto.randomUUID(),
+    line_type: line?.line_type === "quick" ? "quick" : "inventory",
+    is_free_gift:
+      typeof line?.is_free_gift === "boolean"
+        ? line.is_free_gift
+        : line?.line_type === "quick" && Number(line?.unit_price || 0) === 0,
+    quick_item_name: typeof line?.quick_item_name === "string" ? line.quick_item_name : "",
+    product_id: typeof line?.product_id === "string" ? line.product_id : "",
+    variant_id: typeof line?.variant_id === "string" ? line.variant_id : "",
+    inventory_item_id: typeof line?.inventory_item_id === "string" ? line.inventory_item_id : "",
+    identifier_value: typeof line?.identifier_value === "string" ? line.identifier_value : "",
+    imei_1: typeof line?.imei_1 === "string" ? line.imei_1 : "",
+    imei_2: typeof line?.imei_2 === "string" ? line.imei_2 : "",
+    quantity: typeof line?.quantity === "string" ? line.quantity : "1",
+    unit_price: typeof line?.unit_price === "string" ? line.unit_price : "0",
+    discount_amount: typeof line?.discount_amount === "string" ? line.discount_amount : "0",
+  };
+}
+
+type StoredBillDraft = {
+  version: 1;
+  currentStep: StepId;
+  customer: CustomerDraft;
+  paymentDraft: PaymentDraft;
+  notes: string;
+  lines: BillingLineDraft[];
+};
+
+function readStoredBillDraft() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(BILL_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredBillDraft>;
+    if (parsed.version !== 1) return null;
+    if (!parsed.customer || !parsed.paymentDraft || !Array.isArray(parsed.lines)) return null;
+
+    const currentStep =
+      parsed.currentStep === "customer" || parsed.currentStep === "products" || parsed.currentStep === "preview"
+        ? parsed.currentStep
+        : "customer";
+
+    return {
+      version: 1 as const,
+      currentStep,
+      customer: {
+        name: typeof parsed.customer.name === "string" ? parsed.customer.name : "",
+        mobile: typeof parsed.customer.mobile === "string" ? parsed.customer.mobile : "",
+        billing_address: typeof parsed.customer.billing_address === "string" ? parsed.customer.billing_address : "",
+        gst_number: typeof parsed.customer.gst_number === "string" ? parsed.customer.gst_number : "",
+      },
+      paymentDraft: {
+        methods: Array.isArray(parsed.paymentDraft.methods)
+          ? parsed.paymentDraft.methods.filter((method): method is PaymentMethodChoice =>
+              ["CASH", "CARD", "UPI", "BANK_TRANSFER", "OTHER", "LOAN"].includes(String(method))
+            )
+          : [],
+        loan_provider: typeof parsed.paymentDraft.loan_provider === "string" ? parsed.paymentDraft.loan_provider : "",
+        loan_number: typeof parsed.paymentDraft.loan_number === "string" ? parsed.paymentDraft.loan_number : "",
+      },
+      notes: typeof parsed.notes === "string" ? parsed.notes : "",
+      lines: parsed.lines.map((line) => normalizeDraftLine(line)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredBillDraft() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(BILL_DRAFT_STORAGE_KEY);
 }
 
 function money(value: number) {
@@ -161,6 +273,10 @@ function Stepper({
 }
 
 function isLineComplete(line: BillingLineDraft, products: ProductSummary[]) {
+  if (isQuickLine(line)) {
+    return Boolean(line.quick_item_name.trim()) && (Number.parseInt(line.quantity || "0", 10) || 0) > 0;
+  }
+
   const product = products.find((item) => item.id === line.product_id);
   if (!product) return false;
   if (getProductSaleBlockReason(product)) return false;
@@ -231,13 +347,6 @@ function getProductSaleBlockReason(product: ProductSummary | null) {
     return "Unavailable: returned stock";
   }
   return "Unavailable: out of stock";
-}
-
-function getVariantSellingPrice(
-  product: Pick<ProductSummary, "base_selling_price"> | null,
-  variant?: { selling_price_override?: number | null } | null
-) {
-  return Number(variant?.selling_price_override ?? product?.base_selling_price ?? 0);
 }
 
 function buildInventoryItemLabel(item: InventoryRecord) {
@@ -319,10 +428,12 @@ function ProductPicker({
   products,
   selectedProductId,
   onSelect,
+  onOpenQuickItem,
 }: {
   products: ProductSummary[];
   selectedProductId: string;
   onSelect: (productId: string) => void;
+  onOpenQuickItem: () => void;
 }) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
@@ -374,6 +485,13 @@ function ProductPicker({
   return (
     <div className="relative">
       <div className="sticky top-0 z-10 pb-3">
+        <button
+          type="button"
+          onClick={onOpenQuickItem}
+          className="mb-3 text-sm font-semibold text-sky-700 underline decoration-sky-400 underline-offset-4 transition hover:text-sky-800"
+        >
+          Add Quick Item
+        </button>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
@@ -433,10 +551,12 @@ function LineEditor({
   line,
   products,
   onChange,
+  onOpenQuickItem,
 }: {
   line: BillingLineDraft;
   products: ProductSummary[];
   onChange: (next: Partial<BillingLineDraft>) => void;
+  onOpenQuickItem: () => void;
 }) {
   const queryClient = useQueryClient();
   const { data: productDetails } = useQuery({
@@ -505,7 +625,6 @@ function LineEditor({
 
   const selectedUnit = availableUnits.find((item) => item.id === line.inventory_item_id) ?? null;
   const stockLeft = selectedVariant ? variantStockMap.get(selectedVariant.id) ?? 0 : selectedProduct?.total_quantity ?? 0;
-  const selectedVariantPrice = getVariantSellingPrice(selectedProduct, selectedVariant);
   const productKindCopy = buildProductKindCopy(selectedProduct);
   const ProductKindIcon = productKindCopy?.icon ?? Package2;
 
@@ -533,7 +652,7 @@ function LineEditor({
         unit_price: String(autoPrice),
       });
     }
-  }, [line.variant_id, onChange, preferredVariant?.id, productDetails, selectedProduct, selectedProductBlockReason, variantStockMap, variants]);
+  }, [line.variant_id, onChange, preferredVariant, productDetails, selectedProduct, selectedProductBlockReason, variantStockMap, variants]);
 
   // Auto-fill price when it's still at the default "0" and we have product/variant info
   useEffect(() => {
@@ -573,9 +692,12 @@ function LineEditor({
           <ProductPicker
             products={products}
             selectedProductId={line.product_id}
+            onOpenQuickItem={onOpenQuickItem}
             onSelect={(productId) => {
               const nextProduct = products.find((product) => product.id === productId);
               onChange({
+                line_type: "inventory",
+                quick_item_name: "",
                 product_id: productId,
                 variant_id: "",
                 inventory_item_id: "",
@@ -597,7 +719,7 @@ function LineEditor({
              <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Selected Product</p>
              <button
                type="button"
-               onClick={() => onChange({ product_id: "", variant_id: "", inventory_item_id: "", identifier_value: "", imei_1: "", imei_2: "", quantity: "1", unit_price: "0", discount_amount: "0" })}
+               onClick={() => onChange({ line_type: "inventory", quick_item_name: "", product_id: "", variant_id: "", inventory_item_id: "", identifier_value: "", imei_1: "", imei_2: "", quantity: "1", unit_price: "0", discount_amount: "0" })}
                className="text-[11px] font-bold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-900 focus:outline-none"
              >
                Change
@@ -841,6 +963,7 @@ export function AddBillModal({
   onClose,
   products,
   shopLogoUrl,
+  shopPostalCode,
   onInvoiceCreated,
   invoiceToEdit,
 }: {
@@ -848,6 +971,7 @@ export function AddBillModal({
   onClose: () => void;
   products: ProductSummary[];
   shopLogoUrl?: string | null;
+  shopPostalCode?: string | null;
   onInvoiceCreated?: (items: Array<{ product_id: string; variant_id: string | null; quantity: number }>) => void;
   invoiceToEdit?: BillingInvoiceSummary | null;
 }) {
@@ -864,6 +988,13 @@ export function AddBillModal({
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [draftLine, setDraftLine] = useState<BillingLineDraft | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [isQuickItemDialogOpen, setIsQuickItemDialogOpen] = useState(false);
+  const [quickItemDraft, setQuickItemDraft] = useState<BillingLineDraft | null>(null);
+  const [editingQuickLineId, setEditingQuickLineId] = useState<string | null>(null);
+  const [closeProductDialogAfterQuickSave, setCloseProductDialogAfterQuickSave] = useState(false);
+  const [draftSyncReady, setDraftSyncReady] = useState(false);
+  const [showRestorePrompt, setShowRestorePrompt] = useState(false);
+  const [savedDraft, setSavedDraft] = useState<StoredBillDraft | null>(null);
   const steps: StepId[] = ["customer", "products", "preview"];
   const stepIndex = steps.indexOf(currentStep);
 
@@ -885,8 +1016,13 @@ export function AddBillModal({
   }, [open, products, queryClient]);
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+
+    const timeoutId = window.setTimeout(() => {
       if (invoiceToEdit) {
+        setDraftSyncReady(false);
+        setShowRestorePrompt(false);
+        setSavedDraft(null);
         setCustomer({
           name: invoiceToEdit.customer_name || "",
           mobile: invoiceToEdit.customer_mobile || "",
@@ -909,6 +1045,9 @@ export function AddBillModal({
             const imeiParts = (item.identifier_snapshot || "").split(" • ").map(p => p.split(": ")[1] || p.trim());
             return {
               id: item.id,
+              line_type: item.product_id ? "inventory" : "quick",
+              is_free_gift: !item.product_id && Number(item.unit_price || 0) === 0,
+              quick_item_name: item.product_id ? "" : item.product_name_snapshot,
               product_id: item.product_id || "",
               variant_id: item.variant_id || "",
               inventory_item_id: item.inventory_item_id || "",
@@ -923,22 +1062,89 @@ export function AddBillModal({
         );
         setCurrentStep("customer");
       } else {
+        const existingDraft = readStoredBillDraft();
         setCustomer({ name: "", mobile: "", billing_address: "", gst_number: "" });
         setPaymentDraft(createEmptyPaymentDraft());
         setPendingPaymentDraft(createEmptyPaymentDraft());
         setNotes("");
         setLines([]);
         setCurrentStep("customer");
+        setSavedDraft(existingDraft);
+        setShowRestorePrompt(Boolean(existingDraft));
+        setDraftSyncReady(!existingDraft);
       }
+      setIsQuickItemDialogOpen(false);
+      setQuickItemDraft(null);
+      setEditingQuickLineId(null);
+      setCloseProductDialogAfterQuickSave(false);
       setClientError("");
       setState({ status: "success", message: "" });
-    }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [open, invoiceToEdit]);
+
+  useEffect(() => {
+    if (!open || invoiceToEdit || !draftSyncReady) return;
+
+    const hasAnyContent =
+      customer.name.trim() ||
+      customer.mobile.trim() ||
+      customer.billing_address.trim() ||
+      customer.gst_number.trim() ||
+      notes.trim() ||
+      paymentDraft.methods.length > 0 ||
+      lines.length > 0 ||
+      currentStep !== "customer";
+
+    if (!hasAnyContent) {
+      clearStoredBillDraft();
+      return;
+    }
+
+    const payload: StoredBillDraft = {
+      version: 1,
+      currentStep,
+      customer,
+      paymentDraft,
+      notes,
+      lines,
+    };
+
+    window.localStorage.setItem(BILL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+  }, [currentStep, customer, draftSyncReady, invoiceToEdit, lines, notes, open, paymentDraft]);
 
   if (!open) return null;
 
   const preparedLines = lines
     .map((line) => {
+      if (isQuickLine(line)) {
+        const quantity = Number.parseInt(line.quantity || "1", 10) || 1;
+        const unitPrice = Number.parseFloat(line.unit_price || "0") || 0;
+        const discountAmount = Number.parseFloat(line.discount_amount || "0") || 0;
+        const effectiveDiscountAmount = line.is_free_gift ? quantity * unitPrice : discountAmount;
+
+        return {
+          product_id: null,
+          variant_id: null,
+          inventory_item_id: null,
+          product_name_snapshot: line.quick_item_name.trim(),
+          brand_name_snapshot: null,
+          category_name_snapshot: null,
+          variant_name_snapshot: null,
+          identifier_snapshot: null,
+          quantity,
+          unit_price: unitPrice,
+          tax_rate: 0,
+          discount_amount: effectiveDiscountAmount,
+          line_total: computeLineTotal({
+            quantity,
+            unitPrice,
+            discountAmount: effectiveDiscountAmount,
+          }),
+        };
+      }
+
       const product = products.find((item) => item.id === line.product_id);
       if (!product) return null;
       const quantity = product.tracking_type === "SERIALIZED" || product.product_kind === "MOBILE" ? 1 : Number.parseInt(line.quantity || "1", 10) || 1;
@@ -985,9 +1191,57 @@ export function AddBillModal({
     setIsProductDialogOpen(true);
   }
 
+  function openQuickItemDialog(
+    line: BillingLineDraft = createQuickLine(),
+    options?: { editingLineId?: string | null; closeProductDialogOnSave?: boolean }
+  ) {
+    setQuickItemDraft(normalizeDraftLine({ ...line, line_type: "quick" }));
+    setEditingQuickLineId(options?.editingLineId ?? null);
+    setCloseProductDialogAfterQuickSave(Boolean(options?.closeProductDialogOnSave));
+    setClientError("");
+    setIsQuickItemDialogOpen(true);
+  }
+
+  function closeQuickItemDialog() {
+    setQuickItemDraft(null);
+    setEditingQuickLineId(null);
+    setCloseProductDialogAfterQuickSave(false);
+    setIsQuickItemDialogOpen(false);
+    setClientError("");
+  }
+
+  function restoreSavedDraft() {
+    if (!savedDraft) {
+      setShowRestorePrompt(false);
+      setDraftSyncReady(true);
+      return;
+    }
+
+    setCustomer(savedDraft.customer);
+    setPaymentDraft(savedDraft.paymentDraft);
+    setPendingPaymentDraft(savedDraft.paymentDraft);
+    setNotes(savedDraft.notes);
+    setLines(savedDraft.lines.map((line) => normalizeDraftLine(line)));
+    setCurrentStep(savedDraft.currentStep);
+    setShowRestorePrompt(false);
+    setDraftSyncReady(true);
+    setSavedDraft(null);
+  }
+
+  function discardSavedDraft() {
+    clearStoredBillDraft();
+    setSavedDraft(null);
+    setShowRestorePrompt(false);
+    setDraftSyncReady(true);
+  }
+
   function openEditProductDialog(lineId: string) {
     const existing = lines.find((line) => line.id === lineId);
     if (!existing) return;
+    if (isQuickLine(existing)) {
+      openQuickItemDialog(existing, { editingLineId: lineId });
+      return;
+    }
     setDraftLine({ ...existing });
     setEditingLineId(lineId);
     setClientError("");
@@ -1074,6 +1328,55 @@ export function AddBillModal({
 
     setClientError("");
     closeProductDialog();
+  }
+
+  function saveQuickItemDraft() {
+    if (!quickItemDraft) return;
+    const shouldCloseProductDialog = closeProductDialogAfterQuickSave;
+
+    if (!quickItemDraft.quick_item_name.trim()) {
+      setClientError("Item name is required for a quick item.");
+      return;
+    }
+
+    const quantity = Number.parseInt(quickItemDraft.quantity || "0", 10) || 0;
+    if (quantity <= 0) {
+      setClientError("Quantity must be at least 1.");
+      return;
+    }
+
+    const unitPrice = Number.parseFloat(quickItemDraft.unit_price || "0");
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      setClientError("Enter a valid unit price.");
+      return;
+    }
+
+    const discountAmount = Number.parseFloat(quickItemDraft.discount_amount || "0");
+    if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+      setClientError("Enter a valid discount amount.");
+      return;
+    }
+
+    const normalizedQuickItem = normalizeDraftLine({
+      ...quickItemDraft,
+      unit_price: quickItemDraft.unit_price,
+      discount_amount: quickItemDraft.is_free_gift
+        ? String((Number.parseInt(quickItemDraft.quantity || "1", 10) || 1) * (Number.parseFloat(quickItemDraft.unit_price || "0") || 0))
+        : quickItemDraft.discount_amount,
+    });
+
+    setLines((current) => {
+      if (editingQuickLineId) {
+        return current.map((line) => (line.id === editingQuickLineId ? normalizedQuickItem : line));
+      }
+      return [...current, normalizedQuickItem];
+    });
+
+    setClientError("");
+    closeQuickItemDialog();
+    if (shouldCloseProductDialog) {
+      closeProductDialog();
+    }
   }
 
   function validateStep(step: StepId) {
@@ -1187,21 +1490,34 @@ export function AddBillModal({
         setState(result);
         
         if (result.status === "success" && result.data) {
+          setDraftSyncReady(false);
+          clearStoredBillDraft();
+
           try {
-            await downloadInvoicePdf({ ...(result.data as Parameters<typeof downloadInvoicePdf>[0]), shop_logo_url: shopLogoUrl ?? null });
+            await downloadInvoicePdf({ 
+              ...(result.data as Parameters<typeof downloadInvoicePdf>[0]), 
+              shop_logo_url: shopLogoUrl ?? null,
+              shop_postal_code: shopPostalCode ?? null,
+            });
           } catch (pdfError) {
             console.error("[Bill Submit] PDF download failed:", pdfError);
             // PDF failed but invoice was created, still close
           }
+          
           onInvoiceCreated?.(
-            preparedLines.map((line) => ({
-              product_id: line.product_id,
-              variant_id: line.variant_id,
-              quantity: line.quantity,
-            }))
+            preparedLines.flatMap((line) =>
+              line.product_id
+                ? [{
+                    product_id: line.product_id,
+                    variant_id: line.variant_id,
+                    quantity: line.quantity,
+                  }]
+                : []
+            )
           );
           // Invalidate cached product details so stock numbers refresh
           for (const line of preparedLines) {
+            if (!line.product_id) continue;
             queryClient.invalidateQueries({ queryKey: productDetailsQueryKey(line.product_id) });
           }
           onClose();
@@ -1239,6 +1555,23 @@ export function AddBillModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          {showRestorePrompt ? (
+            <div className="mb-4 rounded-[1.3rem] border border-sky-200 bg-sky-50 px-4 py-4 shadow-sm">
+              <p className="text-sm font-semibold text-sky-950">Restore saved bill draft?</p>
+              <p className="mt-1 text-xs font-medium text-sky-800">
+                We found an unfinished bill on this device. You can restore it or start fresh.
+              </p>
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={discardSavedDraft} className="text-sky-800 hover:text-sky-950">
+                  Start Fresh
+                </Button>
+                <Button type="button" onClick={restoreSavedDraft} className="bg-sky-700 text-white hover:bg-sky-800">
+                  Restore Draft
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           {currentStep === "customer" ? (
             <section className="space-y-4 py-2">
               <StepTitle step={1} title="Customer Info" />
@@ -1272,7 +1605,8 @@ export function AddBillModal({
               {lines.length > 0 ? (
                 <div className="space-y-3">
                   {lines.map((line, index) => {
-                    const product = products.find((item) => item.id === line.product_id) ?? null;
+                    const isQuickItem = isQuickLine(line);
+                    const product = isQuickItem ? null : products.find((item) => item.id === line.product_id) ?? null;
                     const variant = product?.variants?.find((item) => item.id === line.variant_id) ?? null;
                     const quantity =
                       product?.tracking_type === "SERIALIZED" || product?.product_kind === "MOBILE"
@@ -1285,11 +1619,13 @@ export function AddBillModal({
                     return (
                       <div key={line.id} className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden shadow-sm transition-all duration-200 hover:shadow-md hover:border-stone-300">
                         <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-stone-200 bg-stone-100/50">
-                           <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white shadow-sm ring-2 ring-stone-900/10">
                                {index + 1}
                              </div>
-                             <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">Item Selected</span>
+                             <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">
+                               {isQuickItem ? "Quick Item" : "Item Selected"}
+                             </span>
                            </div>
                            <div className="flex items-center gap-1">
                              <button type="button" className="p-1 text-stone-900 transition hover:text-teal-700" onClick={() => openEditProductDialog(line.id)}>
@@ -1308,7 +1644,9 @@ export function AddBillModal({
                         <div className="px-4 py-4 bg-white">
                           <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-bold text-stone-900 leading-snug">{product?.name ?? "Incomplete item"}</p>
+                              <p className="text-sm font-bold text-stone-900 leading-snug">
+                                {isQuickItem ? line.quick_item_name || "Quick item" : product?.name ?? "Incomplete item"}
+                              </p>
                               {variant ? <p className="mt-1 text-[13px] font-semibold text-stone-500">{buildVariantLabel(variant)}</p> : null}
                               {product?.product_kind === "MOBILE" ? (
                                 <div className="mt-2 space-y-1 text-xs text-stone-500">
@@ -1587,6 +1925,7 @@ export function AddBillModal({
                 key={draftLine.id}
                 line={draftLine}
                 products={products}
+                onOpenQuickItem={() => openQuickItemDialog(createQuickLine(), { closeProductDialogOnSave: true })}
                 onChange={(next) => setDraftLine((current) => (current ? { ...current, ...next } : current))}
               />
             </div>
@@ -1598,6 +1937,184 @@ export function AddBillModal({
               </Button>
               <Button type="button" onClick={saveDraftLine} className="px-6 rounded-xl font-bold bg-stone-900 hover:bg-stone-800 transition-all shadow-sm">
                 {editingLineId ? "Update Requirements" : "Add to Cart"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isQuickItemDialogOpen && quickItemDraft ? (
+        <div className="fixed inset-0 z-[70] bg-stone-950/55 px-4 py-6 backdrop-blur-sm">
+          <div className="mx-auto flex h-auto max-h-[88vh] w-full max-w-[460px] flex-col overflow-hidden rounded-[2.2rem] border border-stone-200 bg-stone-100 shadow-[0_30px_80px_rgba(15,23,42,0.22)]">
+            <div className="flex items-center justify-between bg-stone-100/80 px-6 py-5">
+              <div>
+                <h3 className="text-[17px] font-black tracking-tight text-stone-900">
+                  {editingQuickLineId ? "Edit Quick Item" : "Add Quick Item"}
+                </h3>
+                <p className="mt-1 text-[13px] font-semibold text-stone-500">
+                  Add a bill-only item without creating inventory.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeQuickItemDialog}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-200/60 text-stone-500 transition-colors duration-200 hover:bg-stone-300 hover:text-stone-900"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto px-5 pb-6 pt-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setQuickItemDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          is_free_gift: !current.is_free_gift,
+                          unit_price: current.unit_price,
+                          discount_amount: current.is_free_gift
+                            ? "0"
+                            : String((Number.parseInt(current.quantity || "1", 10) || 1) * (Number.parseFloat(current.unit_price || "0") || 0)),
+                        }
+                      : current
+                  )
+                }
+                className={cn(
+                  "w-full overflow-hidden rounded-[1.35rem] border text-left transition-all duration-200",
+                  isQuickGiftLine(quickItemDraft)
+                    ? "border-amber-200 bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 shadow-[0_12px_30px_rgba(251,191,36,0.18)]"
+                    : "border-stone-200 bg-white hover:border-amber-200 hover:bg-amber-50/40"
+                )}
+              >
+                <div className="flex items-center gap-3 px-4 py-4">
+                  <div
+                    className={cn(
+                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border",
+                      isQuickGiftLine(quickItemDraft)
+                        ? "border-amber-200 bg-white text-amber-600"
+                        : "border-stone-200 bg-stone-50 text-stone-500"
+                    )}
+                  >
+                    <Gift className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-stone-950">Free Gift</p>
+                      {isQuickGiftLine(quickItemDraft) ? (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                          Active
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-stone-600">
+                      Perfect for a complimentary tempered glass, cover, or bonus accessory.
+                    </p>
+                  </div>
+                  <div
+                    className={cn(
+                      "relative h-7 w-12 rounded-full transition",
+                      isQuickGiftLine(quickItemDraft) ? "bg-emerald-500" : "bg-stone-300"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all",
+                        isQuickGiftLine(quickItemDraft) ? "left-6" : "left-1"
+                      )}
+                    />
+                  </div>
+                </div>
+              </button>
+
+              <div className="rounded-[1.3rem] border border-stone-200 bg-white p-4">
+                <Field label="Item Name" required>
+                  <Input
+                    value={quickItemDraft.quick_item_name}
+                    onChange={(event) =>
+                      setQuickItemDraft((current) => (current ? { ...current, quick_item_name: event.target.value } : current))
+                    }
+                    placeholder="Tempered glass, service charge, cover..."
+                    className="rounded-xl border-stone-200 bg-stone-50"
+                  />
+                </Field>
+
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Quantity" required>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={quickItemDraft.quantity}
+                      onChange={(event) =>
+                        setQuickItemDraft((current) => (current ? { ...current, quantity: event.target.value } : current))
+                      }
+                      className="rounded-xl border-stone-200 bg-stone-50"
+                    />
+                  </Field>
+                  <Field label="Price" required>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={quickItemDraft.unit_price}
+                      disabled={isQuickGiftLine(quickItemDraft)}
+                      onChange={(event) =>
+                        setQuickItemDraft((current) => (current ? { ...current, unit_price: event.target.value } : current))
+                      }
+                      className={cn(
+                        "rounded-xl border-stone-200",
+                        isQuickGiftLine(quickItemDraft)
+                          ? "bg-emerald-50 font-semibold text-emerald-700"
+                          : "bg-stone-50"
+                      )}
+                    />
+                  </Field>
+                </div>
+
+                {isQuickGiftLine(quickItemDraft) ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+                      <Gift className="h-4 w-4" />
+                      Happy customer moment
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-emerald-700">
+                      The selling price stays visible, and a full 100% discount is applied so the customer sees the gift value.
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="mt-4">
+                  <Field label="Discount">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={quickItemDraft.discount_amount}
+                      disabled={isQuickGiftLine(quickItemDraft)}
+                      onChange={(event) =>
+                        setQuickItemDraft((current) => (current ? { ...current, discount_amount: event.target.value } : current))
+                      }
+                      className={cn(
+                        "rounded-xl border-stone-200",
+                        isQuickGiftLine(quickItemDraft)
+                          ? "bg-stone-100 text-stone-400"
+                          : "bg-stone-50"
+                      )}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-stone-200/80 bg-white px-5 py-4 shrink-0">
+              {clientError ? <p className="mr-3 flex-1 text-sm font-medium text-rose-600">{clientError}</p> : <div className="flex-1" />}
+              <Button type="button" variant="ghost" onClick={closeQuickItemDialog} className="font-bold text-stone-500 hover:text-stone-800">
+                Cancel
+              </Button>
+              <Button type="button" onClick={saveQuickItemDraft} className="px-6 rounded-xl font-bold bg-stone-900 hover:bg-stone-800 transition-all shadow-sm">
+                {editingQuickLineId ? "Update Item" : "Add to Cart"}
               </Button>
             </div>
           </div>

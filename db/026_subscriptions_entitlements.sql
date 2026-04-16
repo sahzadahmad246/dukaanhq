@@ -1,0 +1,3 @@
+-- Superseded: all steps from the former 026 / 027 / 028 chain live in one file:
+--   db/complete_data_migration.sql
+-- Run that file once in the Supabase SQL Editor (see docs/DATABASE_MIGRATION.md).

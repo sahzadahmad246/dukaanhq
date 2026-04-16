@@ -78,7 +78,7 @@ export function StaffManager({
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"owner" | "admin">("admin");
+  const [inviteRole, setInviteRole] = useState<"owner" | "staff">("staff");
   const [isInvitePending, startInviteTransition] = useTransition();
   const [inviteErrors, setInviteErrors] = useState<{ name?: string; email?: string }>({});
 
@@ -136,7 +136,7 @@ export function StaffManager({
         toast.success(result.message);
         setInviteName("");
         setInviteEmail("");
-        setInviteRole("admin");
+        setInviteRole("staff");
         setIsInviteOpen(false);
       } else {
         toast.error(result.message);
@@ -575,13 +575,13 @@ export function StaffManager({
                 <Label className="text-sm font-medium text-stone-700">Access Type</Label>
                 <RadioGroup
                   value={inviteRole}
-                  onValueChange={(value) => setInviteRole(value as "owner" | "admin")}
+                  onValueChange={(value) => setInviteRole(value as "owner" | "staff")}
                   className="grid gap-2"
                 >
-                  <label className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${inviteRole === "admin" ? "border-emerald-300 bg-emerald-50" : "border-stone-200 bg-white hover:border-stone-300"}`}>
-                    <RadioGroupItem value="admin" id="role-admin" className="border-emerald-500 text-emerald-600" />
+                  <label className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${inviteRole === "staff" ? "border-emerald-300 bg-emerald-50" : "border-stone-200 bg-white hover:border-stone-300"}`}>
+                    <RadioGroupItem value="staff" id="role-staff" className="border-emerald-500 text-emerald-600" />
                     <div>
-                      <p className="text-sm font-medium text-stone-950">Full Access (Staff)</p>
+                      <p className="text-sm font-medium text-stone-950">Staff</p>
                       <p className="text-xs text-stone-500">Bills, inventory, reports. Cannot manage staff.</p>
                     </div>
                   </label>

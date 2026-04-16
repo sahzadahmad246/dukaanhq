@@ -7,6 +7,8 @@ import type { OnboardingActionState } from "@/app/onboarding/state";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
+
 const workingDayValues = [
   "monday",
   "tuesday",
@@ -190,6 +192,56 @@ export async function createShopAction(
 
   if (memberError) {
     return { status: "error", message: memberError.message, fieldErrors: {} };
+  }
+
+  const { data: platformRow, error: platformError } = await supabase
+    .from("saas_platform_settings")
+    .select("trial_enabled, trial_duration_days")
+    .eq("id", 1)
+    .maybeSingle<{ trial_enabled: boolean; trial_duration_days: number }>();
+
+  const billingTablesMissing = Boolean(platformError?.code && MISSING_TABLE_CODES.has(platformError.code));
+
+  if (!billingTablesMissing) {
+    if (platformError) {
+      return { status: "error", message: platformError.message, fieldErrors: {} };
+    }
+
+    const trialEnabled = platformRow?.trial_enabled ?? true;
+    const trialDays = platformRow?.trial_duration_days ?? 30;
+
+    if (trialEnabled) {
+      const trialEnds = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
+      const { error: entError } = await supabase.from("shop_entitlements").insert({
+        shop_id: shop.id,
+        billing_status: "trialing",
+        trial_started_at: new Date().toISOString(),
+        trial_ends_at: trialEnds,
+      });
+      if (entError) {
+        return {
+          status: "error",
+          message:
+            entError.message +
+            " (Run db/complete_data_migration.sql in Supabase if shop_entitlements is missing.)",
+          fieldErrors: {},
+        };
+      }
+    } else {
+      const { error: entError } = await supabase.from("shop_entitlements").insert({
+        shop_id: shop.id,
+        billing_status: "locked",
+      });
+      if (entError) {
+        return {
+          status: "error",
+          message:
+            entError.message +
+            " (Run db/complete_data_migration.sql in Supabase if shop_entitlements is missing.)",
+          fieldErrors: {},
+        };
+      }
+    }
   }
 
   const { error: settingsError } = await supabase.from("shop_settings").insert({

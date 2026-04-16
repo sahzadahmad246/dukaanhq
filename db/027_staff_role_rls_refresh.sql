@@ -1,0 +1,2 @@
+-- Superseded: merged into db/complete_data_migration.sql (Part B — RLS refresh).
+-- See docs/DATABASE_MIGRATION.md.

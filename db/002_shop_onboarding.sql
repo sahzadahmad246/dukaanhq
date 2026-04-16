@@ -41,7 +41,7 @@ create table if not exists public.shop_members (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid not null references public.shops(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null check (role in ('customer', 'staff', 'owner', 'admin')),
+  role text not null check (role in ('customer', 'staff', 'owner')),
   invited_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   unique (shop_id, user_id)
@@ -99,7 +99,7 @@ using (
     from public.shop_members
     where shop_members.shop_id = shops.id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 )
 with check (
@@ -108,7 +108,7 @@ with check (
     from public.shop_members
     where shop_members.shop_id = shops.id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -155,7 +155,7 @@ using (
     from public.shop_members
     where shop_members.shop_id = shop_settings.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 )
 with check (
@@ -164,6 +164,6 @@ with check (
     from public.shop_members
     where shop_members.shop_id = shop_settings.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );

@@ -107,6 +107,7 @@ const CARD_ACCENTS = [
 export function DashboardHome({
   ownerName,
   shopLogoUrl,
+  shopPostalCode,
   stats,
   recentInvoices,
   recentProducts,
@@ -117,6 +118,7 @@ export function DashboardHome({
 }: {
   ownerName: string;
   shopLogoUrl: string | null;
+  shopPostalCode: string | null;
   stats: DashboardStats;
   recentInvoices: RecentInvoice[];
   recentProducts: RecentProduct[];
@@ -242,7 +244,11 @@ export function DashboardHome({
 
   async function handleDownloadInvoice(invoice: PrintableInvoice) {
     try {
-      await downloadInvoicePdf({ ...invoice, shop_logo_url: shopLogoUrl ?? null });
+      await downloadInvoicePdf({
+        ...invoice,
+        shop_logo_url: shopLogoUrl ?? null,
+        shop_postal_code: shopPostalCode ?? null,
+      });
     } catch (err) {
       console.error("[Download] PDF generation failed:", err);
       toast.error(`Download failed: ${err instanceof Error ? err.message : "Unknown error"}`);

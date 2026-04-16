@@ -37,6 +37,7 @@ export function WorkspaceShell({
   ownerEmail,
   ownerRole,
   userAvatarUrl,
+  saasAdminHref,
   hideHeader = false,
   children,
 }: {
@@ -49,6 +50,7 @@ export function WorkspaceShell({
   ownerEmail: string;
   ownerRole: string;
   userAvatarUrl: string | null;
+  saasAdminHref?: string;
   hideHeader?: boolean;
   children: React.ReactNode;
 }) {
@@ -99,6 +101,7 @@ export function WorkspaceShell({
         ownerEmail={ownerEmail}
         ownerRole={ownerRole}
         userAvatarUrl={userAvatarUrl}
+        saasAdminHref={saasAdminHref}
       />
 
       <div className="mx-auto min-h-screen w-full max-w-3xl bg-[#f7f8fb] shadow-[0_18px_80px_rgba(15,23,42,0.08)] lg:border-x lg:border-stone-200">

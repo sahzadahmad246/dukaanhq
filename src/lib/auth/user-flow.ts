@@ -2,6 +2,13 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 import { syncAuthenticatedUserProfile } from "@/lib/auth/sync-user";
+import {
+  shopHasProductAccess,
+  type SaaSPlatformSettingsRow,
+  type ShopEntitlementRow,
+} from "@/lib/subscription/access";
+
+const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 
 type MembershipRecord = {
   shop_id: string;
@@ -32,9 +39,14 @@ export type UserAppState = {
   membership: MembershipRecord | null;
   shopSettings: ShopSettingsRecord | null;
   isOwner: boolean;
+  isSuperAdmin: boolean;
   hasWorkspaceAccess: boolean;
   canManageStaff: boolean;
   hasCompletedOnboarding: boolean;
+  saasPlatform: SaaSPlatformSettingsRow | null;
+  shopEntitlement: ShopEntitlementRow | null;
+  subscriptionTablesReady: boolean;
+  canUseShopProduct: boolean;
 };
 
 export async function getUserAppState(supabase: SupabaseClient): Promise<UserAppState> {
@@ -48,9 +60,14 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
       membership: null,
       shopSettings: null,
       isOwner: false,
+      isSuperAdmin: false,
       hasWorkspaceAccess: false,
       canManageStaff: false,
       hasCompletedOnboarding: false,
+      saasPlatform: null,
+      shopEntitlement: null,
+      subscriptionTablesReady: false,
+      canUseShopProduct: true,
     };
   }
 
@@ -69,9 +86,52 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     : { data: null };
 
   const isOwner = profile?.role === "owner" || membership?.role === "owner";
-  const hasWorkspaceAccess = Boolean(membership && membership.status !== "SUSPENDED" && ["owner", "admin"].includes(membership.role));
+  const isSuperAdmin = profile?.role === "superadmin";
+  const hasWorkspaceAccess = Boolean(
+    membership && membership.status !== "SUSPENDED" && ["owner", "staff"].includes(membership.role),
+  );
   const canManageStaff = membership?.role === "owner" && membership?.status !== "SUSPENDED";
   const hasCompletedOnboarding = Boolean(shopSettings?.onboarding_completed);
+
+  let saasPlatform: SaaSPlatformSettingsRow | null = null;
+  let shopEntitlement: ShopEntitlementRow | null = null;
+  let subscriptionTablesReady = true;
+
+  const { data: platRow, error: platErr } = await supabase
+    .from("saas_platform_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle<SaaSPlatformSettingsRow>();
+
+  if (platErr?.code && MISSING_TABLE_CODES.has(platErr.code)) {
+    subscriptionTablesReady = false;
+  } else if (!platErr) {
+    saasPlatform = platRow ?? null;
+  }
+
+  if (subscriptionTablesReady && membership && hasCompletedOnboarding) {
+    const { data: entRow, error: entErr } = await supabase
+      .from("shop_entitlements")
+      .select(
+        "shop_id, billing_status, trial_started_at, trial_ends_at, subscription_valid_until, cashfree_subscription_id, cashfree_customer_id",
+      )
+      .eq("shop_id", membership.shop_id)
+      .maybeSingle<ShopEntitlementRow>();
+
+    if (entErr?.code && MISSING_TABLE_CODES.has(entErr.code)) {
+      subscriptionTablesReady = false;
+    } else if (!entErr) {
+      shopEntitlement = entRow ?? null;
+    }
+  }
+
+  let canUseShopProduct = true;
+  if (!subscriptionTablesReady) {
+    canUseShopProduct = true;
+  } else if (membership && hasCompletedOnboarding) {
+    canUseShopProduct =
+      shopEntitlement != null && shopHasProductAccess(shopEntitlement, saasPlatform);
+  }
 
   return {
     user,
@@ -80,14 +140,31 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     membership,
     shopSettings,
     isOwner,
+    isSuperAdmin,
     hasWorkspaceAccess,
     canManageStaff,
     hasCompletedOnboarding,
+    saasPlatform,
+    shopEntitlement,
+    subscriptionTablesReady,
+    canUseShopProduct,
   };
 }
 
-export function getSignedInLandingPath(state: Pick<UserAppState, "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding">) {
+export function getSignedInLandingPath(
+  state: Pick<
+    UserAppState,
+    | "hasWorkspaceAccess"
+    | "isOwner"
+    | "hasCompletedOnboarding"
+    | "canUseShopProduct"
+    | "isSuperAdmin"
+  >,
+) {
   if (state.hasWorkspaceAccess && state.hasCompletedOnboarding) {
+    if (!state.canUseShopProduct) {
+      return "/subscribe";
+    }
     return "/dashboard";
   }
 
@@ -95,11 +172,15 @@ export function getSignedInLandingPath(state: Pick<UserAppState, "hasWorkspaceAc
     return "/onboarding";
   }
 
+  if (state.isSuperAdmin) {
+    return "/admin/saas";
+  }
+
   return "/";
 }
 
 export function redirectSignedInUser(
-  state: Pick<UserAppState, "user" | "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding">
+  state: Pick<UserAppState, "user" | "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding">,
 ) {
   if (!state.user) {
     redirect("/auth/login");

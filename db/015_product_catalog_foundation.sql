@@ -50,7 +50,7 @@ for all using (
     from public.shop_members
     where shop_members.shop_id = product_highlights.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 ) with check (
   exists (
@@ -58,7 +58,7 @@ for all using (
     from public.shop_members
     where shop_members.shop_id = product_highlights.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -105,7 +105,7 @@ for all using (
     from public.shop_members
     where shop_members.shop_id = inventory_item_identifiers.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 ) with check (
   exists (
@@ -113,7 +113,7 @@ for all using (
     from public.shop_members
     where shop_members.shop_id = inventory_item_identifiers.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -261,7 +261,7 @@ begin
     from public.shop_members
     where shop_id = p_shop_id
       and user_id = v_user_id
-      and role in ('owner', 'admin')
+      and role in ('owner', 'staff')
   ) then
     raise exception 'Access denied';
   end if;
@@ -628,7 +628,7 @@ begin
     from public.shop_members
     where shop_id = p_shop_id
       and user_id = v_user_id
-      and role in ('owner', 'admin')
+      and role in ('owner', 'staff')
   ) then
     raise exception 'Access denied';
   end if;

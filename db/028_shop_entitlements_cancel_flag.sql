@@ -1,0 +1,2 @@
+-- Superseded: cancel_at_period_end is included in db/complete_data_migration.sql (Part A).
+-- See docs/DATABASE_MIGRATION.md.

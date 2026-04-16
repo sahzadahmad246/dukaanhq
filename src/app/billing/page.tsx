@@ -23,6 +23,7 @@ export default async function BillingPage({ searchParams }: PageProps) {
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
       ownerRole={membership?.role ?? profile?.role ?? "customer"}
+      saasAdminHref={profile?.role === "superadmin" ? "/admin/saas" : undefined}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <Suspense fallback={null}>
@@ -30,6 +31,7 @@ export default async function BillingPage({ searchParams }: PageProps) {
           products={products}
           invoices={invoices}
           shopLogoUrl={shop?.logo_url ?? null}
+          shopPostalCode={shop?.postal_code ?? null}
         />
       </Suspense>
     </WorkspaceShell>

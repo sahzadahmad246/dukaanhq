@@ -29,7 +29,7 @@ export const CustomerDraftSchema = z.object({
 export type CustomerDraft = z.infer<typeof CustomerDraftSchema>;
 
 export const BillingLineDraftSchema = z.object({
-  product_id: z.string().uuid(),
+  product_id: z.string().uuid().optional().nullable(),
   variant_id: z.string().uuid().optional().nullable(),
   inventory_item_id: z.string().uuid().optional().nullable(),
   product_name_snapshot: z.string().min(1),

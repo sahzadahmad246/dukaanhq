@@ -22,6 +22,7 @@ const fieldSchemas = {
   addressLine2: z.string().max(200),
   city: z.string().min(2).max(100),
   state: z.string().min(2).max(100),
+  postalCode: z.string().min(4).max(20),
   invoicePrefix: z.string().min(2).max(10).regex(/^[A-Z0-9-]+$/),
   currency: z.string().min(3).max(5),
   taxMode: z.enum(["exclusive", "inclusive", "no_tax"]),
@@ -44,6 +45,7 @@ const updateSchema = z.object({
     "addressLine2",
     "city",
     "state",
+    "postalCode",
     "invoicePrefix",
     "currency",
     "taxMode",
@@ -64,6 +66,7 @@ const fieldConfig = {
   addressLine2: { table: "shops", column: "address_line_2", parser: fieldSchemas.addressLine2 },
   city: { table: "shops", column: "city", parser: fieldSchemas.city },
   state: { table: "shops", column: "state", parser: fieldSchemas.state },
+  postalCode: { table: "shops", column: "postal_code", parser: fieldSchemas.postalCode },
   invoicePrefix: { table: "shop_settings", column: "invoice_prefix", parser: fieldSchemas.invoicePrefix },
   currency: { table: "shop_settings", column: "currency", parser: fieldSchemas.currency },
   taxMode: { table: "shop_settings", column: "tax_mode", parser: fieldSchemas.taxMode },
@@ -95,7 +98,7 @@ export async function PATCH(request: Request) {
     .from("shop_members")
     .select("shop_id, role")
     .eq("user_id", user.id)
-    .in("role", ["owner", "admin"])
+    .in("role", ["owner", "staff"])
     .maybeSingle();
 
   if (!membership) {

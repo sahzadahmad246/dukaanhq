@@ -88,14 +88,14 @@ for all using (
     select 1 from public.shop_members
     where shop_members.shop_id = customers.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 ) with check (
   exists (
     select 1 from public.shop_members
     where shop_members.shop_id = customers.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -114,14 +114,14 @@ for all using (
     select 1 from public.shop_members
     where shop_members.shop_id = invoices.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 ) with check (
   exists (
     select 1 from public.shop_members
     where shop_members.shop_id = invoices.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -140,14 +140,14 @@ for all using (
     select 1 from public.shop_members
     where shop_members.shop_id = invoice_items.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 ) with check (
   exists (
     select 1 from public.shop_members
     where shop_members.shop_id = invoice_items.shop_id
       and shop_members.user_id = auth.uid()
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   )
 );
 
@@ -196,7 +196,7 @@ begin
     select 1 from public.shop_members
     where shop_members.shop_id = p_shop_id
       and shop_members.user_id = v_user_id
-      and shop_members.role in ('owner', 'admin')
+      and shop_members.role in ('owner', 'staff')
   ) then
     raise exception 'Not allowed to create invoices';
   end if;

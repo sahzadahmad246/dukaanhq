@@ -27,7 +27,9 @@ export type PrintableInvoice = {
   payment_status?: string | null;
   notes?: string | null;
   shop_logo_url?: string | null;
+  shop_postal_code?: string | null;
   invoice_items?: Array<{
+    product_id?: string | null;
     product_name_snapshot: string;
     brand_name_snapshot?: string | null;
     category_name_snapshot?: string | null;
@@ -35,6 +37,7 @@ export type PrintableInvoice = {
     identifier_snapshot?: string | null;
     quantity: number;
     unit_price: number;
+    discount_amount?: number;
     line_total: number;
   }>;
 };
@@ -231,8 +234,9 @@ function renderMultilineHtml(text: string) {
 type InvoiceDocData = {
   logoUrl: string | null;
   filename: string;
+  shopAddress: string;
   shopMeta: string[];
-  infoRows: Array<{ label: string; value: string; full?: boolean }>;
+  infoRows: Array<{ label: string; value: string; full?: boolean; align?: "left" | "right" }>;
   items: Array<{
     index: number;
     name: string;
@@ -240,16 +244,55 @@ type InvoiceDocData = {
     quantity: string;
     unitPrice: string;
     lineTotal: string;
+    originalUnitPrice?: string | null;
+    originalLineTotal?: string | null;
+    isFreeGift?: boolean;
   }>;
   summaryRows: Array<{ label: string; value: string; total?: boolean }>;
   footerText: string;
   formattedDate: string;
   paymentSummary: string;
   amountInWords: string;
+  notes: string;
 };
+
+function appendPostalCodeToAddress(address?: string | null, postalCode?: string | null) {
+  const normalizedAddress = sanitizeForPdf(address ?? "");
+  const normalizedPostalCode = sanitizeForPdf(postalCode ?? "");
+
+  if (!normalizedPostalCode || normalizedPostalCode === "-") {
+    return normalizedAddress || "-";
+  }
+
+  if (!normalizedAddress || normalizedAddress === "-") {
+    return normalizedPostalCode;
+  }
+
+  if (normalizedAddress.includes(normalizedPostalCode)) {
+    return normalizedAddress;
+  }
+
+  const parts = normalizedAddress
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return normalizedPostalCode;
+  }
+
+  parts[parts.length - 1] = `${parts[parts.length - 1]} - ${normalizedPostalCode}`;
+  return parts.join(", ");
+}
+
+function isFreeQuickInvoiceItem(item: NonNullable<PrintableInvoice["invoice_items"]>[number]) {
+  const subtotal = Number(item.quantity ?? 0) * Number(item.unit_price ?? 0);
+  return !item.product_id && Number(item.line_total ?? 0) === 0 && Number(item.unit_price ?? 0) > 0 && Number(item.discount_amount ?? 0) >= subtotal;
+}
 
 function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   const paymentSummary = sanitizeForPdf(buildPaymentSummary(invoice.payment_method, invoice.payment_details));
+  const shopAddress = appendPostalCodeToAddress(invoice.shop_address_snapshot, invoice.shop_postal_code);
   
   const dateObj = new Date(invoice.invoice_date);
   const formattedDate = `${dateObj.toLocaleDateString("en-GB")} ${dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
@@ -259,9 +302,9 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
 
   const infoRows: InvoiceDocData["infoRows"] = [
     { label: "Invoice No", value: sanitizeForPdf(invoice.invoice_number) },
-    { label: "Date", value: formattedDate },
+    { label: "Date", value: formattedDate, align: "right" },
     { label: "Name", value: sanitizeForPdf(invoice.customer_name) },
-    { label: "Mobile No.", value: sanitizeForPdf(invoice.customer_mobile ?? "-") },
+    { label: "Mobile No.", value: sanitizeForPdf(invoice.customer_mobile ?? "-"), align: "right" },
   ];
 
   if (invoice.customer_gst_number) {
@@ -271,37 +314,59 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   infoRows.push({ label: "Payment", value: paymentSummary, full: true });
   infoRows.push({ label: "Address", value: sanitizeForPdf(invoice.billing_address ?? "-"), full: true });
 
-  const items = (invoice.invoice_items ?? []).map((item, index) => ({
-    index: index + 1,
-    name: sanitizeForPdf(item.product_name_snapshot),
-    meta: [
-      item.variant_name_snapshot ? sanitizeForPdf(item.variant_name_snapshot) : null,
-      ...(item.identifier_snapshot
-        ? sanitizeForPdf(item.identifier_snapshot)
-            .replace(/(?:\s*,\s*|\s*\/\s*|\s*•\s*|\s+)(imei\s*2)/i, "\n$1")
-            .split("\n")
-            .flatMap((s) => s.split(" / "))
-            .flatMap((s) => s.split(" • "))
-        : []),
-    ]
-      .filter(Boolean)
-      .map((s) => String(s).trim())
-      .filter(Boolean)
-      .join("\n"),
-    quantity: String(item.quantity),
-    unitPrice: formatMoney(Number(item.unit_price) / 1.18),
-    lineTotal: formatMoney(Number(item.line_total) / 1.18),
-  }));
+  const items = (invoice.invoice_items ?? []).map((item, index) => {
+    const isFreeGift = isFreeQuickInvoiceItem(item);
+    const originalLineTotal = Number(item.quantity) * Number(item.unit_price);
+
+    return {
+      index: index + 1,
+      name: sanitizeForPdf(item.product_name_snapshot),
+      meta: [
+        isFreeGift ? "FREE ITEM" : null,
+        item.variant_name_snapshot ? sanitizeForPdf(item.variant_name_snapshot) : null,
+        ...(item.identifier_snapshot
+          ? sanitizeForPdf(item.identifier_snapshot)
+              .replace(/(?:\s*,\s*|\s*\/\s*|\s*•\s*|\s+)(imei\s*2)/i, "\n$1")
+              .split("\n")
+              .flatMap((s) => s.split(" / "))
+              .flatMap((s) => s.split(" • "))
+          : []),
+      ]
+        .filter(Boolean)
+        .map((s) => String(s).trim())
+        .filter(Boolean)
+        .join("\n"),
+      quantity: String(item.quantity),
+      unitPrice: isFreeGift ? "0.00" : formatMoney(Number(item.unit_price) / 1.18),
+      lineTotal: isFreeGift ? "0.00" : formatMoney(Number(item.line_total) / 1.18),
+      originalUnitPrice: isFreeGift ? formatMoney(Number(item.unit_price) / 1.18) : null,
+      originalLineTotal: isFreeGift ? formatMoney(originalLineTotal / 1.18) : null,
+      isFreeGift,
+    };
+  });
 
   const taxRate = 0.18;
-  const exSubtotal = Number(invoice.subtotal) / (1 + taxRate);
-  const exDiscount = Number(invoice.discount_total || 0) / (1 + taxRate);
+
+  // Free gift discount should NOT appear in the summary box —
+  // its effect is already visible via the strikethrough on the line item.
+  const freeGiftDiscount = (invoice.invoice_items ?? []).reduce((sum, item) => {
+    if (isFreeQuickInvoiceItem(item)) {
+      return sum + Number(item.discount_amount ?? 0);
+    }
+    return sum;
+  }, 0);
+
+  const displaySubtotal = Number(invoice.subtotal) - freeGiftDiscount;
+  const displayDiscount = Number(invoice.discount_total || 0) - freeGiftDiscount;
+
+  const exSubtotal = displaySubtotal / (1 + taxRate);
+  const exDiscount = displayDiscount / (1 + taxRate);
   const taxableAmount = Number(invoice.grand_total) / (1 + taxRate);
   const halfTax = (Number(invoice.grand_total) - taxableAmount) / 2;
 
   const summaryRows = [
     { label: "Subtotal (Rs)", value: formatMoney(exSubtotal) },
-    ...(Number(invoice.discount_total || 0) > 0
+    ...(displayDiscount > 0
       ? [{ label: "Discount (Rs)", value: formatMoney(exDiscount) }]
       : []),
     { label: "SGST @9% (Rs)", value: formatMoney(halfTax) },
@@ -312,6 +377,7 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   return {
     logoUrl: resolvePrintableAssetUrl(invoice.shop_logo_url),
     filename: `${sanitizeFilenamePart(invoice.customer_name)}-bill.pdf`,
+    shopAddress,
     shopMeta,
     infoRows,
     items,
@@ -320,6 +386,7 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
     formattedDate,
     paymentSummary,
     amountInWords: numberToWordsINR(invoice.grand_total),
+    notes: sanitizeForPdf(invoice.notes ?? ""),
   };
 }
 
@@ -412,7 +479,7 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   });
 
   let shopTextY = cursorY - shopNameSize - px(7);
-  const shopAddressLines = wrapText(sanitizeForPdf(invoice.shop_address_snapshot ?? ""), contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontBold, px(16));
+  const shopAddressLines = wrapText(doc.shopAddress, contentWidth - logoSize - px(INVOICE_LAYOUT.headerGap), fontBold, px(16));
   for (const line of shopAddressLines.filter(Boolean)) {
     page.drawText(line, {
       x: copyX,
@@ -496,26 +563,65 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     const row = halfRows[index];
     const columnX = index % 2 === 0 ? contentX : contentX + infoColWidth + infoGapX;
     const lineX = columnX + labelWidth + labelGap;
-    const wrapped = wrapText(row.value, infoColWidth - labelWidth - labelGap, fontBold, infoFontSize);
-    const rowHeight = Math.max(1, wrapped.length) * infoLineHeight;
+    const columnRight = columnX + infoColWidth;
+    const isRightAligned = row.align === "right";
     const rowY = index % 2 === 0 ? infoLeftY : infoRightY;
+    const labelText = `${row.label}:`;
+    let rowHeight = infoLineHeight;
 
-    page.drawText(`${row.label}:`, {
-      x: columnX,
-      y: rowY - infoFontSize,
-      size: infoFontSize,
-      font: fontBold,
-      color: headingColor,
-    });
+    if (isRightAligned) {
+      const inlineGap = px(12);
+      const labelTextWidth = fontBold.widthOfTextAtSize(labelText, infoFontSize);
+      const valueMaxWidth = Math.max(infoColWidth - labelTextWidth - inlineGap, px(88));
+      const wrappedValue = wrapText(row.value, valueMaxWidth, fontBold, infoFontSize);
+      const widestValueWidth = wrappedValue.reduce(
+        (max, line) => Math.max(max, fontBold.widthOfTextAtSize(line, infoFontSize)),
+        0,
+      );
+      const blockWidth = labelTextWidth + inlineGap + widestValueWidth;
+      const labelX = Math.max(columnX, columnRight - blockWidth);
+      const valueX = columnRight - widestValueWidth;
 
-    for (const [lineIndex, line] of wrapped.entries()) {
-      page.drawText(line, {
-        x: lineX,
-        y: rowY - infoFontSize - lineIndex * infoLineHeight,
+      page.drawText(labelText, {
+        x: labelX,
+        y: rowY - infoFontSize,
         size: infoFontSize,
         font: fontBold,
         color: headingColor,
       });
+
+      for (const [lineIndex, line] of wrappedValue.entries()) {
+        page.drawText(line, {
+          x: valueX + widestValueWidth - fontBold.widthOfTextAtSize(line, infoFontSize),
+          y: rowY - infoFontSize - lineIndex * infoLineHeight,
+          size: infoFontSize,
+          font: fontBold,
+          color: headingColor,
+        });
+      }
+
+      rowHeight = Math.max(1, wrappedValue.length) * infoLineHeight;
+    } else {
+      const wrapped = wrapText(row.value, infoColWidth - labelWidth - labelGap, fontBold, infoFontSize);
+      rowHeight = Math.max(1, wrapped.length) * infoLineHeight;
+
+      page.drawText(labelText, {
+        x: columnX,
+        y: rowY - infoFontSize,
+        size: infoFontSize,
+        font: fontBold,
+        color: headingColor,
+      });
+
+      for (const [lineIndex, line] of wrapped.entries()) {
+        page.drawText(line, {
+          x: lineX,
+          y: rowY - infoFontSize - lineIndex * infoLineHeight,
+          size: infoFontSize,
+          font: fontBold,
+          color: headingColor,
+        });
+      }
     }
 
     if (index % 2 === 0) {
@@ -660,20 +766,76 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
       font: fontBold,
       color: headingColor,
     });
-    page.drawText(item.unitPrice, {
-      x: tableX + srWidth + itemWidth + qtyWidth + rateWidth - cellPaddingX - fontBold.widthOfTextAtSize(item.unitPrice, unitSize),
-      y: baselineY,
-      size: unitSize,
-      font: fontBold,
-      color: headingColor,
-    });
-    page.drawText(item.lineTotal, {
-      x: tableX + tableWidth - cellPaddingX - fontBold.widthOfTextAtSize(item.lineTotal, amountSize),
-      y: baselineY,
-      size: amountSize,
-      font: fontBold,
-      color: headingColor,
-    });
+    const rateRightX = tableX + srWidth + itemWidth + qtyWidth + rateWidth - cellPaddingX;
+    const amountRightX = tableX + tableWidth - cellPaddingX;
+
+    if (item.isFreeGift && item.originalUnitPrice && item.originalLineTotal) {
+      const strikeSize = px(13);
+      const freeSize = px(15);
+      const originalRateWidth = fontBold.widthOfTextAtSize(item.originalUnitPrice, strikeSize);
+      const originalAmountWidth = fontBold.widthOfTextAtSize(item.originalLineTotal, strikeSize);
+      const freeRateWidth = fontBold.widthOfTextAtSize(item.unitPrice, freeSize);
+      const freeAmountWidth = fontBold.widthOfTextAtSize(item.lineTotal, freeSize);
+      const strikeRateX = rateRightX - originalRateWidth;
+      const strikeAmountX = amountRightX - originalAmountWidth;
+
+      page.drawText(item.originalUnitPrice, {
+        x: strikeRateX,
+        y: baselineY + px(10),
+        size: strikeSize,
+        font: fontBold,
+        color: mutedColor,
+      });
+      page.drawLine({
+        start: { x: strikeRateX, y: baselineY + px(16) },
+        end: { x: strikeRateX + originalRateWidth, y: baselineY + px(16) },
+        thickness: 1,
+        color: mutedColor,
+      });
+      page.drawText(item.unitPrice, {
+        x: rateRightX - freeRateWidth,
+        y: baselineY - px(6),
+        size: freeSize,
+        font: fontBold,
+        color: headingColor,
+      });
+
+      page.drawText(item.originalLineTotal, {
+        x: strikeAmountX,
+        y: baselineY + px(10),
+        size: strikeSize,
+        font: fontBold,
+        color: mutedColor,
+      });
+      page.drawLine({
+        start: { x: strikeAmountX, y: baselineY + px(16) },
+        end: { x: strikeAmountX + originalAmountWidth, y: baselineY + px(16) },
+        thickness: 1,
+        color: mutedColor,
+      });
+      page.drawText(item.lineTotal, {
+        x: amountRightX - freeAmountWidth,
+        y: baselineY - px(6),
+        size: freeSize,
+        font: fontBold,
+        color: headingColor,
+      });
+    } else {
+      page.drawText(item.unitPrice, {
+        x: rateRightX - fontBold.widthOfTextAtSize(item.unitPrice, unitSize),
+        y: baselineY,
+        size: unitSize,
+        font: fontBold,
+        color: headingColor,
+      });
+      page.drawText(item.lineTotal, {
+        x: amountRightX - fontBold.widthOfTextAtSize(item.lineTotal, amountSize),
+        y: baselineY,
+        size: amountSize,
+        font: fontBold,
+        color: headingColor,
+      });
+    }
 
     tableY -= rowHeight;
   }
@@ -694,8 +856,8 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     });
   }
 
-  const summaryWidth = px(INVOICE_LAYOUT.summaryWidth + 30);
-  const summaryX = contentRight - summaryWidth;
+  const summaryX = tableX + srWidth + itemWidth;
+  const summaryWidth = tableWidth - srWidth - itemWidth;
   const summaryRowHeight = px(32);
   const footerFontSize = px(13);
   const footerLineHeight = px(13 * 1.55);
@@ -755,6 +917,21 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
       color: headingColor,
     });
     awY -= px(15 * 1.4);
+  }
+
+  if (doc.notes) {
+    awY -= px(8);
+    const notesLines = wrapTextWithLineBreaks(`Notes:\n${doc.notes}`, contentWidth - summaryWidth - px(40), fontRegular, px(14));
+    for (const noteLine of notesLines) {
+      page.drawText(noteLine, {
+        x: contentX,
+        y: awY,
+        size: px(14),
+        font: fontRegular,
+        color: subtextColor,
+      });
+      awY -= px(14 * 1.4);
+    }
   }
 
   const signaturesTop = Math.min(awY, summaryTop) - signatureBlockDepth - px(56);
@@ -824,5 +1001,3 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   const bytes = await pdf.save();
   downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), doc.filename);
 }
-
-

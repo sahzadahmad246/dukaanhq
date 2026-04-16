@@ -1,5 +1,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 const AUTH_SESSION_ERROR_CODES = new Set(["refresh_token_not_found", "session_not_found"]);
 
@@ -21,7 +23,7 @@ type ProfileRecord = {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
-  role: "customer" | "staff" | "owner" | "admin";
+  role: "customer" | "staff" | "owner" | "admin" | "superadmin";
 };
 
 function getProfilePayload(user: User): Omit<ProfileRecord, "role"> {
@@ -73,7 +75,8 @@ export async function syncAuthenticatedUserProfile(supabase: SupabaseClient) {
       existingProfile.avatar_url !== nextProfilePayload.avatar_url;
 
     if (!shouldUpdate) {
-      return { user, profile: existingProfile, profileSyncReady: true };
+      const promoted = await maybePromoteSuperadmin(supabase, user, existingProfile);
+      return { user, profile: promoted, profileSyncReady: true };
     }
 
     const { data: updatedProfile, error: updateError } = await supabase
@@ -87,7 +90,8 @@ export async function syncAuthenticatedUserProfile(supabase: SupabaseClient) {
       throw updateError;
     }
 
-    return { user, profile: updatedProfile, profileSyncReady: true };
+    const promotedAfterUpdate = await maybePromoteSuperadmin(supabase, user, updatedProfile);
+    return { user, profile: promotedAfterUpdate, profileSyncReady: true };
   }
 
   const { data: insertedProfile, error: insertError } = await supabase
@@ -100,5 +104,48 @@ export async function syncAuthenticatedUserProfile(supabase: SupabaseClient) {
     throw insertError;
   }
 
-  return { user, profile: insertedProfile, profileSyncReady: true };
+  const promotedInsert = await maybePromoteSuperadmin(supabase, user, insertedProfile);
+  return { user, profile: promotedInsert, profileSyncReady: true };
+}
+
+function getSuperadminPromoteEmails() {
+  const raw = process.env.SUPERADMIN_PROMOTE_EMAILS ?? "";
+  return raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+async function maybePromoteSuperadmin(supabase: SupabaseClient, user: User, profile: ProfileRecord | null) {
+  const emails = getSuperadminPromoteEmails();
+  const userEmail = (user.email ?? "").trim().toLowerCase();
+  if (!emails.length || !userEmail || !emails.includes(userEmail)) {
+    return profile;
+  }
+
+  if (profile?.role === "superadmin") {
+    return profile;
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) {
+    return profile;
+  }
+
+  const { error } = await admin.from("profiles").update({ role: "superadmin" }).eq("id", user.id);
+  if (error) {
+    console.error("Superadmin promote failed:", error.message);
+    return profile;
+  }
+
+  const { data: refreshed } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, avatar_url, role")
+    .eq("id", user.id)
+    .maybeSingle<ProfileRecord>();
+
+  if (refreshed) {
+    return refreshed;
+  }
+  return profile ? { ...profile, role: "superadmin" } : null;
 }

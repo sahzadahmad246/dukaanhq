@@ -5,7 +5,7 @@ create table if not exists public.profiles (
   email text not null unique,
   full_name text,
   avatar_url text,
-  role text not null default 'customer' check (role in ('customer', 'staff', 'owner', 'admin')),
+  role text not null default 'customer' check (role in ('customer', 'staff', 'owner', 'admin', 'superadmin')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

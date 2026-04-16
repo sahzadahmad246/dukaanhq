@@ -112,7 +112,10 @@ export async function createInvoiceAction(
   return {
     status: "success",
     message: "Invoice created successfully.",
-    data: invoice,
+    data: invoice ? {
+      ...invoice,
+      shop_postal_code: shop.postal_code ?? null,
+    } : null,
   };
 }
 

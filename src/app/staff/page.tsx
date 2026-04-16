@@ -39,7 +39,7 @@ export default async function StaffPage() {
         .from("shop_members")
         .select("id, user_id, role, status, email, full_name, mobile_number, avatar_url, joined_at")
         .eq("shop_id", shop.id)
-        .in("role", ["owner", "admin"])
+        .in("role", ["owner", "staff"])
         .order("created_at", { ascending: true }),
       adminSupabase
         .from("shop_member_invitations")
@@ -92,6 +92,7 @@ export default async function StaffPage() {
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
       ownerEmail={profile?.email ?? user.email ?? ""}
       ownerRole="owner"
+      saasAdminHref={profile?.role === "superadmin" ? "/admin/saas" : undefined}
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <StaffManager members={members} invitations={invitations} />
