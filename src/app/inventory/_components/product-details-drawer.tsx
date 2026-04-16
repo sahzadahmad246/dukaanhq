@@ -136,13 +136,13 @@ export function ProductDetailsDrawer({
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-stone-900/30 backdrop-blur-[2px] transition-opacity duration-300 ${productId ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`fixed inset-0 z-[65] bg-stone-900/30 backdrop-blur-[2px] transition-opacity duration-300 ${productId ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={onClose}
       />
 
       {/* Drawer */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-50 flex h-[90vh] flex-col rounded-t-3xl bg-[#FAFAF8] shadow-2xl transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] sm:left-auto sm:right-4 sm:top-20 sm:h-[calc(100vh-6rem)] sm:w-[460px] sm:rounded-2xl ${productId ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-x-[120%]"}`}
+        className={`fixed bottom-0 left-0 right-0 z-[70] flex h-[90vh] flex-col rounded-t-3xl bg-[#FAFAF8] shadow-2xl transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] sm:left-auto sm:right-4 sm:top-20 sm:h-[calc(100vh-6rem)] sm:w-[460px] sm:rounded-2xl ${productId ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-x-[120%]"}`}
       >
         {/* Drag handle (mobile) */}
         <div className="flex justify-center pt-3 pb-1 sm:hidden">

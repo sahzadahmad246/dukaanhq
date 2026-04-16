@@ -42,6 +42,8 @@ export function BillDetailsDrawer({
   onDownload,
   onEdit,
   onDelete,
+  onProductClick,
+  onProductHover,
 }: {
   invoice: InvoiceDetails | null;
   open: boolean;
@@ -49,6 +51,8 @@ export function BillDetailsDrawer({
   onDownload: (invoice: PrintableInvoice) => void;
   onEdit: (invoice: InvoiceDetails) => void;
   onDelete: (invoiceId: string) => void;
+  onProductClick?: (productId: string) => void;
+  onProductHover?: (productId: string) => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
 
@@ -212,7 +216,14 @@ export function BillDetailsDrawer({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-sm font-semibold text-stone-950">{item.product_name_snapshot}</div>
+                            <button 
+                              type="button" 
+                              className={`text-sm font-semibold text-left transition ${item.product_id ? "text-stone-900 hover:text-stone-600 hover:underline cursor-pointer" : "text-stone-950"}`}
+                              onClick={() => { if (item.product_id && onProductClick) onProductClick(item.product_id); }}
+                              onMouseEnter={() => { if (item.product_id && onProductHover) onProductHover(item.product_id); }}
+                            >
+                              {item.product_name_snapshot}
+                            </button>
                             {!item.product_id ? (
                               <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
                                 Quick Add

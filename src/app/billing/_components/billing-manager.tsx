@@ -21,7 +21,7 @@ import {
   CalendarDays,
   Loader2,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, isValid, isToday, isYesterday, formatDistanceToNowStrict } from "date-fns";
 import { toast } from "sonner";
 
 import type { Product } from "@/lib/types/inventory";
@@ -31,7 +31,8 @@ import { BillDetailsDrawer } from "./bill-details-drawer";
 import { downloadInvoicePdf, type PrintableInvoice } from "./invoice-print";
 import { deleteInvoiceAction } from "../actions";
 import type { BillingInvoiceSummary } from "../load-billing-data";
-import { productDetailsQueryKey } from "@/app/inventory/queries";
+import { productDetailsQueryKey, productDetailsQueryOptions } from "@/app/inventory/queries";
+import { ProductDetailsDrawer } from "@/app/inventory/_components/product-details-drawer";
 
 type ProductSummary = Product & {
   total_quantity: number;
@@ -66,6 +67,30 @@ function getBillPaymentLabel(invoice: BillingInvoiceSummary) {
   const methods = invoice.payment_details?.methods?.filter(Boolean) ?? [];
   if (methods.includes("LOAN")) return "Loan";
   return methods[0] || invoice.payment_method || "Cash";
+}
+
+function formatRelativeInvoiceDate(value: string | null | undefined) {
+  if (!value) return "--";
+  const parsed = new Date(value);
+  if (!isValid(parsed)) return "--";
+
+  if (isToday(parsed)) {
+    const dist = formatDistanceToNowStrict(parsed, { addSuffix: true });
+    if (dist.includes("second") || dist === "0 minutes ago") {
+      return "Just now";
+    }
+    return dist
+      .replace("minutes ago", "mins ago")
+      .replace("minute ago", "min ago")
+      .replace("hours ago", "hrs ago")
+      .replace("hour ago", "hr ago");
+  }
+
+  if (isYesterday(parsed)) {
+    return "Yesterday";
+  }
+
+  return format(parsed, "dd MMM");
 }
 
 function normalizeBillSearchText(invoice: BillingInvoiceSummary) {
@@ -537,8 +562,7 @@ export function BillingManager({
                           </div>
                         </div>
                         <span className="bm-date">
-                          <CalendarDays style={{ width: 11, height: 11 }} />
-                          {format(new Date(invoice.invoice_date), "dd MMM")}
+                          {formatRelativeInvoiceDate(invoice.invoice_date)}
                         </span>
                       </div>
 

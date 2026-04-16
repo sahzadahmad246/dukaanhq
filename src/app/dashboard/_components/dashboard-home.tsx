@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { format, isValid } from "date-fns";
+import { format, isValid, isToday, isYesterday, formatDistanceToNowStrict } from "date-fns";
 import { toast } from "sonner";
 import {
   Wallet,
@@ -61,10 +61,28 @@ function getDisplayFirstName(name: string) {
   return firstName || "there";
 }
 
-function formatSafeShortDate(value: string | null | undefined) {
+function formatRelativeInvoiceDate(value: string | null | undefined) {
   if (!value) return "--";
   const parsed = new Date(value);
-  return isValid(parsed) ? format(parsed, "dd MMM") : "--";
+  if (!isValid(parsed)) return "--";
+
+  if (isToday(parsed)) {
+    const dist = formatDistanceToNowStrict(parsed, { addSuffix: true });
+    if (dist.includes("second") || dist === "0 minutes ago") {
+      return "Just now";
+    }
+    return dist
+      .replace("minutes ago", "mins ago")
+      .replace("minute ago", "min ago")
+      .replace("hours ago", "hrs ago")
+      .replace("hour ago", "hr ago");
+  }
+
+  if (isYesterday(parsed)) {
+    return "Yesterday";
+  }
+
+  return format(parsed, "dd MMM");
 }
 
 function formatSafeAmount(value: number | null | undefined) {
@@ -535,8 +553,7 @@ export function DashboardHome({
                         </div>
                       </div>
                       <span style={{ fontSize: 11.5, fontWeight: 600, color: "#a1a1aa", display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-                        <CalendarDays style={{ width: 11, height: 11 }} />
-                        {formatSafeShortDate(invoice.invoice_date)}
+                        {formatRelativeInvoiceDate(invoice.invoice_date)}
                       </span>
                     </div>
 
@@ -752,6 +769,8 @@ export function DashboardHome({
           setSelectedInvoiceId(null);
           setConfirmDeleteInvoiceId(id);
         }}
+        onProductClick={handleProductClick}
+        onProductHover={prefetchProduct}
       />
 
       {confirmDeleteProductId ? (

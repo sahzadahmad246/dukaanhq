@@ -43,7 +43,7 @@ export default function RootLayout({
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>
         <AppQueryProvider>
           <PwaRegistration />
-          <NextTopLoader color="#f5c542" height={4} showSpinner={false} shadow="0 0 10px rgba(245,197,66,0.35),0 0 5px rgba(245,197,66,0.25)" />
+          <NextTopLoader color="#0c0a09" height={4} showSpinner={false} shadow="0 0 10px rgba(12,10,9,0.35),0 0 5px rgba(12,10,9,0.25)" />
           {children}
           <AppToaster />
         </AppQueryProvider>
