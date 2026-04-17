@@ -253,7 +253,7 @@ type InvoiceDocData = {
   formattedDate: string;
   paymentSummary: string;
   amountInWords: string;
-  notes: string;
+  notes: string | null;
 };
 
 function appendPostalCodeToAddress(address?: string | null, postalCode?: string | null) {
@@ -386,7 +386,7 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
     formattedDate,
     paymentSummary,
     amountInWords: numberToWordsINR(invoice.grand_total),
-    notes: sanitizeForPdf(invoice.notes ?? ""),
+    notes: invoice.notes && invoice.notes.trim() ? sanitizeForPdf(invoice.notes) : null,
   };
 }
 
