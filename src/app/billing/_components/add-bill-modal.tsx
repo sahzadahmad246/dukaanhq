@@ -89,6 +89,9 @@ const LOAN_PROVIDER_OPTIONS = [
   "ShopSe",
   "Snapmint",
   "ZestMoney",
+  "Chola Finance",
+  "DMI finance",
+  "The EMI Club",
   "Other",
 ];
 
@@ -2231,17 +2234,26 @@ function LoanProviderPicker({
   onProviderChange: (value: string) => void;
   onLoanNumberChange: (value: string) => void;
 }) {
-  const [query, setQuery] = useState(value);
+  const [localValue, setLocalValue] = useState(value);
+  const [isFocused, setIsFocused] = useState(false);
+  const isMatching = LOAN_PROVIDER_OPTIONS.some(p => p.toLowerCase() === localValue.toLowerCase());
+  const showList = isFocused && !isMatching;
   const filteredProviders = useMemo(
-    () =>
-      LOAN_PROVIDER_OPTIONS.filter((provider) =>
-        provider.toLowerCase().includes(query.trim().toLowerCase())
-      ),
-    [query]
+    () => {
+      const matching = LOAN_PROVIDER_OPTIONS.filter((provider) =>
+        provider.toLowerCase().includes(localValue.trim().toLowerCase())
+      );
+      const trimmed = localValue.trim();
+      if (trimmed && !LOAN_PROVIDER_OPTIONS.some(p => p.toLowerCase() === trimmed.toLowerCase())) {
+        matching.unshift(trimmed);
+      }
+      return matching;
+    },
+    [localValue]
   );
 
   useEffect(() => {
-    setQuery(value);
+    setLocalValue(value);
   }, [value]);
 
   return (
@@ -2252,36 +2264,47 @@ function LoanProviderPicker({
       <div className="bg-white">
         <div className="p-4 pb-3">
           <Label className="text-sm font-medium text-stone-700">Loan Provider</Label>
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search loan provider" className="mt-2 rounded-xl border-stone-200 bg-stone-50" />
+          <div className="relative mt-2">
+            <Input value={localValue} onChange={(event) => {
+              const newValue = event.target.value;
+              setLocalValue(newValue);
+              onProviderChange(newValue);
+            }} onFocus={() => setIsFocused(true)} onBlur={() => setTimeout(() => setIsFocused(false), 100)} placeholder="Search loan provider" className="rounded-xl border-stone-200 bg-stone-50 pr-8" />
+            {isMatching && <Check className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-stone-900" />}
+          </div>
         </div>
 
-        <div className="max-h-52 overflow-y-auto">
-          {filteredProviders.map((provider, index) => {
-            const isSelected = value === provider;
-            return (
-              <div key={provider}>
-                {index > 0 ? <div className="mx-4 h-px bg-stone-100" /> : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery(provider);
-                    onProviderChange(provider);
-                  }}
-                  className={cn(
-                    "flex w-full items-center justify-between px-4 py-3 text-left text-[13px] font-semibold transition-colors duration-200",
-                    isSelected ? "text-stone-900" : "text-stone-600 hover:bg-stone-50"
-                  )}
-                >
-                  <span>{provider}</span>
-                  {isSelected ? <Check className="h-4 w-4 shrink-0 text-stone-900" /> : null}
-                </button>
-              </div>
-            );
-          })}
-          {filteredProviders.length === 0 ? (
-            <div className="px-4 py-4 text-center text-sm text-stone-400">No providers found.</div>
-          ) : null}
-        </div>
+        {showList && (
+          <div className="max-h-52 overflow-y-auto">
+            {filteredProviders.map((provider, index) => {
+              const isSelected = localValue === provider;
+              return (
+                <div key={provider}>
+                  {index > 0 ? <div className="mx-4 h-px bg-stone-100" /> : null}
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      setLocalValue(provider);
+                      onProviderChange(provider);
+                      setIsFocused(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between px-4 py-3 text-left text-[13px] font-semibold transition-colors duration-200",
+                      isSelected ? "text-stone-900" : "text-stone-600 hover:bg-stone-50"
+                    )}
+                  >
+                    <span>{provider}</span>
+                    {isSelected ? <Check className="h-4 w-4 shrink-0 text-stone-900" /> : null}
+                  </button>
+                </div>
+              );
+            })}
+            {filteredProviders.length === 0 ? (
+              <div className="px-4 py-4 text-center text-sm text-stone-400">No providers found.</div>
+            ) : null}
+          </div>
+        )}
 
         <div className="border-t border-stone-200 p-4">
           <Field label="Loan Number" required>
