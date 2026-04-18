@@ -40,6 +40,7 @@ import { RecordSaleModal } from "@/app/inventory/_components/record-sale-modal";
 import { StockAdjustmentModal } from "@/app/inventory/_components/stock-adjustment-modal";
 import { deleteProductAction } from "@/app/inventory/actions";
 import { deleteInvoiceAction } from "@/app/billing/actions";
+import { InviteStaffModal } from "@/app/staff/_components/invite-staff-modal";
 type ProductSummary = InventoryProduct;
 
 function formatCurrency(n: number) {
@@ -149,6 +150,7 @@ export function DashboardHome({
   const queryClient = useQueryClient();
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [isInviteStaffOpen, setIsInviteStaffOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -489,6 +491,7 @@ export function DashboardHome({
           </button>
           <button
             type="button"
+            onClick={() => setIsInviteStaffOpen(true)}
             className="dash-chip"
             style={{ background: "#f4f4f5", color: "#18181b", border: "1.5px solid #e4e4e7" }}
           >
@@ -793,6 +796,11 @@ export function DashboardHome({
           onConfirm={(restock) => confirmDeleteInvoice(restock)}
         />
       ) : null}
+
+      <InviteStaffModal
+        isOpen={isInviteStaffOpen}
+        onClose={() => setIsInviteStaffOpen(false)}
+      />
     </>
   );
 }

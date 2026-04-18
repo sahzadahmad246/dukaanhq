@@ -11,8 +11,10 @@ import {
   LoaderCircle,
   ImagePlus,
   Laptop,
+  MinusCircle,
   PackageOpen,
   Plus,
+  PlusCircle,
   ScanBarcode,
   Smartphone,
   Trash2,
@@ -75,16 +77,16 @@ type SelectedImage = {
   previewUrl: string;
   variantKey: string | null;
 } & (
-  | {
+    | {
       kind: "new";
       file: File;
     }
-  | {
+    | {
       kind: "existing";
       imageUrl: string;
       publicId: string;
     }
-);
+  );
 
 const profiles: ProductProfile[] = [
   { id: "MOBILE", title: "Mobile", subtitle: "Variant stock", icon: Smartphone },
@@ -258,22 +260,22 @@ const PRODUCT_DRAFT_STORAGE_KEY = "inventory-add-product-draft-v1";
 
 type DraftSelectedImage =
   | {
-      id: string;
-      kind: "existing";
-      previewUrl: string;
-      variantKey: string | null;
-      imageUrl: string;
-      publicId: string;
-    }
+    id: string;
+    kind: "existing";
+    previewUrl: string;
+    variantKey: string | null;
+    imageUrl: string;
+    publicId: string;
+  }
   | {
-      id: string;
-      kind: "new";
-      previewUrl: string;
-      variantKey: string | null;
-      fileName: string;
-      fileType: string;
-      fileDataUrl: string;
-    };
+    id: string;
+    kind: "new";
+    previewUrl: string;
+    variantKey: string | null;
+    fileName: string;
+    fileType: string;
+    fileDataUrl: string;
+  };
 
 function createVariant(): VariantDraft {
   return {
@@ -683,12 +685,13 @@ export function AddProductModal({
   });
   const [isPending, startTransition] = useTransition();
   const [selectedProfile, setSelectedProfile] = useState<ProductKind | null>(null);
+  const [selectedProductType, setSelectedProductType] = useState<ProductKind | null>(null);
   const [currentStep, setCurrentStep] = useState<StepId>("basics");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("0");
   const [sellingPrice, setSellingPrice] = useState("");
-  const [lowStockThreshold, setLowStockThreshold] = useState("5");
+  const [lowStockThreshold, setLowStockThreshold] = useState("1");
   const [categoryMode, setCategoryMode] = useState<"existing" | "new">("existing");
   const [brandMode, setBrandMode] = useState<"existing" | "new">("existing");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
@@ -800,17 +803,17 @@ export function AddProductModal({
         selectedProfile !== "SERIALIZED"
           ? []
           : activeVariants.flatMap((variant) =>
-              variant.identifiers
-                .map((field) => field.value.trim())
-                .filter(Boolean)
-                .map((value) => ({
-                  variant_temp_key: variant.id,
-                  identifier_type: resolvedIdentifierType,
-                  serial_number: resolvedIdentifierType === "SERIAL_NUMBER" ? value : null,
-                  unique_identifier: resolvedIdentifierType === "UNIQUE_ID" ? value : null,
-                  identifier_value: value,
-                }))
-            ),
+            variant.identifiers
+              .map((field) => field.value.trim())
+              .filter(Boolean)
+              .map((value) => ({
+                variant_temp_key: variant.id,
+                identifier_type: resolvedIdentifierType,
+                serial_number: resolvedIdentifierType === "SERIAL_NUMBER" ? value : null,
+                unique_identifier: resolvedIdentifierType === "UNIQUE_ID" ? value : null,
+                identifier_value: value,
+              }))
+          ),
       highlights: [],
     });
   }, [resolvedIdentifierType, selectedProfile, variants]);
@@ -906,27 +909,27 @@ export function AddProductModal({
             editingProduct.product_kind === "QUANTITY_BASED"
               ? [createIdentifierField()]
               : (
+                editingProduct.inventory_items
+                  ?.filter((item) => item.variant_id === variant.id)
+                  .flatMap((item) =>
+                    editingProduct.product_kind === "MOBILE"
+                      ? [item.imei_1, item.imei_2]
+                        .filter((value): value is string => Boolean(value?.trim()))
+                        .map((value) => createIdentifierField(value))
+                      : [createIdentifierField(item.serial_number)]
+                  ) ?? []
+              ).length > 0
+                ? (
                   editingProduct.inventory_items
                     ?.filter((item) => item.variant_id === variant.id)
                     .flatMap((item) =>
                       editingProduct.product_kind === "MOBILE"
                         ? [item.imei_1, item.imei_2]
-                            .filter((value): value is string => Boolean(value?.trim()))
-                            .map((value) => createIdentifierField(value))
+                          .filter((value): value is string => Boolean(value?.trim()))
+                          .map((value) => createIdentifierField(value))
                         : [createIdentifierField(item.serial_number)]
                     ) ?? []
-                ).length > 0
-                ? (
-                    editingProduct.inventory_items
-                      ?.filter((item) => item.variant_id === variant.id)
-                      .flatMap((item) =>
-                        editingProduct.product_kind === "MOBILE"
-                          ? [item.imei_1, item.imei_2]
-                              .filter((value): value is string => Boolean(value?.trim()))
-                              .map((value) => createIdentifierField(value))
-                          : [createIdentifierField(item.serial_number)]
-                      ) ?? []
-                  )
+                )
                 : [createIdentifierField()],
         }))
       );
@@ -1071,7 +1074,7 @@ export function AddProductModal({
     setDescription(draft.description ?? "");
     setPurchasePrice(draft.purchasePrice ?? "");
     setSellingPrice(draft.sellingPrice ?? "");
-    setLowStockThreshold(draft.lowStockThreshold ?? "5");
+    setLowStockThreshold(draft.lowStockThreshold ?? "1");
     setCategoryMode(draft.categoryMode ?? "existing");
     setBrandMode(draft.brandMode ?? "existing");
     setSelectedCategoryId(draft.selectedCategoryId ?? "");
@@ -1084,20 +1087,20 @@ export function AddProductModal({
       (draft.selectedImages ?? []).map((image) =>
         image.kind === "existing"
           ? {
-              id: image.id,
-              kind: "existing" as const,
-              previewUrl: image.previewUrl,
-              variantKey: image.variantKey,
-              imageUrl: image.imageUrl,
-              publicId: image.publicId,
-            }
+            id: image.id,
+            kind: "existing" as const,
+            previewUrl: image.previewUrl,
+            variantKey: image.variantKey,
+            imageUrl: image.imageUrl,
+            publicId: image.publicId,
+          }
           : {
-              id: image.id,
-              kind: "new" as const,
-              previewUrl: image.previewUrl,
-              variantKey: image.variantKey,
-              file: dataUrlToFile(image.fileDataUrl, image.fileName, image.fileType),
-            }
+            id: image.id,
+            kind: "new" as const,
+            previewUrl: image.previewUrl,
+            variantKey: image.variantKey,
+            file: dataUrlToFile(image.fileDataUrl, image.fileName, image.fileType),
+          }
       )
     );
     setDraftRestoreCandidate(null);
@@ -1115,7 +1118,7 @@ export function AddProductModal({
     setDescription("");
     setPurchasePrice("0");
     setSellingPrice("");
-    setLowStockThreshold("5");
+    setLowStockThreshold("1");
     setCategoryMode("existing");
     setBrandMode("existing");
     setSelectedCategoryId("");
@@ -1250,11 +1253,11 @@ export function AddProductModal({
       current.map((variant) =>
         variant.id === variantId
           ? {
-              ...variant,
-              identifiers: variant.identifiers.map((field) =>
-                field.id === fieldId ? { ...field, value } : field
-              ),
-            }
+            ...variant,
+            identifiers: variant.identifiers.map((field) =>
+              field.id === fieldId ? { ...field, value } : field
+            ),
+          }
           : variant
       )
     );
@@ -1277,12 +1280,12 @@ export function AddProductModal({
       current.map((variant) =>
         variant.id === variantId
           ? {
-              ...variant,
-              identifiers:
-                variant.identifiers.length > 1
-                  ? variant.identifiers.filter((field) => field.id !== fieldId)
-                  : variant.identifiers,
-            }
+            ...variant,
+            identifiers:
+              variant.identifiers.length > 1
+                ? variant.identifiers.filter((field) => field.id !== fieldId)
+                : variant.identifiers,
+          }
           : variant
       )
     );
@@ -1537,7 +1540,7 @@ export function AddProductModal({
     <div className="fixed inset-0 z-50 bg-stone-950/55 backdrop-blur-sm">
       <div
         className={cn(
-          "fixed inset-x-0 mx-auto flex max-w-[450px] flex-col overflow-hidden bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.18)]",
+          "fixed inset-x-0 mx-auto flex max-w-[600px] flex-col overflow-hidden bg-[#fcfaf6] shadow-[0_30px_80px_rgba(15,23,42,0.18)]",
           isProductFormView
             ? "bottom-0 top-0 h-dvh"
             : "top-1/2 max-h-[calc(100vh-3rem)] -translate-y-1/2 rounded-[2rem]"
@@ -1561,40 +1564,59 @@ export function AddProductModal({
         {!selectedProfile && !isEditMode ? (
           <div className="px-6 py-8 sm:px-8">
             <div className="text-center">
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-teal-700">Add Product</p>
-              <h3 className="mt-3 text-[1.85rem] font-black leading-tight tracking-[-0.04em] text-stone-950">
-                What kind of product do you want to add?
+              <h3 className="text-[1.85rem] font-black leading-tight tracking-[-0.04em] text-stone-950">
+                Select a type to continue
               </h3>
             </div>
 
-            <div className="mt-7 grid gap-4">
+            <div className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {createProfileChoices.map((profile) => {
                 const Icon = profile.icon;
+                const isSelected = selectedProductType === profile.id;
                 return (
                   <button
                     key={profile.id}
                     type="button"
-                    onClick={() => chooseProfile(profile.id)}
-                    className="group relative overflow-hidden rounded-[1.9rem] border border-stone-200 bg-white p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-teal-700 hover:shadow-[0_20px_50px_rgba(15,23,42,0.1)] focus:outline-none"
+                    onClick={() => setSelectedProductType(profile.id)}
+                    className={`group relative overflow-hidden rounded-2xl border p-5 text-left shadow-sm transition-all duration-200 focus:outline-none flex items-center gap-4
+            ${isSelected
+                        ? "border-[#f5c542] bg-yellow-50 shadow-[0_8px_28px_rgba(245,197,66,0.12)] -translate-y-0.5"
+                        : "border-stone-200 bg-white hover:-translate-y-0.5 hover:border-stone-400 hover:shadow-[0_8px_28px_rgba(15,23,42,0.08)]"
+                      }`}
                   >
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(20,184,166,0.14),transparent_34%)] opacity-80" />
-                    <div className="relative flex items-center gap-4">
-                      <div className="flex h-15 w-15 shrink-0 items-center justify-center rounded-[1.35rem] border border-stone-200 bg-[#fffdf9] text-stone-700 transition group-hover:border-teal-700 group-hover:bg-teal-700 group-hover:text-white">
-                        <Icon className="h-6 w-6" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-lg font-black tracking-[-0.02em] text-stone-950">{profile.title}</h4>
-                        <p className="mt-1 text-sm font-medium text-stone-500">
-                          {profile.id === "MOBILE" ? "Phones with variants" : "Chargers, cables, covers"}
-                        </p>
-                      </div>
-                      <div className="text-stone-300 transition group-hover:text-teal-700">
-                        <ChevronRight className="h-5 w-5" />
-                      </div>
+                    <div className={`absolute inset-0 bg-gradient-to-br from-stone-100/80 via-transparent to-transparent transition-opacity duration-200 ${isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-60"}`} />
+                    <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-all duration-200
+            ${isSelected
+                        ? "border-[#f5c542] bg-[#f5c542] text-[#080e1a]"
+                        : "border-stone-200 bg-stone-50 text-stone-500 group-hover:border-stone-400 group-hover:bg-stone-100 group-hover:text-stone-800"
+                      }`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <h4 className={`relative flex-1 text-base font-bold tracking-tight transition-colors duration-200 ${isSelected ? "text-stone-950" : "text-stone-700 group-hover:text-stone-900"}`}>
+                      {profile.title}
+                    </h4>
+                    <div className={`relative h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? "border-[#f5c542] bg-[#f5c542]" : "border-stone-300"}`}>
+                      {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
                     </div>
                   </button>
                 );
               })}
+            </div>
+
+            <div className="mt-8 flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (selectedProductType) {
+                    chooseProfile(selectedProductType);
+                  }
+                }}
+                disabled={!selectedProductType}
+                className="!bg-[#f5c542] !border-[#f5c542] h-14 w-full items-center justify-center gap-2 rounded-2xl text-xl font-semibold font-black tracking-tight !text-[#080e1a] transition hover:!bg-[#f0bb2a] active:scale-[0.98] disabled:cursor-wait disabled:opacity-85"
+              >
+                Continue
+              </Button>
             </div>
           </div>
         ) : isLoadingEditProduct ? (
@@ -1619,7 +1641,7 @@ export function AddProductModal({
               {currentStep === "basics" ? (
                 <section className="space-y-5 py-2">
                   <StepTitle step={stepIndex + 1} title="Basics" />
-                  <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 p-5 space-y-5">
+                  <div className="space-y-5">
                     <Field label="Product Name" required error={clientErrors.name || state.fieldErrors?.name}>
                       <div className="relative">
                         <Input
@@ -1758,16 +1780,31 @@ export function AddProductModal({
                       )}
 
                       <Field label="Low Stock Alert" required error={clientErrors.low_stock_threshold || state.fieldErrors?.low_stock_threshold}>
-                        <Input
-                          name="low_stock_threshold"
-                          type="number"
-                          min="0"
-                          value={lowStockThreshold}
-                          onChange={(event) => {
-                            setLowStockThreshold(event.target.value);
-                            clearClientError(["low_stock_threshold"]);
-                          }}
-                        />
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLowStockThreshold((prev) => String(Math.max(0, Number(prev || "1") - 1)));
+                              clearClientError(["low_stock_threshold"]);
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:bg-stone-50"
+                          >
+                            <MinusCircle className="h-4 w-4" />
+                          </button>
+                          <div className="flex h-11 flex-1 items-center justify-center rounded-xl border border-stone-200 bg-white text-center text-[15px] font-bold text-stone-900">
+                            {lowStockThreshold || "1"}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLowStockThreshold((prev) => String(Number(prev || "1") + 1));
+                              clearClientError(["low_stock_threshold"]);
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:bg-stone-50"
+                          >
+                            <PlusCircle className="h-4 w-4" />
+                          </button>
+                        </div>
                       </Field>
                     </div>
 
@@ -1788,50 +1825,50 @@ export function AddProductModal({
                   </div>
 
                   {selectedProfile === "QUANTITY_BASED" ? (
-                  <Field label="Product Images" error={clientErrors.images}>
-                    <div className="space-y-3">
-                      <div
-                        className="rounded-2xl border border-dashed border-stone-300 bg-white p-3"
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          void addDroppedImages(event.dataTransfer, null);
-                        }}
-                      >
-                        <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setImageTargetVariantKey(null);
-                              fileInputRef.current?.click();
-                            }}
-                            className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white text-stone-400 transition hover:border-teal-700 hover:text-teal-700"
-                          >
-                            <ImagePlus className="h-6 w-6" />
-                          </button>
+                    <Field label="Product Images" error={clientErrors.images}>
+                      <div className="space-y-3">
+                        <div
+                          className="rounded-2xl border border-dashed border-stone-300 bg-white p-3"
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            void addDroppedImages(event.dataTransfer, null);
+                          }}
+                        >
+                          <div className="scrollbar-hidden flex gap-3 overflow-x-auto pb-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setImageTargetVariantKey(null);
+                                fileInputRef.current?.click();
+                              }}
+                              className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white text-stone-400 transition hover:border-teal-700 hover:text-teal-700"
+                            >
+                              <ImagePlus className="h-6 w-6" />
+                            </button>
 
-                          {selectedImages.map((image) => (
-                            <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
-                              <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeImage(image.id)}
-                                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-stone-950/80 text-white"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          ))}
+                            {selectedImages.map((image) => (
+                              <div key={image.id} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                                <button type="button" onClick={() => setFullscreenImageId(image.id)} className="h-full w-full">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={image.previewUrl} alt="Selected product" className="h-full w-full object-cover" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(image.id)}
+                                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-stone-950/80 text-white"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-3 text-xs text-stone-500">
+                            Click to choose files, drag image files here, or try dropping an image from another website. Web-image drop works only when that source allows it.
+                          </p>
                         </div>
-                        <p className="mt-3 text-xs text-stone-500">
-                          Click to choose files, drag image files here, or try dropping an image from another website. Web-image drop works only when that source allows it.
-                        </p>
                       </div>
-                    </div>
-                  </Field>
+                    </Field>
                   ) : null}
 
                 </section>
@@ -2199,23 +2236,41 @@ export function AddProductModal({
                 {selectedProfile === "MOBILE" ? (
                   <div className="space-y-5">
                     <Field label="Selling Price" required error={variantModalErrors.sellingPrice}>
-                      <Input 
-                        type="number" 
-                        min="0" 
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
                         step="0.01"
                         value={variant.sellingPrice}
-                        onChange={(event) => setVariantDraftField("sellingPrice", event.target.value)}
-                        placeholder="0.00" 
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          if (nextValue === "" || /^\d*\.?\d{0,2}$/.test(nextValue)) {
+                            setVariantDraftField("sellingPrice", nextValue);
+                          }
+                        }}
+                        placeholder="0.00"
                       />
                     </Field>
                     <Field label="Stock Quantity" required error={variantModalErrors.quantity}>
-                      <Input 
-                        type="number" 
-                        min="0"
-                        value={variant.quantity}
-                        onChange={(event) => setVariantDraftField("quantity", event.target.value)}
-                        placeholder="0" 
-                      />
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setVariantDraftField("quantity", String(Math.max(0, Number(variant.quantity || "0") - 1)))}
+                          className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:bg-stone-50"
+                        >
+                          <MinusCircle className="h-4 w-4" />
+                        </button>
+                        <div className="flex h-11 flex-1 items-center justify-center rounded-xl border border-stone-200 bg-white text-center text-[15px] font-bold text-stone-900">
+                          {variant.quantity || "0"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setVariantDraftField("quantity", String(Number(variant.quantity || "0") + 1))}
+                          className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:bg-stone-50"
+                        >
+                          <PlusCircle className="h-4 w-4" />
+                        </button>
+                      </div>
                     </Field>
                   </div>
                 ) : null}

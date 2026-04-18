@@ -90,7 +90,7 @@ const LOAN_PROVIDER_OPTIONS = [
   "Snapmint",
   "ZestMoney",
   "Chola Finance",
-  "DMI finance",
+  "DMI Finance",
   "The EMI Club",
   "Other",
 ];
