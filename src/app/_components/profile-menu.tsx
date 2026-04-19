@@ -4,8 +4,6 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
 type ProfileMenuProps = {
   userInitials: string;
   userName?: string | null;
@@ -54,10 +52,10 @@ export function ProfileMenu({
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
-      const supabase = createSupabaseBrowserClient();
-      await supabase.auth.signOut();
+      await fetch("/auth/logout", { method: "POST" });
       setMenuOpen(false);
-      window.location.replace("/");
+      // Force a hard reload even when we're already on "/".
+      window.location.href = `/?signed_out=1&t=${Date.now()}`;
     } catch (error) {
       console.error("Error signing out:", error);
     } finally {

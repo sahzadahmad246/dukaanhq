@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  Printer,
   Receipt,
   MoreVertical,
   Pencil,
@@ -18,7 +17,6 @@ import {
   TrendingUp,
   ShoppingBag,
   User,
-  CalendarDays,
   Loader2,
 } from "lucide-react";
 import { format, isValid, isToday, isYesterday, formatDistanceToNowStrict } from "date-fns";
@@ -31,8 +29,7 @@ import { BillDetailsDrawer } from "./bill-details-drawer";
 import { downloadInvoicePdf, type PrintableInvoice } from "./invoice-print";
 import { deleteInvoiceAction } from "../actions";
 import type { BillingInvoiceSummary } from "../load-billing-data";
-import { productDetailsQueryKey, productDetailsQueryOptions } from "@/app/inventory/queries";
-import { ProductDetailsDrawer } from "@/app/inventory/_components/product-details-drawer";
+import { productDetailsQueryKey } from "@/app/inventory/queries";
 
 type ProductSummary = Product & {
   total_quantity: number;
@@ -703,9 +700,11 @@ export function BillingManager({
           open={Boolean(selectedInvoice)}
           onClose={() => setSelectedInvoiceId(null)}
           onDownload={downloadInvoice}
-          onEdit={(inv) => {
+          onEdit={() => {
             setSelectedInvoiceId(null);
-            setEditingInvoice(inv as any);
+            if (selectedInvoice) {
+              setEditingInvoice(selectedInvoice);
+            }
           }}
           onDelete={(id) => {
             setSelectedInvoiceId(null);

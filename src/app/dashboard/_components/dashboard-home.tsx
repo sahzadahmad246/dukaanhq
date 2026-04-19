@@ -20,7 +20,6 @@ import {
   Download,
   PhoneCall,
   User,
-  Printer,
   MoreVertical,
   Pencil,
   Trash2,
@@ -28,6 +27,7 @@ import {
 } from "lucide-react";
 
 import type { DashboardStats, RecentInvoice, RecentProduct } from "../load-dashboard-data";
+import type { BillingInvoiceSummary } from "@/app/billing/load-billing-data";
 import type { Brand, Category } from "@/lib/types/inventory";
 import { AddBillModal } from "@/app/billing/_components/add-bill-modal";
 import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
@@ -161,7 +161,7 @@ export function DashboardHome({
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
 
-  const [editingInvoice, setEditingInvoice] = useState<RecentInvoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<BillingInvoiceSummary | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [confirmDeleteInvoiceId, setConfirmDeleteInvoiceId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
@@ -697,7 +697,7 @@ export function DashboardHome({
           setIsAddBillOpen(false);
           setEditingInvoice(null);
         }}
-        invoiceToEdit={editingInvoice as any}
+        invoiceToEdit={editingInvoice}
         products={products}
         shopLogoUrl={shopLogoUrl}
         onInvoiceCreated={() => router.refresh()}
@@ -764,9 +764,11 @@ export function DashboardHome({
         open={Boolean(selectedInvoice)}
         onClose={() => setSelectedInvoiceId(null)}
         onDownload={handleDownloadInvoice}
-        onEdit={(inv) => {
+        onEdit={() => {
           setSelectedInvoiceId(null);
-          setEditingInvoice(inv as any);
+          if (selectedInvoice) {
+            setEditingInvoice(selectedInvoice);
+          }
         }}
         onDelete={(id) => {
           setSelectedInvoiceId(null);

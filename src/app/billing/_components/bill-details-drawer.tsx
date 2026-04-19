@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Download, MoreVertical, Pencil, PhoneCall, Printer, Receipt, Trash2, X } from "lucide-react";
+import { Download, MoreVertical, Pencil, PhoneCall, Receipt, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import type { PrintableInvoice } from "./invoice-print";

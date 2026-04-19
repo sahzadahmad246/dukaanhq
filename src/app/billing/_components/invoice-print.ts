@@ -42,15 +42,6 @@ export type PrintableInvoice = {
   }>;
 };
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 /** Strip characters that WinAnsi (Helvetica) can't encode (allowing newlines and tabs) */
 function sanitizeForPdf(text: string): string {
   // biome-ignore lint: simple regex replace
@@ -225,10 +216,6 @@ function colorFromHex(hex: string) {
   const blue = Number.parseInt(value.slice(4, 6), 16) / 255;
 
   return rgb(red, green, blue);
-}
-
-function renderMultilineHtml(text: string) {
-  return escapeHtml(text).replace(/\r\n/g, "\n").replace(/\n/g, "<br />");
 }
 
 type InvoiceDocData = {

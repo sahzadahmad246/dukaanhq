@@ -5,6 +5,9 @@ import { MarketingHeader } from "@/app/_components/marketing-header";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -24,33 +27,42 @@ export default async function Home() {
     hasWorkspaceAccess,
     hasCompletedOnboarding,
     canUseShopProduct,
+    membership,
   } = await getUserAppState(supabase);
 
   const displayName = profile?.full_name ?? user?.user_metadata.full_name ?? user?.email ?? "there";
   const userEmail = profile?.email ?? user?.email ?? "";
   const initials = getInitials(displayName || "DukaanHQ");
-  const primaryHref = user
-    ? hasWorkspaceAccess && hasCompletedOnboarding
-      ? canUseShopProduct
-        ? "/dashboard"
-        : "/subscribe"
-      : isOwner
-        ? "/onboarding"
-        : isSuperAdmin
-          ? "/admin/saas"
-          : "/"
-    : "/auth/login";
-  const primaryLabel = user
-    ? hasWorkspaceAccess && hasCompletedOnboarding
-      ? canUseShopProduct
-        ? "Open Dashboard"
-        : "Subscribe to continue"
-      : isOwner
-        ? "Set Up Your Shop"
-        : isSuperAdmin
-          ? "SaaS admin"
-          : "Open Home"
-    : "Get Started Free";
+  const primaryAction = (() => {
+    if (!user) {
+      return { href: "/auth/login", label: "Get Started" };
+    }
+
+    if (isSuperAdmin) {
+      return { href: "/admin/saas", label: "Open SaaS Admin" };
+    }
+
+    if (hasWorkspaceAccess) {
+      if (!hasCompletedOnboarding) {
+        return { href: "/onboarding", label: "Complete Onboarding" };
+      }
+      if (!canUseShopProduct) {
+        return { href: "/subscribe", label: "Subscribe to Continue" };
+      }
+      // owner + staff both land on the same workspace dashboard
+      return {
+        href: "/dashboard",
+        label: membership?.role === "staff" ? "Open Shop Dashboard" : "Access Your Shop",
+      };
+    }
+
+    if (isOwner) {
+      return { href: "/onboarding", label: "Complete Onboarding" };
+    }
+
+    // Signed-in user without membership (customer / invited not accepted / etc.)
+    return { href: "/profile", label: "Open Profile" };
+  })();
   const secondaryHref = "/auth/login";
   const secondaryLabel = "Sign In";
 
@@ -107,11 +119,21 @@ export default async function Home() {
                     ? "Complete onboarding to activate your shop."
                     : "Your account is signed in, but shop access is not active yet."}
               </p>
+              {isSuperAdmin ? (
+                <div className="mt-4">
+                  <Link
+                    href="/admin/saas"
+                    className="inline-flex items-center justify-center rounded-2xl border border-stone-200 bg-white px-3 py-2 text-[12px] font-semibold text-stone-800 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950"
+                  >
+                    Open SaaS admin
+                  </Link>
+                </div>
+              ) : null}
             </div>
           )}
 
           <div className="flex flex-col gap-3">
-            <HomePrimaryCta href={primaryHref} label={primaryLabel} />
+            <HomePrimaryCta href={primaryAction.href} label={primaryAction.label} />
             {!user && (
               <Link
                 href={secondaryHref}
@@ -265,7 +287,7 @@ export default async function Home() {
           <p className="mb-7 text-[13px] leading-relaxed text-[#080e1a]/55">
             Join electronics shop owners running their entire business from one clean dashboard.
           </p>
-          <HomePrimaryCta href={primaryHref} label={primaryLabel} />
+          <HomePrimaryCta href={primaryAction.href} label={primaryAction.label} />
         </div>
       </section>
 
