@@ -185,7 +185,7 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
 
     const inviteUrl = `${appUrl}/auth/login?invite=${inviteToken}`;
     await sendResendEmail({
-      from: "DukaanHQ <hello@unmatchedlines.com>",
+      from: "DukaanHQ <hello@dukaanhq.com>",
       to: normalizedEmail,
       subject: `Join ${shop.name} on DukaanHQ as ${getRoleLabel(parsed.data.role)}`,
       html: buildInviteEmail({

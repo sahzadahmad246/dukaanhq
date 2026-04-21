@@ -445,11 +445,13 @@ function ProductPicker({
   selectedProductId,
   onSelect,
   onOpenQuickItem,
+  onOpenAddProduct,
 }: {
   products: ProductSummary[];
   selectedProductId: string;
   onSelect: (productId: string) => void;
   onOpenQuickItem: () => void;
+  onOpenAddProduct?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
@@ -501,13 +503,15 @@ function ProductPicker({
   return (
     <div className="relative">
       <div className="sticky top-0 z-10 pb-3">
-        <button
-          type="button"
-          onClick={onOpenQuickItem}
-          className="mb-3 text-sm font-semibold text-sky-700 underline decoration-sky-400 underline-offset-4 transition hover:text-sky-800"
-        >
-          Add Quick Item
-        </button>
+        {onOpenAddProduct && (
+          <button
+            type="button"
+            onClick={onOpenAddProduct}
+            className="mb-3 text-sm font-semibold text-sky-700 underline decoration-sky-400 underline-offset-4 transition hover:text-sky-800"
+          >
+            Add Quick Product
+          </button>
+        )}
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
@@ -568,11 +572,13 @@ function LineEditor({
   products,
   onChange,
   onOpenQuickItem,
+  onOpenAddProduct,
 }: {
   line: BillingLineDraft;
   products: ProductSummary[];
   onChange: (next: Partial<BillingLineDraft>) => void;
   onOpenQuickItem: () => void;
+  onOpenAddProduct?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { data: productDetails } = useQuery({
@@ -722,6 +728,7 @@ function LineEditor({
             products={products}
             selectedProductId={line.product_id}
             onOpenQuickItem={onOpenQuickItem}
+            onOpenAddProduct={onOpenAddProduct}
             onSelect={(productId) => {
               const nextProduct = products.find((product) => product.id === productId);
               onChange({
@@ -904,6 +911,33 @@ function LineEditor({
                   />
                 </Field>
               </div>
+
+              <div className="pt-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      is_free_gift: !line.is_free_gift,
+                      discount_amount: line.is_free_gift
+                        ? "0"
+                        : String((Number.parseInt(line.quantity || "1", 10) || 1) * (Number.parseFloat(line.unit_price || "0") || 0)),
+                    })
+                  }
+                  className={`flex w-full items-center justify-between rounded-[1.1rem] border px-4 py-3 transition-colors ${
+                    line.is_free_gift
+                      ? "border-amber-200 bg-amber-50 text-amber-900 shadow-sm"
+                      : "border-stone-200 bg-stone-50 hover:bg-stone-100/70 text-stone-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Gift className={`h-5 w-5 ${line.is_free_gift ? "text-amber-600" : "text-stone-400"}`} />
+                    <span className="text-[13px] font-bold">Mark as Free Gift</span>
+                  </div>
+                  <div className={`relative flex h-6 w-11 items-center rounded-full transition-colors ${line.is_free_gift ? "bg-amber-500" : "bg-stone-300"}`}>
+                    <div className={`absolute h-5 w-5 rounded-full bg-white transition-all shadow-sm ${line.is_free_gift ? "left-[22px]" : "left-[2px]"}`} />
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -990,6 +1024,7 @@ export function AddBillModal({
   shopPostalCode,
   onInvoiceCreated,
   invoiceToEdit,
+  onOpenAddProduct,
 }: {
   open: boolean;
   onClose: () => void;
@@ -998,6 +1033,7 @@ export function AddBillModal({
   shopPostalCode?: string | null;
   onInvoiceCreated?: (items: Array<{ product_id: string; variant_id: string | null; quantity: number }>) => void;
   invoiceToEdit?: BillingInvoiceSummary | null;
+  onOpenAddProduct?: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
@@ -1978,6 +2014,7 @@ export function AddBillModal({
                 line={draftLine}
                 products={products}
                 onOpenQuickItem={() => openQuickItemDialog(createQuickLine(), { closeProductDialogOnSave: true })}
+                onOpenAddProduct={onOpenAddProduct}
                 onChange={(next) => setDraftLine((current) => (current ? { ...current, ...next } : current))}
               />
             </div>

@@ -22,8 +22,9 @@ import {
 import { format, isValid, isToday, isYesterday, formatDistanceToNowStrict } from "date-fns";
 import { toast } from "sonner";
 
-import type { Product } from "@/lib/types/inventory";
+import type { Product, Category, Brand } from "@/lib/types/inventory";
 import { InventoryTopBar } from "@/app/inventory/_components/inventory-top-bar";
+import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
 import { AddBillModal } from "./add-bill-modal";
 import { BillDetailsDrawer } from "./bill-details-drawer";
 import { downloadInvoicePdf, type PrintableInvoice } from "./invoice-print";
@@ -117,11 +118,15 @@ function normalizeBillSearchText(invoice: BillingInvoiceSummary) {
 export function BillingManager({
   products,
   invoices,
+  categories,
+  brands,
   shopLogoUrl,
   shopPostalCode,
 }: {
   products: ProductSummary[];
   invoices: BillingInvoiceSummary[];
+  categories: Category[];
+  brands: Brand[];
   shopLogoUrl?: string | null;
   shopPostalCode?: string | null;
 }) {
@@ -137,6 +142,7 @@ export function BillingManager({
   const [showHeader, setShowHeader] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<BillingInvoiceSummary | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -656,6 +662,7 @@ export function BillingManager({
             setIsAddBillOpen(false);
             setEditingInvoice(null);
           }}
+          onOpenAddProduct={() => setIsAddProductModalOpen(true)}
           invoiceToEdit={editingInvoice}
           products={liveProducts}
           shopLogoUrl={shopLogoUrl}
@@ -710,6 +717,17 @@ export function BillingManager({
             setSelectedInvoiceId(null);
             setConfirmDeleteInvoiceId(id);
           }}
+        />
+
+        <AddProductModal
+          open={isAddProductModalOpen}
+          mode="create"
+          productId={null}
+          onClose={() => setIsAddProductModalOpen(false)}
+          onSaved={() => router.refresh()}
+          categories={categories}
+          brands={brands}
+          products={liveProducts as any} // Cast safely since ProductSummary implicitly matches the subset
         />
 
         {showScrollTop && (

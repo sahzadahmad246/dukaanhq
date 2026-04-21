@@ -12,7 +12,7 @@ export async function sendResendEmail(input: {
     throw new Error("RESEND_API_KEY is not configured.");
   }
 
-  const from = input.from ?? process.env.RESEND_FROM_EMAIL ?? "DukaanHQ <hello@unmatchedlines.com>";
+  const from = input.from ?? process.env.RESEND_FROM_EMAIL ?? "DukaanHQ <hello@dukaanhq.com>";
 
   const response = await fetch(RESEND_API_URL, {
     method: "POST",

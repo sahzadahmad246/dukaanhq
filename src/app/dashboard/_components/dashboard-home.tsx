@@ -701,6 +701,7 @@ export function DashboardHome({
         products={products}
         shopLogoUrl={shopLogoUrl}
         onInvoiceCreated={() => router.refresh()}
+        onOpenAddProduct={() => setIsAddProductOpen(true)}
       />
 
       {isAddProductOpen ? (

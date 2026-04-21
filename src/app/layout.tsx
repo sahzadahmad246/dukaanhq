@@ -20,7 +20,6 @@ export const metadata: Metadata = {
   title: "DukaanHQ",
   description: "DukaanHQ is a SaaS for electronics shops to manage products, create bills, and generate invoices faster.",
   applicationName: "DukaanHQ",
-  manifest: "/manifest.webmanifest",
   icons: {
     icon: "/logo.png",
     apple: "/logo.png",
@@ -40,6 +39,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
+      </head>
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>
         <AppQueryProvider>
           <PwaRegistration />

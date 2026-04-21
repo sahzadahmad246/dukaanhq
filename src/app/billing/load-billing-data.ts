@@ -130,6 +130,8 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
   return {
     ...workspace,
     products: inventory.products,
+    categories: inventory.categories,
+    brands: inventory.brands,
     invoices,
   };
 }

@@ -10,7 +10,7 @@ type PageProps = {
 
 export default async function BillingPage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const { user, profile, shop, membership, products, invoices } = await loadBillingData(query);
+  const { user, profile, shop, membership, products, invoices, categories, brands } = await loadBillingData(query);
 
   return (
     <WorkspaceShell
@@ -30,6 +30,8 @@ export default async function BillingPage({ searchParams }: PageProps) {
         <BillingManager
           products={products}
           invoices={invoices}
+          categories={categories}
+          brands={brands}
           shopLogoUrl={shop?.logo_url ?? null}
           shopPostalCode={shop?.postal_code ?? null}
         />
