@@ -16,8 +16,9 @@ export async function uploadImageToCloudinary(file: File): Promise<{ url: string
     const buffer = Buffer.from(arrayBuffer);
 
     return new Promise((resolve) => {
+      const format = file.type === "image/png" ? "png" : undefined;
       const uploadStream = cloudinary.uploader.upload_stream(
-        { folder: "dukaanhq_products" },
+        { folder: "dukaanhq_products", format },
         (error, result) => {
           if (error || !result) {
             console.error("Cloudinary upload failed", error);

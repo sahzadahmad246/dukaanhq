@@ -30,6 +30,7 @@ export default async function DashboardPage() {
           products={products}
           categories={categories}
           brands={brands}
+          shopStampUrl={shop?.shop_stamp_url ?? null}
         />
       </WorkspaceShell>
     );
@@ -66,6 +67,7 @@ export default async function DashboardPage() {
           products={[]}
           categories={[]}
           brands={[]}
+          shopStampUrl={null}
           loadError="We couldn't refresh dashboard data right now. Please stay on this page and try again in a moment."
         />
       </WorkspaceShell>

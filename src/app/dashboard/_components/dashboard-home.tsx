@@ -24,6 +24,7 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  Stamp,
 } from "lucide-react";
 
 import type { DashboardStats, RecentInvoice, RecentProduct } from "../load-dashboard-data";
@@ -133,6 +134,7 @@ export function DashboardHome({
   products,
   categories,
   brands,
+  shopStampUrl,
   loadError,
 }: {
   ownerName: string;
@@ -144,6 +146,7 @@ export function DashboardHome({
   products: ProductSummary[];
   categories: Category[];
   brands: Brand[];
+  shopStampUrl: string | null;
   loadError?: string | null;
 }) {
   const router = useRouter();
@@ -181,6 +184,38 @@ export function DashboardHome({
     if (!loadError) return;
     toast.error(loadError);
   }, [loadError]);
+
+  // ─── Stamp feature announcement bottom-sheet logic ─────────────────────
+  const [showStampDrawer, setShowStampDrawer] = useState(false);
+
+  useEffect(() => {
+    const STORAGE_KEY = "dukaanhq_stamp_feature_v1";
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const data = stored ? JSON.parse(stored) : { shown: 0, lastDismissed: 0 };
+
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+
+    // First 2 times: show for ALL users as a feature introduction
+    if (data.shown < 2) {
+      setShowStampDrawer(true);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ shown: data.shown + 1, lastDismissed: data.lastDismissed }));
+      return;
+    }
+
+    // After 2 intros: only keep reminding users who haven't uploaded stamp yet
+    if (!shopStampUrl && now - data.lastDismissed > oneHour) {
+      setShowStampDrawer(true);
+    }
+  }, [shopStampUrl]);
+
+  function dismissStampDrawer() {
+    setShowStampDrawer(false);
+    const STORAGE_KEY = "dukaanhq_stamp_feature_v1";
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const data = stored ? JSON.parse(stored) : { shown: 2, lastDismissed: 0 };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, lastDismissed: Date.now() }));
+  }
 
   function prefetchProduct(productId: string) {
     void queryClient.prefetchQuery(productDetailsQueryOptions(productId));
@@ -408,6 +443,27 @@ export function DashboardHome({
         }
       `}</style>
 
+      {/* Low stock alert — persistent, non-dismissible, flush edge-to-edge */}
+      {stats.lowStockProducts > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 16px",
+            background: "#fef3c7",
+            borderBottom: "1.5px solid #fcd34d",
+            color: "#92400e",
+            fontSize: 13,
+            fontWeight: 700,
+            margin: "-8px -12px 0",
+          }}
+        >
+          <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
+          <span>{stats.lowStockProducts} product{stats.lowStockProducts !== 1 ? "s" : ""} running low on stock</span>
+        </div>
+      )}
+
       <div className="dash-root -mx-3 px-2">
         {/* Greeting — same row */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "10px 2px 18px", minWidth: 0, flexWrap: "nowrap" }}>
@@ -438,12 +494,6 @@ export function DashboardHome({
           </div>
         ) : null}
 
-        {stats.lowStockProducts > 0 && (
-          <div className="dash-alert" style={{ background: "#fef3c7", border: "1.5px solid #fcd34d", color: "#92400e", marginBottom: 14 }}>
-            <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
-            <span>{stats.lowStockProducts} product{stats.lowStockProducts !== 1 ? "s" : ""} running low on stock</span>
-          </div>
-        )}
 
         {/* Stats Grid — 2 columns */}
         <div className="grid grid-cols-2 gap-2 mb-5">
@@ -804,6 +854,122 @@ export function DashboardHome({
         isOpen={isInviteStaffOpen}
         onClose={() => setIsInviteStaffOpen(false)}
       />
+
+      {/* Stamp feature announcement — bottom sheet */}
+      {showStampDrawer && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+          }}
+        >
+          {/* Backdrop */}
+          <div
+            onClick={dismissStampDrawer}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(28, 25, 23, 0.5)",
+              backdropFilter: "blur(4px)",
+            }}
+          />
+          {/* Sheet */}
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              maxWidth: 480,
+              background: "#ffffff",
+              borderRadius: "24px 24px 0 0",
+              padding: "28px 24px 32px",
+              boxShadow: "0 -8px 40px rgba(0,0,0,0.12)",
+              animation: "slideUp 0.3s ease-out",
+            }}
+          >
+            {/* Drag handle */}
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+              <div style={{ width: 40, height: 4, borderRadius: 2, background: "#d6d3d1" }} />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                background: "linear-gradient(135deg, #ede9fe 0%, #f5f3ff 100%)",
+                flexShrink: 0,
+              }}>
+                <Stamp style={{ width: 22, height: 22, color: "#7c3aed" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#1c1917", lineHeight: 1.3 }}>
+                  New Feature: Shop Stamp & Signature
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "#78716c", marginTop: 6, lineHeight: 1.5 }}>
+                  Upload your official stamp and signature to automatically affix them on all your PDF invoices. Make your bills look professional!
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+              <button
+                type="button"
+                onClick={dismissStampDrawer}
+                style={{
+                  flex: 1,
+                  padding: "12px 16px",
+                  borderRadius: 14,
+                  border: "1.5px solid #e7e5e4",
+                  background: "#ffffff",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "#57534e",
+                  cursor: "pointer",
+                }}
+              >
+                Maybe Later
+              </button>
+              <Link
+                href="/settings#stamp"
+                onClick={dismissStampDrawer}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  padding: "12px 16px",
+                  borderRadius: 14,
+                  border: "none",
+                  background: "#1c1917",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  textDecoration: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Set Up Now
+                <ArrowRight style={{ width: 14, height: 14 }} />
+              </Link>
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes slideUp {
+              from { transform: translateY(100%); }
+              to { transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+      )}
     </>
   );
 }

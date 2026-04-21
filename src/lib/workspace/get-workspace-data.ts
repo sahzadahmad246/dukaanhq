@@ -41,7 +41,7 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
 
   const { data: shop } = await supabase
     .from("shops")
-    .select("id, name, slug, city, state, postal_code, status, logo_url, address_line_1, address_line_2, category, latitude, longitude")
+    .select("id, name, slug, city, state, postal_code, status, logo_url, shop_stamp_url, address_line_1, address_line_2, category, latitude, longitude")
     .eq("id", membership.shop_id)
     .maybeSingle();
 
