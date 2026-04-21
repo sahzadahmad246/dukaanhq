@@ -22,7 +22,10 @@ export const CustomerDraftSchema = z.object({
   mobile: z
     .string()
     .min(1, "Customer mobile is required")
-    .regex(/^\d{10}$/, "Customer mobile must be exactly 10 digits"),
+    .refine((val) => {
+      const digitsCount = val.replace(/\D/g, "").length;
+      return digitsCount >= 7 && digitsCount <= 15;
+    }, "Customer mobile must contain between 7 and 15 digits"),
   billing_address: z.string().min(1, "Billing address is required"),
   gst_number: z.string().optional().nullable(),
 });

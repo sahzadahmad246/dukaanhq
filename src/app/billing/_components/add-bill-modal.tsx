@@ -7,7 +7,18 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+
+const COUNTRY_CODES = [
+  { code: "+91", label: "🇮🇳 (+91)" },
+  { code: "+1", label: "🇺🇸/🇨🇦 (+1)" },
+  { code: "+44", label: "🇬🇧 (+44)" },
+  { code: "+971", label: "🇦🇪 (+971)" },
+  { code: "+61", label: "🇦🇺 (+61)" },
+  { code: "+65", label: "🇸🇬 (+65)" },
+  { code: "+60", label: "🇲🇾 (+60)" },
+];
 import { buildVariantLabel } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
@@ -37,6 +48,7 @@ type ProductSummary = Product & {
 
 type CustomerDraft = {
   name: string;
+  country_code: string;
   mobile: string;
   billing_address: string;
   gst_number: string;
@@ -191,6 +203,7 @@ function readStoredBillDraft() {
       currentStep,
       customer: {
         name: typeof parsed.customer.name === "string" ? parsed.customer.name : "",
+        country_code: typeof (parsed.customer as any).country_code === "string" ? (parsed.customer as any).country_code : "+91",
         mobile: typeof parsed.customer.mobile === "string" ? parsed.customer.mobile : "",
         billing_address: typeof parsed.customer.billing_address === "string" ? parsed.customer.billing_address : "",
         gst_number: typeof parsed.customer.gst_number === "string" ? parsed.customer.gst_number : "",
@@ -198,8 +211,8 @@ function readStoredBillDraft() {
       paymentDraft: {
         methods: Array.isArray(parsed.paymentDraft.methods)
           ? parsed.paymentDraft.methods.filter((method): method is PaymentMethodChoice =>
-              ["CASH", "CARD", "UPI", "BANK_TRANSFER", "OTHER", "LOAN"].includes(String(method))
-            )
+            ["CASH", "CARD", "UPI", "BANK_TRANSFER", "OTHER", "LOAN"].includes(String(method))
+          )
           : [],
         loan_provider: typeof parsed.paymentDraft.loan_provider === "string" ? parsed.paymentDraft.loan_provider : "",
         loan_number: typeof parsed.paymentDraft.loan_number === "string" ? parsed.paymentDraft.loan_number : "",
@@ -507,44 +520,44 @@ function ProductPicker({
       </div>
 
       <div>
-          {filteredProducts.length > 0 ? (
-            filteredProducts.map((product, index) => {
-              const blockReason = getProductSaleBlockReason(product);
-              const active = product.id === selectedProductId;
+        {filteredProducts.length > 0 ? (
+          filteredProducts.map((product, index) => {
+            const blockReason = getProductSaleBlockReason(product);
+            const active = product.id === selectedProductId;
 
-              return (
-                <div key={product.id}>
-                  {index > 0 ? <div className="mx-3 h-px bg-stone-200/70" /> : null}
-                  <button
-                    type="button"
-                    disabled={Boolean(blockReason)}
-                    onClick={() => onSelect(product.id)}
-                    onMouseEnter={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
-                    onFocus={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
-                    onTouchStart={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
-                    className={cn(
-                      "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200",
-                      active ? "bg-white text-stone-900 shadow-sm border border-stone-200" : "hover:bg-white/60",
-                      blockReason && !active ? "cursor-not-allowed opacity-55" : ""
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <p className={cn("truncate text-[13px] font-bold", active ? "text-stone-900" : "text-stone-800")}>{product.name}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-stone-500">
-                        {buildProductSearchLabel(product)}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold text-stone-400">
-                        {blockReason ?? buildProductSupportMeta(product)}
-                      </p>
-                    </div>
-                    {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-stone-900" /> : null}
-                  </button>
-                </div>
-              );
-            })
-          ) : (
-            <div className="px-3 py-6 text-center text-sm text-stone-500">No matching products found.</div>
-          )}
+            return (
+              <div key={product.id}>
+                {index > 0 ? <div className="mx-3 h-px bg-stone-200/70" /> : null}
+                <button
+                  type="button"
+                  disabled={Boolean(blockReason)}
+                  onClick={() => onSelect(product.id)}
+                  onMouseEnter={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
+                  onFocus={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
+                  onTouchStart={() => void queryClient.prefetchQuery(productDetailsQueryOptions(product.id))}
+                  className={cn(
+                    "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200",
+                    active ? "bg-white text-stone-900 shadow-sm border border-stone-200" : "hover:bg-white/60",
+                    blockReason && !active ? "cursor-not-allowed opacity-55" : ""
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className={cn("truncate text-[13px] font-bold", active ? "text-stone-900" : "text-stone-800")}>{product.name}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-stone-500">
+                      {buildProductSearchLabel(product)}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold text-stone-400">
+                      {blockReason ?? buildProductSupportMeta(product)}
+                    </p>
+                  </div>
+                  {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-stone-900" /> : null}
+                </button>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-3 py-6 text-center text-sm text-stone-500">No matching products found.</div>
+        )}
       </div>
     </div>
   );
@@ -576,37 +589,50 @@ function LineEditor({
       : undefined,
   });
 
-  const variants = useMemo(() => productDetails?.variants ?? [], [productDetails?.variants]);
   const selectedProduct = useMemo(
     () =>
       productDetails
         ? ({
-            ...(products.find((product) => product.id === line.product_id) ?? {}),
-            ...productDetails,
-          } as ProductSummary)
+          ...(products.find((product) => product.id === line.product_id) ?? {}),
+          ...productDetails,
+        } as ProductSummary)
         : products.find((product) => product.id === line.product_id) ?? null,
     [line.product_id, productDetails, products]
   );
 
+  const variants = useMemo(() => {
+    if (productDetails?.variants) return productDetails.variants;
+    if (selectedProduct?.variants) return selectedProduct.variants as unknown as NonNullable<ProductDetails["variants"]>;
+    return [];
+  }, [productDetails?.variants, selectedProduct?.variants]);
+
   const variantStockMap = useMemo(() => {
     const map = new Map<string, number>();
 
-    if (!productDetails) return map;
-
-    if (productDetails.tracking_type === "QUANTITY_BASED") {
-      for (const variant of variants) {
-        map.set(variant.id, variant.quantity ?? 0);
+    if (productDetails) {
+      if (productDetails.tracking_type === "QUANTITY_BASED") {
+        for (const variant of variants) {
+          map.set(variant.id, variant.quantity ?? 0);
+        }
+        return map;
       }
+
+      for (const item of productDetails.inventory_items ?? []) {
+        if (item.status !== "IN_STOCK" || !item.variant_id) continue;
+        map.set(item.variant_id, (map.get(item.variant_id) ?? 0) + 1);
+      }
+
       return map;
     }
 
-    for (const item of productDetails.inventory_items ?? []) {
-      if (item.status !== "IN_STOCK" || !item.variant_id) continue;
-      map.set(item.variant_id, (map.get(item.variant_id) ?? 0) + 1);
+    if (selectedProduct?.variants) {
+      for (const variant of selectedProduct.variants) {
+        map.set(variant.id, variant.quantity ?? 0);
+      }
     }
 
     return map;
-  }, [productDetails, variants]);
+  }, [productDetails, variants, selectedProduct]);
 
   const preferredVariant = useMemo(() => {
     return variants.find((variant) => (variantStockMap.get(variant.id) ?? 0) > 0) ?? null;
@@ -719,14 +745,14 @@ function LineEditor({
       {selectedProduct ? (
         <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
-             <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Selected Product</p>
-             <button
-               type="button"
-               onClick={() => onChange({ line_type: "inventory", quick_item_name: "", product_id: "", variant_id: "", inventory_item_id: "", identifier_value: "", imei_1: "", imei_2: "", quantity: "1", unit_price: "0", discount_amount: "0" })}
-               className="text-[11px] font-bold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-900 focus:outline-none"
-             >
-               Change
-             </button>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Selected Product</p>
+            <button
+              type="button"
+              onClick={() => onChange({ line_type: "inventory", quick_item_name: "", product_id: "", variant_id: "", inventory_item_id: "", identifier_value: "", imei_1: "", imei_2: "", quantity: "1", unit_price: "0", discount_amount: "0" })}
+              className="text-[11px] font-bold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-900 focus:outline-none"
+            >
+              Change
+            </button>
           </div>
           <div className="px-4 py-4">
             <div className="flex items-start gap-4">
@@ -751,12 +777,13 @@ function LineEditor({
         </div>
       ) : null}
 
-      {selectedProduct && productDetails && !selectedProductBlockReason ? (
+      {selectedProduct && !selectedProductBlockReason ? (
         <>
           {variants.length > 0 ? (
             <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
-              <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
-                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Select Variant</p>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Select Variant</p>
+                {!productDetails && <Loader2 className="h-3 w-3 animate-spin text-stone-400" />}
               </div>
               <div className="bg-white flex flex-col divide-y divide-stone-100">
                 {variants.map((variant) => {
@@ -773,9 +800,8 @@ function LineEditor({
                         if (isDisabled) return;
                         onChange({ variant_id: variant.id, inventory_item_id: "", identifier_value: "", unit_price: String(priceOverride) });
                       }}
-                      className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors duration-200 ${
-                        isDisabled ? "cursor-not-allowed bg-stone-50/70 opacity-55" : "hover:bg-stone-50"
-                      } ${isActive ? "bg-[#faf9f7]" : "bg-white"}`}
+                      className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors duration-200 ${isDisabled ? "cursor-not-allowed bg-stone-50/70 opacity-55" : "hover:bg-stone-50"
+                        } ${isActive ? "bg-[#faf9f7]" : "bg-white"}`}
                     >
                       <div className="flex items-center gap-3 w-full">
                         <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isActive ? "border-stone-900 bg-stone-900" : "border-stone-300"} ${isDisabled ? "border-stone-200 bg-stone-100" : ""}`}>
@@ -786,10 +812,10 @@ function LineEditor({
                         </span>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                         <span className={`text-[13px] font-bold ${isDisabled ? "text-stone-400" : isActive ? "text-stone-900" : "text-stone-500"}`}>{money(Number(priceOverride))}</span>
-                         <span className={`text-[11px] font-bold uppercase tracking-wider ${stock > 0 ? (isActive ? "text-emerald-600" : "text-emerald-600/70") : "text-rose-500"}`}>
-                           {stock > 0 ? `(${stock})` : "(Out)"}
-                         </span>
+                        <span className={`text-[13px] font-bold ${isDisabled ? "text-stone-400" : isActive ? "text-stone-900" : "text-stone-500"}`}>{money(Number(priceOverride))}</span>
+                        <span className={`text-[11px] font-bold uppercase tracking-wider ${stock > 0 ? (isActive ? "text-emerald-600" : "text-emerald-600/70") : "text-rose-500"}`}>
+                          {stock > 0 ? `(${stock})` : "(Out)"}
+                        </span>
                       </div>
                     </button>
                   );
@@ -804,81 +830,81 @@ function LineEditor({
           ) : null}
 
           <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
-             <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
-               <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Sale Details</p>
-             </div>
-             <div className="p-4 bg-white space-y-4">
-                {selectedProduct.tracking_type === "SERIALIZED" ? (
-                  <div className="space-y-4">
-                    <Field label={selectedProduct.product_kind === "MOBILE" ? "Device IMEI" : "Device Serial"} required>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <Input
-                            value={line.identifier_value}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              const matchedUnit = availableUnits.find(u => buildInventoryItemLabel(u) === val || u.identifiers?.some(id => id.identifier_value === val));
-                              const nextVariantId = matchedUnit?.variant_id ?? line.variant_id;
-                              const variantPrice = matchedUnit && nextVariantId 
-                                ? (variants.find(v => v.id === nextVariantId)?.selling_price_override ?? selectedProduct.base_selling_price)
-                                : Number(line.unit_price);
+            <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Sale Details</p>
+            </div>
+            <div className="p-4 bg-white space-y-4">
+              {selectedProduct.tracking_type === "SERIALIZED" ? (
+                <div className="space-y-4">
+                  <Field label={selectedProduct.product_kind === "MOBILE" ? "Device IMEI" : "Device Serial"} required>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          value={line.identifier_value}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const matchedUnit = availableUnits.find(u => buildInventoryItemLabel(u) === val || u.identifiers?.some(id => id.identifier_value === val));
+                            const nextVariantId = matchedUnit?.variant_id ?? line.variant_id;
+                            const variantPrice = matchedUnit && nextVariantId
+                              ? (variants.find(v => v.id === nextVariantId)?.selling_price_override ?? selectedProduct.base_selling_price)
+                              : Number(line.unit_price);
 
-                              onChange({
-                                identifier_value: val,
-                                inventory_item_id: matchedUnit ? matchedUnit.id : "",
-                                quantity: "1",
-                                variant_id: nextVariantId,
-                                unit_price: String(variantPrice)
-                              });
-                            }}
-                            placeholder="Scan or enter exactly..."
-                            className="rounded-xl border-stone-200 bg-stone-50"
-                          />
-                        </div>
-                        <Button type="button" variant="outline" className="shrink-0 h-10 w-10 p-0 rounded-xl" onClick={() => setScanningField("identifier")}>
-                          <ScanBarcode className="h-4 w-4" />
-                        </Button>
+                            onChange({
+                              identifier_value: val,
+                              inventory_item_id: matchedUnit ? matchedUnit.id : "",
+                              quantity: "1",
+                              variant_id: nextVariantId,
+                              unit_price: String(variantPrice)
+                            });
+                          }}
+                          placeholder="Scan or enter exactly..."
+                          className="rounded-xl border-stone-200 bg-stone-50"
+                        />
                       </div>
-                      {selectedUnit ? <p className="mt-2 text-xs font-semibold text-emerald-600">Matched in-stock device: {buildInventoryItemLabel(selectedUnit)}</p> : null}
-                      {!selectedUnit && line.identifier_value ? <p className="mt-2 text-xs font-medium text-amber-600">Manual entry (Not mapped to inventory)</p> : null}
-                    </Field>
-                  </div>
-                ) : (
-                  <Field label="Quantity" required>
-                    <QuantityStepper
-                      value={selectedProduct.product_kind === "MOBILE" ? "1" : line.quantity}
-                      disabled={selectedProduct.product_kind === "MOBILE"}
-                      onDecrease={() => adjustAccessoryQuantity(-1)}
-                      onIncrease={() => adjustAccessoryQuantity(1)}
-                    />
-                    <p className="mt-2 text-[11px] font-semibold text-stone-500">
-                      {selectedProduct.product_kind === "MOBILE" ? "Mobile bills are added one device at a time." : `Available stock: ${stockLeft}`}
-                    </p>
-                  </Field>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Unit Price">
-                    <Input
-                      type="number"
-                      value={line.unit_price}
-                      className="rounded-xl border-stone-100 bg-stone-100/50 text-stone-600 font-medium"
-                      onChange={(e) => onChange({ unit_price: e.target.value })}
-                    />
-                  </Field>
-
-                  <Field label="Discount">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.discount_amount}
-                      className="rounded-xl border-stone-200 bg-stone-50"
-                      onChange={(event) => onChange({ discount_amount: event.target.value })}
-                    />
+                      <Button type="button" variant="outline" className="shrink-0 h-10 w-10 p-0 rounded-xl" onClick={() => setScanningField("identifier")}>
+                        <ScanBarcode className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {selectedUnit ? <p className="mt-2 text-xs font-semibold text-emerald-600">Matched in-stock device: {buildInventoryItemLabel(selectedUnit)}</p> : null}
+                    {!selectedUnit && line.identifier_value ? <p className="mt-2 text-xs font-medium text-amber-600">Manual entry (Not mapped to inventory)</p> : null}
                   </Field>
                 </div>
-             </div>
+              ) : (
+                <Field label="Quantity" required>
+                  <QuantityStepper
+                    value={selectedProduct.product_kind === "MOBILE" ? "1" : line.quantity}
+                    disabled={selectedProduct.product_kind === "MOBILE"}
+                    onDecrease={() => adjustAccessoryQuantity(-1)}
+                    onIncrease={() => adjustAccessoryQuantity(1)}
+                  />
+                  <p className="mt-2 text-[11px] font-semibold text-stone-500">
+                    {selectedProduct.product_kind === "MOBILE" ? "Mobile bills are added one device at a time." : `Available stock: ${stockLeft}`}
+                  </p>
+                </Field>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Unit Price">
+                  <Input
+                    type="number"
+                    value={line.unit_price}
+                    className="rounded-xl border-stone-100 bg-stone-100/50 text-stone-600 font-medium"
+                    onChange={(e) => onChange({ unit_price: e.target.value })}
+                  />
+                </Field>
+
+                <Field label="Discount">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={line.discount_amount}
+                    className="rounded-xl border-stone-200 bg-stone-50"
+                    onChange={(event) => onChange({ discount_amount: event.target.value })}
+                  />
+                </Field>
+              </div>
+            </div>
           </div>
 
           {selectedProduct.product_kind === "MOBILE" ? (
@@ -922,12 +948,7 @@ function LineEditor({
         </>
       ) : null}
 
-      {selectedProduct && !productDetails && line.product_id ? (
-        <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm text-stone-500">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading variants...
-        </div>
-      ) : null}
+
 
       {scanningField ? (
         <BarcodeScanner
@@ -937,7 +958,7 @@ function LineEditor({
             if (scanningField === "identifier") {
               const matchedUnit = availableUnits.find((u) => buildInventoryItemLabel(u) === result || u.identifiers?.some((id) => id.identifier_value === result));
               const nextVariantId = matchedUnit?.variant_id ?? line.variant_id;
-              const variantPrice = matchedUnit && nextVariantId 
+              const variantPrice = matchedUnit && nextVariantId
                 ? (variants.find(v => v.id === nextVariantId)?.selling_price_override ?? selectedProduct?.base_selling_price ?? 0)
                 : Number(line.unit_price);
 
@@ -980,7 +1001,7 @@ export function AddBillModal({
 }) {
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
-  const [customer, setCustomer] = useState<CustomerDraft>({ name: "", mobile: "", billing_address: "", gst_number: "" });
+  const [customer, setCustomer] = useState<CustomerDraft>({ name: "", country_code: "+91", mobile: "", billing_address: "", gst_number: "" });
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(createEmptyPaymentDraft());
   const [pendingPaymentDraft, setPendingPaymentDraft] = useState<PaymentDraft>(createEmptyPaymentDraft());
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -1026,9 +1047,11 @@ export function AddBillModal({
         setDraftSyncReady(false);
         setShowRestorePrompt(false);
         setSavedDraft(null);
+        const parsedMobile = invoiceToEdit.customer_mobile?.match(/^(\+\d+)\s?(.*)$/);
         setCustomer({
           name: invoiceToEdit.customer_name || "",
-          mobile: invoiceToEdit.customer_mobile || "",
+          country_code: parsedMobile ? parsedMobile[1] : "+91",
+          mobile: parsedMobile ? parsedMobile[2].replace(/\D/g, "") : (invoiceToEdit.customer_mobile?.replace(/\D/g, "") || ""),
           billing_address: invoiceToEdit.billing_address || "",
           gst_number: invoiceToEdit.customer_gst_number || "",
         });
@@ -1066,7 +1089,7 @@ export function AddBillModal({
         setCurrentStep("customer");
       } else {
         const existingDraft = readStoredBillDraft();
-        setCustomer({ name: "", mobile: "", billing_address: "", gst_number: "" });
+        setCustomer({ name: "", country_code: "+91", mobile: "", billing_address: "", gst_number: "" });
         setPaymentDraft(createEmptyPaymentDraft());
         setPendingPaymentDraft(createEmptyPaymentDraft());
         setNotes("");
@@ -1392,8 +1415,9 @@ export function AddBillModal({
         setClientError("Mobile number is required.");
         return false;
       }
-      if (!/^\d{10}$/.test(customer.mobile.trim())) {
-        setClientError("Mobile number must be exactly 10 digits.");
+      const digitsCount = customer.mobile.replace(/\D/g, "").length;
+      if (digitsCount < 7 || digitsCount > 15) {
+        setClientError("Mobile number should be between 7 and 15 digits.");
         return false;
       }
       if (!customer.billing_address.trim()) {
@@ -1454,7 +1478,12 @@ export function AddBillModal({
     formData.set(
       "invoice_payload",
       JSON.stringify({
-        customer,
+        customer: {
+          name: customer.name,
+          mobile: `${customer.country_code} ${customer.mobile}`.trim(),
+          billing_address: customer.billing_address,
+          gst_number: customer.gst_number,
+        },
         items: preparedLines,
         payment_method: deriveInvoicePaymentMethod(paymentDraft),
         payment_details: {
@@ -1465,40 +1494,45 @@ export function AddBillModal({
         notes,
       })
     );
-      if (invoiceToEdit) {
-        formData.set(
-          "invoice_payload",
-          JSON.stringify({
-            invoice_id: invoiceToEdit.id,
-            customer,
-            items: preparedLines,
-            payment_method: deriveInvoicePaymentMethod(paymentDraft),
-            payment_details: {
-              methods: paymentDraft.methods,
-              loan_provider: paymentDraft.loan_provider || null,
-              loan_number: paymentDraft.loan_number || null,
-            },
-            notes,
-          })
-        );
-      }
+    if (invoiceToEdit) {
+      formData.set(
+        "invoice_payload",
+        JSON.stringify({
+          invoice_id: invoiceToEdit.id,
+          customer: {
+            name: customer.name,
+            mobile: `${customer.country_code} ${customer.mobile}`.trim(),
+            billing_address: customer.billing_address,
+            gst_number: customer.gst_number,
+          },
+          items: preparedLines,
+          payment_method: deriveInvoicePaymentMethod(paymentDraft),
+          payment_details: {
+            methods: paymentDraft.methods,
+            loan_provider: paymentDraft.loan_provider || null,
+            loan_number: paymentDraft.loan_number || null,
+          },
+          notes,
+        })
+      );
+    }
 
     startTransition(async () => {
       try {
-        const result = invoiceToEdit 
+        const result = invoiceToEdit
           ? await updateInvoiceAction({ status: "success", message: "" }, formData)
           : await createInvoiceAction({ status: "success", message: "" }, formData);
-        
+
         console.log("[Bill Submit] Server action result:", JSON.stringify(result, null, 2));
         setState(result);
-        
+
         if (result.status === "success" && result.data) {
           setDraftSyncReady(false);
           clearStoredBillDraft();
 
           try {
-            await downloadInvoicePdf({ 
-              ...(result.data as Parameters<typeof downloadInvoicePdf>[0]), 
+            await downloadInvoicePdf({
+              ...(result.data as Parameters<typeof downloadInvoicePdf>[0]),
               shop_logo_url: shopLogoUrl ?? null,
               shop_postal_code: shopPostalCode ?? null,
             });
@@ -1506,15 +1540,15 @@ export function AddBillModal({
             console.error("[Bill Submit] PDF download failed:", pdfError);
             // PDF failed but invoice was created, still close
           }
-          
+
           onInvoiceCreated?.(
             preparedLines.flatMap((line) =>
               line.product_id
                 ? [{
-                    product_id: line.product_id,
-                    variant_id: line.variant_id,
-                    quantity: line.quantity,
-                  }]
+                  product_id: line.product_id,
+                  variant_id: line.variant_id,
+                  quantity: line.quantity,
+                }]
                 : []
             )
           );
@@ -1529,9 +1563,9 @@ export function AddBillModal({
         }
       } catch (err) {
         console.error("[Bill Submit] Uncaught error during submission:", err);
-        setState({ 
-          status: "error", 
-          message: err instanceof Error ? err.message : "An unexpected error occurred. Check browser console for details." 
+        setState({
+          status: "error",
+          message: err instanceof Error ? err.message : "An unexpected error occurred. Check browser console for details."
         });
       }
     });
@@ -1582,15 +1616,30 @@ export function AddBillModal({
                 <Input value={customer.name} onChange={(event) => setCustomer((current) => ({ ...current, name: event.target.value }))} />
               </Field>
               <Field label="Mobile Number" required>
-                <Input
-                  value={customer.mobile}
-                  inputMode="numeric"
-                  maxLength={10}
-                  onChange={(event) => {
-                    const digitsOnly = event.target.value.replace(/\D/g, "").slice(0, 10);
-                    setCustomer((current) => ({ ...current, mobile: digitsOnly }));
-                  }}
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={customer.country_code}
+                    onChange={(e) => setCustomer((current) => ({ ...current, country_code: e.target.value }))}
+                    className="shrink-0 px-2 py-2 rounded-xl bg-stone-50 border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                  >
+                    {COUNTRY_CODES.map((country) => (
+                      <option key={country.code} value={country.code}>
+                        {country.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    className="flex-1 rounded-xl border-stone-200"
+                    placeholder="Number"
+                    value={customer.mobile}
+                    inputMode="numeric"
+                    maxLength={15}
+                    onChange={(event) => {
+                      const digitsOnly = event.target.value.replace(/\D/g, "").slice(0, 15);
+                      setCustomer((current) => ({ ...current, mobile: digitsOnly }));
+                    }}
+                  />
+                </div>
               </Field>
               <Field label="Bill To Address" required>
                 <Textarea value={customer.billing_address} onChange={(event) => setCustomer((current) => ({ ...current, billing_address: event.target.value }))} />
@@ -1623,25 +1672,25 @@ export function AddBillModal({
                       <div key={line.id} className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden shadow-sm transition-all duration-200 hover:shadow-md hover:border-stone-300">
                         <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-stone-200 bg-stone-100/50">
                           <div className="flex items-center gap-2">
-                             <div className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white shadow-sm ring-2 ring-stone-900/10">
-                               {index + 1}
-                             </div>
-                             <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">
-                               {isQuickItem ? "Quick Item" : "Item Selected"}
-                             </span>
-                           </div>
-                           <div className="flex items-center gap-1">
-                             <button type="button" className="p-1 text-stone-900 transition hover:text-teal-700" onClick={() => openEditProductDialog(line.id)}>
-                               <Pencil className="h-4 w-4" />
-                             </button>
-                             <button
-                               type="button"
-                               className="p-1 text-rose-700 transition hover:text-rose-800"
-                               onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
-                             >
-                               <Trash2 className="h-4 w-4" />
-                             </button>
-                           </div>
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white shadow-sm ring-2 ring-stone-900/10">
+                              {index + 1}
+                            </div>
+                            <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">
+                              {isQuickItem ? "Quick Item" : "Item Selected"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button type="button" className="p-1 text-stone-900 transition hover:text-teal-700" onClick={() => openEditProductDialog(line.id)}>
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1 text-rose-700 transition hover:text-rose-800"
+                              onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
 
                         <div className="px-4 py-4 bg-white">
@@ -1746,7 +1795,7 @@ export function AddBillModal({
               <PreviewCard title="Customer Details" actionLabel="Edit" onAction={() => setCurrentStep("customer")}>
                 <div>
                   <PreviewField label="Customer" value={customer.name} />
-                  <PreviewField label="Mobile" value={customer.mobile || "Not provided"} />
+                  <PreviewField label="Mobile" value={customer.mobile ? `${customer.country_code} ${customer.mobile}` : "Not provided"} />
                   <PreviewField label="Address" value={customer.billing_address || "Not provided"} />
                   <PreviewField label="GST" value={customer.gst_number || "Not provided"} isLast />
                 </div>
@@ -1974,13 +2023,13 @@ export function AddBillModal({
                   setQuickItemDraft((current) =>
                     current
                       ? {
-                          ...current,
-                          is_free_gift: !current.is_free_gift,
-                          unit_price: current.unit_price,
-                          discount_amount: current.is_free_gift
-                            ? "0"
-                            : String((Number.parseInt(current.quantity || "1", 10) || 1) * (Number.parseFloat(current.unit_price || "0") || 0)),
-                        }
+                        ...current,
+                        is_free_gift: !current.is_free_gift,
+                        unit_price: current.unit_price,
+                        discount_amount: current.is_free_gift
+                          ? "0"
+                          : String((Number.parseInt(current.quantity || "1", 10) || 1) * (Number.parseFloat(current.unit_price || "0") || 0)),
+                      }
                       : current
                   )
                 }
