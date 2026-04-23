@@ -19,7 +19,14 @@ export type BillingInvoiceSummary = {
     methods?: string[];
     loan_provider?: string | null;
     loan_number?: string | null;
+    loan_tenure_months?: number | null;
+    down_payment?: number | null;
+    monthly_emi_amount?: number | null;
+    first_emi_date?: string | null;
+    emi_day_of_month?: number | null;
   } | null;
+  customer_signature_url?: string | null;
+  send_ready_pdf_url?: string | null;
   payment_status: string;
   notes?: string | null;
   shop_name_snapshot: string;
@@ -69,6 +76,8 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
         grand_total,
         payment_method,
         payment_details,
+        customer_signature_url,
+        invoice_pdf_url,
         payment_status,
         notes,
         shop_name_snapshot,
@@ -124,7 +133,10 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
     query = query.order("invoice_date", { ascending: false }).limit(100);
 
     const { data } = await query;
-    invoices = data ?? [];
+    invoices = (data ?? []).map((invoice) => ({
+      ...invoice,
+      send_ready_pdf_url: invoice.invoice_pdf_url ?? null,
+    }));
   }
 
   return {

@@ -14,8 +14,16 @@ export const PaymentDetailsSchema = z.object({
   methods: z.array(PaymentMethodOptionSchema).min(1, "Add at least one payment method."),
   loan_provider: z.string().optional().nullable(),
   loan_number: z.string().optional().nullable(),
+  loan_tenure_months: z.coerce.number().optional().nullable(),
+  down_payment: z.coerce.number().optional().nullable(),
+  monthly_emi_amount: z.coerce.number().optional().nullable(),
+  first_emi_date: z.string().optional().nullable(),
+  emi_day_of_month: z.coerce.number().min(1).max(28).optional().nullable(),
 });
 export type PaymentDetails = z.infer<typeof PaymentDetailsSchema>;
+
+export const DeliveryModeSchema = z.enum(["download", "auto_send", "both"]);
+export type DeliveryMode = z.infer<typeof DeliveryModeSchema>;
 
 export const CustomerDraftSchema = z.object({
   name: z.string().min(1, "Customer name is required"),
@@ -53,6 +61,9 @@ export const CreateInvoicePayloadSchema = z.object({
   items: z.array(BillingLineDraftSchema).min(1, "At least one product is required"),
   payment_method: z.enum(["CASH", "CARD", "UPI", "BANK_TRANSFER", "OTHER"]).default("CASH"),
   payment_details: PaymentDetailsSchema,
+  delivery_mode: DeliveryModeSchema.default("download"),
+  customer_signature_url: z.string().url().optional().nullable(),
+  send_ready_pdf_url: z.string().url().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 export type CreateInvoicePayload = z.infer<typeof CreateInvoicePayloadSchema>;
@@ -76,6 +87,9 @@ export const InvoiceSchema = z.object({
   grand_total: z.coerce.number(),
   payment_method: z.string(),
   payment_details: PaymentDetailsSchema.nullable().optional(),
+  delivery_mode: DeliveryModeSchema.optional().nullable(),
+  customer_signature_url: z.string().nullable().optional(),
+  send_ready_pdf_url: z.string().nullable().optional(),
   payment_status: z.string(),
   invoice_footer_snapshot: z.string().nullable().optional(),
   shop_name_snapshot: z.string(),

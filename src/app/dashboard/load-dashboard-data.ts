@@ -39,6 +39,8 @@ export type RecentInvoice = {
   shop_phone_snapshot?: string | null;
   shop_gst_snapshot?: string | null;
   invoice_footer_snapshot?: string | null;
+  customer_signature_url?: string | null;
+  send_ready_pdf_url?: string | null;
   invoice_items?: Array<{
     id: string;
     product_id: string | null;
@@ -178,7 +180,7 @@ export async function loadDashboardData() {
     .select(`
       id, invoice_number, invoice_date, customer_name, customer_mobile, billing_address, customer_gst_number,
       subtotal, tax_total, discount_total, grand_total, payment_method, payment_details, payment_status, notes,
-      shop_name_snapshot, shop_address_snapshot, shop_phone_snapshot, shop_gst_snapshot, invoice_footer_snapshot,
+      shop_name_snapshot, shop_address_snapshot, shop_phone_snapshot, shop_gst_snapshot, invoice_footer_snapshot, invoice_pdf_url, customer_signature_url,
       invoice_items (
         id, product_id, variant_id, inventory_item_id, product_name_snapshot, brand_name_snapshot, category_name_snapshot,
         variant_name_snapshot, identifier_snapshot, quantity, unit_price, tax_rate, discount_amount, line_total
@@ -210,6 +212,8 @@ export async function loadDashboardData() {
       shop_phone_snapshot: inv.shop_phone_snapshot,
       shop_gst_snapshot: inv.shop_gst_snapshot,
       invoice_footer_snapshot: inv.invoice_footer_snapshot,
+      customer_signature_url: inv.customer_signature_url,
+      send_ready_pdf_url: inv.invoice_pdf_url,
       invoice_items: inv.invoice_items as RecentInvoice["invoice_items"],
     }));
   }

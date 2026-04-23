@@ -23,11 +23,19 @@ export type PrintableInvoice = {
     methods?: string[];
     loan_provider?: string | null;
     loan_number?: string | null;
+    loan_tenure_months?: number | null;
+    down_payment?: number | null;
+    monthly_emi_amount?: number | null;
+    first_emi_date?: string | null;
+    emi_day_of_month?: number | null;
   } | null;
   payment_status?: string | null;
   notes?: string | null;
   shop_logo_url?: string | null;
   shop_postal_code?: string | null;
+  shop_stamp_url?: string | null;
+  customer_signature_url?: string | null;
+  send_ready_pdf_url?: string | null;
   invoice_items?: Array<{
     product_id?: string | null;
     product_name_snapshot: string;
@@ -141,11 +149,15 @@ function sanitizeFilenamePart(value?: string | null) {
 }
 
 async function embedLogo(pdf: PDFDocument, logoUrl?: string | null) {
-  const assetUrl = resolvePrintableAssetUrl(logoUrl);
-  if (!assetUrl) return null;
+  return embedAsset(pdf, logoUrl);
+}
+
+async function embedAsset(pdf: PDFDocument, assetUrl?: string | null) {
+  const resolvedAssetUrl = resolvePrintableAssetUrl(assetUrl);
+  if (!resolvedAssetUrl) return null;
 
   try {
-    const response = await fetch(assetUrl);
+    const response = await fetch(resolvedAssetUrl);
     if (!response.ok) return null;
     const bytes = await response.arrayBuffer();
     const contentType = response.headers.get("content-type") ?? "";
@@ -299,6 +311,44 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   }
 
   infoRows.push({ label: "Payment", value: paymentSummary, full: true });
+  if (invoice.payment_details?.methods?.includes("LOAN")) {
+    const loanFields: Array<{ label: string; value: string }> = [];
+
+    if (invoice.payment_details.loan_tenure_months) {
+      loanFields.push({
+        label: "Loan Tenure",
+        value: `${invoice.payment_details.loan_tenure_months} months`,
+      });
+    }
+    if (invoice.payment_details.down_payment != null) {
+      loanFields.push({
+        label: "Down Payment",
+        value: `Rs ${formatMoney(invoice.payment_details.down_payment)}`,
+      });
+    }
+    if (invoice.payment_details.monthly_emi_amount != null) {
+      loanFields.push({
+        label: "Monthly EMI",
+        value: `Rs ${formatMoney(invoice.payment_details.monthly_emi_amount)}`,
+      });
+    }
+    if (invoice.payment_details.first_emi_date) {
+      loanFields.push({
+        label: "First EMI Date",
+        value: String(invoice.payment_details.first_emi_date),
+      });
+    }
+
+    const currentHalfCount = infoRows.filter((r) => !r.full).length;
+    loanFields.forEach((field, i) => {
+      const isRight = (currentHalfCount + i) % 2 === 1;
+      infoRows.push({
+        label: field.label,
+        value: sanitizeForPdf(field.value),
+        align: isRight ? "right" : "left",
+      });
+    });
+  }
   infoRows.push({ label: "Address", value: sanitizeForPdf(invoice.billing_address ?? "-"), full: true });
 
   const items = (invoice.invoice_items ?? []).map((item, index) => {
@@ -378,12 +428,14 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
 }
 
 
-export async function downloadInvoicePdf(invoice: PrintableInvoice) {
+export async function buildInvoicePdfBytes(invoice: PrintableInvoice) {
   const doc = buildInvoiceDocData(invoice);
   const pdf = await PDFDocument.create();
   const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const logoImage = await embedLogo(pdf, doc.logoUrl);
+  const customerSignatureImage = await embedAsset(pdf, invoice.customer_signature_url ?? null);
+  const shopStampImage = await embedAsset(pdf, invoice.shop_stamp_url ?? null);
 
   const page = pdf.addPage([INVOICE_LAYOUT.pdfPageWidth, INVOICE_LAYOUT.pdfPageHeight]);
   const pageWidth = page.getWidth();
@@ -850,8 +902,19 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   const footerLineHeight = px(13 * 1.55);
   const footerLines = wrapTextWithLineBreaks(doc.footerText, contentWidth, fontRegular, footerFontSize);
   const footerBlockDepth = px(14) + footerFontSize + Math.max(0, footerLines.length - 1) * footerLineHeight + px(8);
-  const signatureBlockDepth = px(10) + px(13) + px(10) + px(12) + px(8);
+  const signatureBlockDepth = px(10) + px(60) + px(10) + px(12) + px(8);
   const summaryBlockHeight = doc.summaryRows.length * summaryRowHeight;
+
+  const signatureImageWidth = px(170);
+  const signatureImageHeight = px(56);
+  const stampImageWidth = px(380);
+  let finalStampHeight = px(80);
+  if (shopStampImage) {
+    const { width: origW, height: origH } = shopStampImage.size();
+    const stampAspectRatio = origH / origW;
+    finalStampHeight = stampImageWidth * stampAspectRatio;
+  }
+
   const minSummaryTop =
     pageBoxY +
     footerBlockDepth +
@@ -921,12 +984,22 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     }
   }
 
-  const signaturesTop = Math.min(awY, summaryTop) - signatureBlockDepth - px(56);
-  const signatureLineWidth = px(132);
+  const signatureLineWidth = px(260);
   const signaturePaddingX = px(10);
   const leftSignatureX = contentX + signaturePaddingX;
   const rightSignatureX = contentRight - signaturePaddingX - signatureLineWidth;
-  const footerTop = signaturesTop - signatureBlockDepth - px(56);
+
+  const signaturesTop = Math.min(awY, summaryTop) - px(20) - finalStampHeight - px(10);
+  const footerTop = signaturesTop - px(50);
+
+  if (customerSignatureImage) {
+    page.drawImage(customerSignatureImage, {
+      x: leftSignatureX,
+      y: signaturesTop + px(10),
+      width: signatureImageWidth,
+      height: signatureImageHeight,
+    });
+  }
 
   page.drawLine({
     start: { x: leftSignatureX, y: signaturesTop },
@@ -942,14 +1015,24 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
     color: headingColor,
   });
 
+  if (shopStampImage) {
+    page.drawImage(shopStampImage, {
+      x: rightSignatureX + signatureLineWidth / 2 - stampImageWidth / 2,
+      y: signaturesTop + px(10),
+      width: stampImageWidth,
+      height: finalStampHeight,
+    });
+  }
+
   page.drawLine({
     start: { x: rightSignatureX, y: signaturesTop },
     end: { x: rightSignatureX + signatureLineWidth, y: signaturesTop },
     thickness: 1,
     color: titleRuleColor,
   });
-  page.drawText("Authorized Signatory", {
-    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize("Authorized Signatory", px(15)) / 2,
+  const rightLabel = shopStampImage ? "Authorized Stamp & Signature" : "Authorized Signatory";
+  page.drawText(rightLabel, {
+    x: rightSignatureX + signatureLineWidth / 2 - fontBold.widthOfTextAtSize(rightLabel, px(15)) / 2,
     y: signaturesTop - px(7) - px(15),
     size: px(15),
     font: fontBold,
@@ -986,5 +1069,10 @@ export async function downloadInvoicePdf(invoice: PrintableInvoice) {
   }
 
   const bytes = await pdf.save();
-  downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), doc.filename);
+  return { bytes: new Uint8Array(bytes), filename: doc.filename };
+}
+
+export async function downloadInvoicePdf(invoice: PrintableInvoice) {
+  const { bytes, filename } = await buildInvoicePdfBytes(invoice);
+  downloadBlob(new Blob([bytes], { type: "application/pdf" }), filename);
 }

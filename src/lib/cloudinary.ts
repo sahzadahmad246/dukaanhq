@@ -8,7 +8,10 @@ cloudinary.config({
 
 export { cloudinary };
 
-export async function uploadImageToCloudinary(file: File): Promise<{ url: string; public_id: string } | null> {
+async function uploadFileToCloudinary(
+  file: File,
+  options?: { folder?: string; resourceType?: "image" | "raw"; format?: string }
+): Promise<{ url: string; public_id: string } | null> {
   if (!file || file.size === 0) return null;
 
   try {
@@ -16,9 +19,14 @@ export async function uploadImageToCloudinary(file: File): Promise<{ url: string
     const buffer = Buffer.from(arrayBuffer);
 
     return new Promise((resolve) => {
-      const format = file.type === "image/png" ? "png" : undefined;
+      const format =
+        options?.format ?? (file.type === "image/png" ? "png" : undefined);
       const uploadStream = cloudinary.uploader.upload_stream(
-        { folder: "dukaanhq_products", format },
+        {
+          folder: options?.folder ?? "dukaanhq_products",
+          format,
+          resource_type: options?.resourceType ?? "image",
+        },
         (error, result) => {
           if (error || !result) {
             console.error("Cloudinary upload failed", error);
@@ -38,6 +46,21 @@ export async function uploadImageToCloudinary(file: File): Promise<{ url: string
     console.error("Error preparing file for Cloudinary:", error);
     return null;
   }
+}
+
+export async function uploadImageToCloudinary(file: File): Promise<{ url: string; public_id: string } | null> {
+  return uploadFileToCloudinary(file, { folder: "dukaanhq_products", resourceType: "image" });
+}
+
+export async function uploadRawFileToCloudinary(
+  file: File,
+  options?: { folder?: string; format?: string }
+): Promise<{ url: string; public_id: string } | null> {
+  return uploadFileToCloudinary(file, {
+    folder: options?.folder ?? "dukaanhq_documents",
+    resourceType: "raw",
+    format: options?.format,
+  });
 }
 
 export async function uploadImagesToCloudinary(

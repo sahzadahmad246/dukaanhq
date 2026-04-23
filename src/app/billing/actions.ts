@@ -74,6 +74,8 @@ export async function createInvoiceAction(
     p_items: payload.items,
     p_payment_method: payload.payment_method,
     p_payment_details: payload.payment_details,
+    p_customer_signature_url: payload.customer_signature_url ?? null,
+    p_invoice_pdf_url: payload.send_ready_pdf_url ?? null,
     p_notes: payload.notes ?? null,
   });
 
@@ -114,6 +116,7 @@ export async function createInvoiceAction(
     message: "Invoice created successfully.",
     data: invoice ? {
       ...invoice,
+      send_ready_pdf_url: invoice.invoice_pdf_url ?? null,
       shop_postal_code: shop.postal_code ?? null,
     } : null,
   };
@@ -167,6 +170,8 @@ export async function updateInvoiceAction(
     p_items: payload.items,
     p_payment_method: payload.payment_method,
     p_payment_details: payload.payment_details,
+    p_customer_signature_url: payload.customer_signature_url ?? null,
+    p_invoice_pdf_url: payload.send_ready_pdf_url ?? null,
     p_notes: payload.notes ?? null,
   });
 
@@ -195,7 +200,12 @@ export async function updateInvoiceAction(
   return {
     status: "success",
     message: "Invoice updated successfully.",
-    data: invoice,
+    data: invoice
+      ? {
+          ...invoice,
+          send_ready_pdf_url: invoice.invoice_pdf_url ?? null,
+        }
+      : null,
   };
 }
 

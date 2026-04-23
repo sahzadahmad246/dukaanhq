@@ -31,6 +31,21 @@ function buildPaymentMeta(invoice: InvoiceDetails) {
   return { methodText, extra };
 }
 
+function buildLoanEmiMeta(invoice: InvoiceDetails) {
+  const paymentDetails = invoice.payment_details;
+  if (!paymentDetails?.methods?.includes("LOAN")) {
+    return [];
+  }
+
+  return [
+    paymentDetails.loan_tenure_months ? `Tenure: ${paymentDetails.loan_tenure_months} months` : null,
+    paymentDetails.down_payment != null ? `Down Payment: ${money(paymentDetails.down_payment)}` : null,
+    paymentDetails.monthly_emi_amount != null ? `Monthly EMI: ${money(paymentDetails.monthly_emi_amount)}` : null,
+    paymentDetails.first_emi_date ? `First EMI: ${format(new Date(paymentDetails.first_emi_date), "dd MMM yyyy")}` : null,
+    paymentDetails.emi_day_of_month ? `EMI Day: ${paymentDetails.emi_day_of_month}` : null,
+  ].filter(Boolean) as string[];
+}
+
 function isFreeQuickItem(item: NonNullable<InvoiceDetails["invoice_items"]>[number]) {
   return !item.product_id && Number(item.line_total ?? 0) === 0 && Number(item.unit_price ?? 0) > 0;
 }
@@ -55,6 +70,7 @@ export function BillDetailsDrawer({
   onProductHover?: (productId: string) => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
   return (
     <>
@@ -85,15 +101,55 @@ export function BillDetailsDrawer({
                   </a>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={() => onDownload(invoice)}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
-                  aria-label="Download bill"
-                  title="Download bill"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      if (invoice.send_ready_pdf_url) {
+                        e.stopPropagation();
+                        setShowDownloadMenu(!showDownloadMenu);
+                      } else {
+                        onDownload(invoice);
+                      }
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
+                    aria-label="Download bill"
+                    title={invoice.send_ready_pdf_url ? "Download options" : "Download bill"}
+                  >
+                    <Download className="h-4 w-4" />
+                  </button>
+                  {showDownloadMenu && invoice.send_ready_pdf_url && (
+                    <div className="absolute right-0 top-12 z-[60] w-56 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDownloadMenu(false);
+                          window.open(invoice.send_ready_pdf_url!, "_blank");
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                      >
+                        <Receipt className="h-3.5 w-3.5 text-emerald-600" />
+                        With Signature & Stamp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDownloadMenu(false);
+                          onDownload(invoice);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                      >
+                        <Receipt className="h-3.5 w-3.5 text-stone-400" />
+                        Clean Invoice PDF
+                      </button>
+                    </div>
+                  )}
+                  {showDownloadMenu && (
+                    <div className="fixed inset-0 z-50" onClick={() => setShowDownloadMenu(false)} />
+                  )}
+                </div>
                 
                 <div className="relative">
                   <button
@@ -200,6 +256,18 @@ export function BillDetailsDrawer({
                       {buildPaymentMeta(invoice).extra.map((entry) => (
                         <div key={entry}>{entry}</div>
                       ))}
+                    </div>
+                  ) : null}
+                  {buildLoanEmiMeta(invoice).length > 0 ? (
+                    <div className="mt-3 space-y-1 text-xs text-stone-600">
+                      {buildLoanEmiMeta(invoice).map((entry) => (
+                        <div key={entry}>{entry}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {invoice.customer_signature_url ? (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+                      Customer signature captured for this invoice.
                     </div>
                   ) : null}
                 </div>

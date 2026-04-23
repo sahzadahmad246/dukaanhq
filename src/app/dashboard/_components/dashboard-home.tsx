@@ -166,6 +166,7 @@ export function DashboardHome({
 
   const [editingInvoice, setEditingInvoice] = useState<BillingInvoiceSummary | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [openDownloadDropdownId, setOpenDownloadDropdownId] = useState<string | null>(null);
   const [confirmDeleteInvoiceId, setConfirmDeleteInvoiceId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<Set<string>>(new Set());
@@ -303,6 +304,8 @@ export function DashboardHome({
         ...invoice,
         shop_logo_url: shopLogoUrl ?? null,
         shop_postal_code: shopPostalCode ?? null,
+        shop_stamp_url: null,
+        customer_signature_url: null,
       });
     } catch (err) {
       console.error("[Download] PDF generation failed:", err);
@@ -587,7 +590,7 @@ export function DashboardHome({
               {recentInvoices.filter(i => !deletedInvoiceIds.has(i.id)).map((invoice, i) => {
                 const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
                 return (
-                  <article key={invoice.id} className="dash-card" style={{ zIndex: openDropdownId === invoice.id ? 50 : 1 }} onClick={() => setSelectedInvoiceId(invoice.id)}>
+                  <article key={invoice.id} className="dash-card" style={{ zIndex: (openDropdownId === invoice.id || openDownloadDropdownId === invoice.id) ? 50 : 1 }} onClick={() => setSelectedInvoiceId(invoice.id)}>
                     <div className="dash-card-topbar" style={{ background: accent.top }} />
 
                     {/* Row 1 */}
@@ -642,18 +645,56 @@ export function DashboardHome({
                         </a>
                       ) : null}
 
-                      <button
-                        type="button"
-                        aria-label="Download bill"
-                        title="Download bill"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownloadInvoice(invoice);
-                        }}
-                        style={{ display: "inline-flex", alignItems: "center", justifyItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
-                      >
-                        <Download style={{ width: 12, height: 12 }} />
-                      </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          aria-label="Download bill"
+                          title={invoice.send_ready_pdf_url ? "Download options" : "Download bill"}
+                          onClick={(e) => {
+                            if (invoice.send_ready_pdf_url) {
+                              e.stopPropagation();
+                              setOpenDownloadDropdownId(openDownloadDropdownId === invoice.id ? null : invoice.id);
+                            } else {
+                              e.stopPropagation();
+                              handleDownloadInvoice(invoice);
+                            }
+                          }}
+                          style={{ display: "inline-flex", alignItems: "center", justifyItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
+                        >
+                          <Download style={{ width: 12, height: 12 }} />
+                        </button>
+                        {openDownloadDropdownId === invoice.id && invoice.send_ready_pdf_url && (
+                          <div className="absolute right-0 top-10 z-[60] w-52 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDownloadDropdownId(null);
+                                window.open(invoice.send_ready_pdf_url!, "_blank");
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                            >
+                              <Receipt className="h-3.5 w-3.5 text-emerald-600" />
+                              <span className="flex-1">With Signature & Stamp</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDownloadDropdownId(null);
+                                handleDownloadInvoice(invoice);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                            >
+                              <Receipt className="h-3.5 w-3.5 text-stone-400" />
+                              <span className="flex-1">Clean Invoice PDF</span>
+                            </button>
+                          </div>
+                        )}
+                        {openDownloadDropdownId === invoice.id && (
+                          <div className="fixed inset-0 z-50" onClick={(e) => { e.stopPropagation(); setOpenDownloadDropdownId(null); }} />
+                        )}
+                      </div>
 
                       <div className="relative">
                         <button
@@ -750,6 +791,8 @@ export function DashboardHome({
         invoiceToEdit={editingInvoice}
         products={products}
         shopLogoUrl={shopLogoUrl}
+        shopPostalCode={shopPostalCode}
+        shopStampUrl={shopStampUrl}
         onInvoiceCreated={() => router.refresh()}
         onOpenAddProduct={() => setIsAddProductOpen(true)}
       />

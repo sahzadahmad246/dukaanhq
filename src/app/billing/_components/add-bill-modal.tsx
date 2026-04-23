@@ -26,10 +26,16 @@ import { createInvoiceAction, updateInvoiceAction } from "../actions";
 import type { BillingInvoiceSummary } from "../load-billing-data";
 import { fetchProductDetails, productDetailsQueryKey, productDetailsQueryOptions, type ProductDetails } from "@/app/inventory/queries";
 import type { ActionResponse } from "@/app/inventory/actions";
-import { downloadInvoicePdf } from "./invoice-print";
+import { buildInvoicePdfBytes, downloadInvoicePdf } from "./invoice-print";
 import { BarcodeScanner } from "@/app/inventory/_components/barcode-scanner";
+import { LoanDetailsFields } from "./loan-details-fields";
+import { DeliveryStep } from "./delivery-step";
+import { uploadCustomerSignatureAction, uploadInvoicePdfAction } from "../signature-actions";
+import { toast } from "sonner";
 
-type StepId = "customer" | "products" | "preview";
+type StepId = "customer" | "products" | "delivery" | "preview";
+
+type DeliveryMode = "download" | "auto_send" | "both";
 
 type ProductSummary = Product & {
   total_quantity: number;
@@ -60,6 +66,11 @@ type PaymentDraft = {
   methods: PaymentMethodChoice[];
   loan_provider: string;
   loan_number: string;
+  loan_tenure_months: string;
+  down_payment: string;
+  monthly_emi_amount: string;
+  first_emi_date: string;
+  emi_day_of_month: string;
 };
 
 type BillingLineType = "inventory" | "quick";
@@ -107,7 +118,7 @@ const LOAN_PROVIDER_OPTIONS = [
   "Other",
 ];
 
-const BILL_DRAFT_STORAGE_KEY = "dukaanhq:create-bill:draft:v1";
+const BILL_DRAFT_STORAGE_KEY = "dukaanhq:create-bill:draft:v2";
 
 function createLine(): BillingLineDraft {
   return {
@@ -175,10 +186,12 @@ function normalizeDraftLine(line: Partial<BillingLineDraft> | null | undefined):
 }
 
 type StoredBillDraft = {
-  version: 1;
+  version: 2;
   currentStep: StepId;
   customer: CustomerDraft;
   paymentDraft: PaymentDraft;
+  deliveryMode: DeliveryMode;
+  customerSignatureDataUrl: string | null;
   notes: string;
   lines: BillingLineDraft[];
 };
@@ -190,16 +203,19 @@ function readStoredBillDraft() {
     const raw = window.localStorage.getItem(BILL_DRAFT_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredBillDraft>;
-    if (parsed.version !== 1) return null;
+    if (parsed.version !== 2) return null;
     if (!parsed.customer || !parsed.paymentDraft || !Array.isArray(parsed.lines)) return null;
 
     const currentStep =
-      parsed.currentStep === "customer" || parsed.currentStep === "products" || parsed.currentStep === "preview"
+      parsed.currentStep === "customer" || parsed.currentStep === "products" || parsed.currentStep === "delivery" || parsed.currentStep === "preview"
         ? parsed.currentStep
         : "customer";
 
+    const deliveryMode: DeliveryMode =
+      parsed.deliveryMode === "auto_send" || parsed.deliveryMode === "both" ? parsed.deliveryMode : "download";
+
     return {
-      version: 1 as const,
+      version: 2 as const,
       currentStep,
       customer: {
         name: typeof parsed.customer.name === "string" ? parsed.customer.name : "",
@@ -216,10 +232,17 @@ function readStoredBillDraft() {
           : [],
         loan_provider: typeof parsed.paymentDraft.loan_provider === "string" ? parsed.paymentDraft.loan_provider : "",
         loan_number: typeof parsed.paymentDraft.loan_number === "string" ? parsed.paymentDraft.loan_number : "",
+        loan_tenure_months: typeof parsed.paymentDraft.loan_tenure_months === "string" ? parsed.paymentDraft.loan_tenure_months : "",
+        down_payment: typeof parsed.paymentDraft.down_payment === "string" ? parsed.paymentDraft.down_payment : "",
+        monthly_emi_amount: typeof parsed.paymentDraft.monthly_emi_amount === "string" ? parsed.paymentDraft.monthly_emi_amount : "",
+        first_emi_date: typeof parsed.paymentDraft.first_emi_date === "string" ? parsed.paymentDraft.first_emi_date : "",
+        emi_day_of_month: typeof parsed.paymentDraft.emi_day_of_month === "string" ? parsed.paymentDraft.emi_day_of_month : "",
       },
+      deliveryMode,
+      customerSignatureDataUrl: typeof parsed.customerSignatureDataUrl === "string" ? parsed.customerSignatureDataUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : "",
       lines: parsed.lines.map((line) => normalizeDraftLine(line)),
-    };
+    } satisfies StoredBillDraft;
   } catch {
     return null;
   }
@@ -237,7 +260,17 @@ function money(value: number) {
 function getStepHint(currentStep: StepId, itemCount: number) {
   if (currentStep === "customer") return "Fill customer details to continue.";
   if (currentStep === "products") return itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"} ready. Review products and payment before preview.` : "Add products and payment details to continue.";
+  if (currentStep === "delivery") return "Choose how the invoice should be delivered and capture a customer signature if needed.";
   return "Preview the bill carefully before saving and downloading.";
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
 }
 
 function Stepper({
@@ -323,6 +356,11 @@ function createEmptyPaymentDraft(): PaymentDraft {
     methods: [],
     loan_provider: "",
     loan_number: "",
+    loan_tenure_months: "",
+    down_payment: "",
+    monthly_emi_amount: "",
+    first_emi_date: "",
+    emi_day_of_month: "",
   };
 }
 
@@ -1025,6 +1063,7 @@ export function AddBillModal({
   onInvoiceCreated,
   invoiceToEdit,
   onOpenAddProduct,
+  shopStampUrl,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1034,6 +1073,7 @@ export function AddBillModal({
   onInvoiceCreated?: (items: Array<{ product_id: string; variant_id: string | null; quantity: number }>) => void;
   invoiceToEdit?: BillingInvoiceSummary | null;
   onOpenAddProduct?: () => void;
+  shopStampUrl?: string | null;
 }) {
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
@@ -1055,7 +1095,9 @@ export function AddBillModal({
   const [draftSyncReady, setDraftSyncReady] = useState(false);
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   const [savedDraft, setSavedDraft] = useState<StoredBillDraft | null>(null);
-  const steps: StepId[] = ["customer", "products", "preview"];
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("download");
+  const [customerSignatureDataUrl, setCustomerSignatureDataUrl] = useState<string | null>(null);
+  const steps: StepId[] = ["customer", "products", "delivery", "preview"];
   const stepIndex = steps.indexOf(currentStep);
 
   const queryClient = useQueryClient();
@@ -1095,12 +1137,24 @@ export function AddBillModal({
           methods: (invoiceToEdit.payment_details?.methods as PaymentMethodChoice[]) || [invoiceToEdit.payment_method as PaymentMethodChoice],
           loan_provider: invoiceToEdit.payment_details?.loan_provider || "",
           loan_number: invoiceToEdit.payment_details?.loan_number || "",
+          loan_tenure_months: invoiceToEdit.payment_details?.loan_tenure_months ? String(invoiceToEdit.payment_details.loan_tenure_months) : "",
+          down_payment: invoiceToEdit.payment_details?.down_payment != null ? String(invoiceToEdit.payment_details.down_payment) : "",
+          monthly_emi_amount: invoiceToEdit.payment_details?.monthly_emi_amount != null ? String(invoiceToEdit.payment_details.monthly_emi_amount) : "",
+          first_emi_date: invoiceToEdit.payment_details?.first_emi_date || "",
+          emi_day_of_month: invoiceToEdit.payment_details?.emi_day_of_month ? String(invoiceToEdit.payment_details.emi_day_of_month) : "",
         });
         setPendingPaymentDraft({
           methods: (invoiceToEdit.payment_details?.methods as PaymentMethodChoice[]) || [invoiceToEdit.payment_method as PaymentMethodChoice],
           loan_provider: invoiceToEdit.payment_details?.loan_provider || "",
           loan_number: invoiceToEdit.payment_details?.loan_number || "",
+          loan_tenure_months: invoiceToEdit.payment_details?.loan_tenure_months ? String(invoiceToEdit.payment_details.loan_tenure_months) : "",
+          down_payment: invoiceToEdit.payment_details?.down_payment != null ? String(invoiceToEdit.payment_details.down_payment) : "",
+          monthly_emi_amount: invoiceToEdit.payment_details?.monthly_emi_amount != null ? String(invoiceToEdit.payment_details.monthly_emi_amount) : "",
+          first_emi_date: invoiceToEdit.payment_details?.first_emi_date || "",
+          emi_day_of_month: invoiceToEdit.payment_details?.emi_day_of_month ? String(invoiceToEdit.payment_details.emi_day_of_month) : "",
         });
+        setDeliveryMode(invoiceToEdit.customer_signature_url || invoiceToEdit.send_ready_pdf_url ? "auto_send" : "download");
+        setCustomerSignatureDataUrl(invoiceToEdit.customer_signature_url || null);
         setNotes(invoiceToEdit.notes || "");
         setLines(
           (invoiceToEdit.invoice_items || []).map((item) => {
@@ -1128,6 +1182,8 @@ export function AddBillModal({
         setCustomer({ name: "", country_code: "+91", mobile: "", billing_address: "", gst_number: "" });
         setPaymentDraft(createEmptyPaymentDraft());
         setPendingPaymentDraft(createEmptyPaymentDraft());
+        setDeliveryMode(existingDraft?.deliveryMode ?? "download");
+        setCustomerSignatureDataUrl(existingDraft?.customerSignatureDataUrl ?? null);
         setNotes("");
         setLines([]);
         setCurrentStep("customer");
@@ -1165,16 +1221,18 @@ export function AddBillModal({
     }
 
     const payload: StoredBillDraft = {
-      version: 1,
+      version: 2,
       currentStep,
       customer,
       paymentDraft,
+      deliveryMode,
+      customerSignatureDataUrl,
       notes,
       lines,
     };
 
     window.localStorage.setItem(BILL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
-  }, [currentStep, customer, draftSyncReady, invoiceToEdit, lines, notes, open, paymentDraft]);
+  }, [currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceToEdit, lines, notes, open, paymentDraft]);
 
   if (!open) return null;
 
@@ -1282,6 +1340,8 @@ export function AddBillModal({
     setCustomer(savedDraft.customer);
     setPaymentDraft(savedDraft.paymentDraft);
     setPendingPaymentDraft(savedDraft.paymentDraft);
+    setDeliveryMode(savedDraft.deliveryMode);
+    setCustomerSignatureDataUrl(savedDraft.customerSignatureDataUrl);
     setNotes(savedDraft.notes);
     setLines(savedDraft.lines.map((line) => normalizeDraftLine(line)));
     setCurrentStep(savedDraft.currentStep);
@@ -1341,6 +1401,11 @@ export function AddBillModal({
         methods,
         loan_provider: methods.includes("LOAN") ? current.loan_provider : "",
         loan_number: methods.includes("LOAN") ? current.loan_number : "",
+        loan_tenure_months: methods.includes("LOAN") ? current.loan_tenure_months : "",
+        down_payment: methods.includes("LOAN") ? current.down_payment : "",
+        monthly_emi_amount: methods.includes("LOAN") ? current.monthly_emi_amount : "",
+        first_emi_date: methods.includes("LOAN") ? current.first_emi_date : "",
+        emi_day_of_month: methods.includes("LOAN") ? current.emi_day_of_month : "",
       };
     });
   }
@@ -1358,6 +1423,27 @@ export function AddBillModal({
       }
       if (!pendingPaymentDraft.loan_number.trim()) {
         setClientError("Enter the loan number.");
+        return;
+      }
+      if (!pendingPaymentDraft.loan_tenure_months.trim()) {
+        setClientError("Select the loan tenure.");
+        return;
+      }
+      if (!pendingPaymentDraft.down_payment.trim()) {
+        setClientError("Enter the down payment.");
+        return;
+      }
+      if (!pendingPaymentDraft.monthly_emi_amount.trim()) {
+        setClientError("Enter the monthly EMI amount.");
+        return;
+      }
+      if (!pendingPaymentDraft.first_emi_date.trim()) {
+        setClientError("Choose the first EMI date.");
+        return;
+      }
+      const emiDay = Number.parseInt(pendingPaymentDraft.emi_day_of_month || "0", 10);
+      if (emiDay < 1 || emiDay > 28) {
+        setClientError("EMI day of month must be between 1 and 28.");
         return;
       }
     }
@@ -1481,6 +1567,18 @@ export function AddBillModal({
       }
     }
 
+    if (step === "delivery") {
+      const requiresDigitalAssets = deliveryMode === "auto_send" || deliveryMode === "both";
+      if (requiresDigitalAssets && !shopStampUrl) {
+        setClientError("Upload your shop stamp in Settings to enable auto-send.");
+        return false;
+      }
+      if (requiresDigitalAssets && !customerSignatureDataUrl) {
+        setClientError("Capture the customer signature before continuing.");
+        return false;
+      }
+    }
+
     setClientError("");
     return true;
   }
@@ -1509,32 +1607,27 @@ export function AddBillModal({
   }
 
   function submitInvoice() {
-    if (!validateStep("preview")) return;
-    const formData = new FormData();
-    formData.set(
-      "invoice_payload",
-      JSON.stringify({
-        customer: {
-          name: customer.name,
-          mobile: `${customer.country_code} ${customer.mobile}`.trim(),
-          billing_address: customer.billing_address,
-          gst_number: customer.gst_number,
-        },
-        items: preparedLines,
-        payment_method: deriveInvoicePaymentMethod(paymentDraft),
-        payment_details: {
-          methods: paymentDraft.methods,
-          loan_provider: paymentDraft.loan_provider || null,
-          loan_number: paymentDraft.loan_number || null,
-        },
-        notes,
-      })
-    );
-    if (invoiceToEdit) {
-      formData.set(
-        "invoice_payload",
-        JSON.stringify({
-          invoice_id: invoiceToEdit.id,
+    if (!validateStep("delivery") || !validateStep("preview")) return;
+
+    startTransition(async () => {
+      try {
+        const needsSendReadyAssets = deliveryMode === "auto_send" || deliveryMode === "both";
+        let customerSignatureUrl: string | null = null;
+
+        if (needsSendReadyAssets && customerSignatureDataUrl) {
+          if (customerSignatureDataUrl.startsWith("data:")) {
+            const uploadedSignature = await uploadCustomerSignatureAction(customerSignatureDataUrl);
+            if (!uploadedSignature?.url) {
+              throw new Error("Failed to upload customer signature.");
+            }
+            customerSignatureUrl = uploadedSignature.url;
+          } else {
+            customerSignatureUrl = customerSignatureDataUrl;
+          }
+        }
+
+        const invoicePayload = {
+          ...(invoiceToEdit ? { invoice_id: invoiceToEdit.id } : {}),
           customer: {
             name: customer.name,
             mobile: `${customer.country_code} ${customer.mobile}`.trim(),
@@ -1547,14 +1640,21 @@ export function AddBillModal({
             methods: paymentDraft.methods,
             loan_provider: paymentDraft.loan_provider || null,
             loan_number: paymentDraft.loan_number || null,
+            loan_tenure_months: paymentDraft.loan_tenure_months ? Number(paymentDraft.loan_tenure_months) : null,
+            down_payment: paymentDraft.down_payment ? Number(paymentDraft.down_payment) : null,
+            monthly_emi_amount: paymentDraft.monthly_emi_amount ? Number(paymentDraft.monthly_emi_amount) : null,
+            first_emi_date: paymentDraft.first_emi_date || null,
+            emi_day_of_month: paymentDraft.emi_day_of_month ? Number(paymentDraft.emi_day_of_month) : null,
           },
+          delivery_mode: deliveryMode,
+          customer_signature_url: deliveryMode === "download" ? null : customerSignatureUrl,
+          send_ready_pdf_url: null,
           notes,
-        })
-      );
-    }
+        };
 
-    startTransition(async () => {
-      try {
+        const formData = new FormData();
+        formData.set("invoice_payload", JSON.stringify(invoicePayload));
+
         const result = invoiceToEdit
           ? await updateInvoiceAction({ status: "success", message: "" }, formData)
           : await createInvoiceAction({ status: "success", message: "" }, formData);
@@ -1563,18 +1663,42 @@ export function AddBillModal({
         setState(result);
 
         if (result.status === "success" && result.data) {
+          toast.success(invoiceToEdit ? "Invoice updated successfully!" : "Invoice created successfully!");
           setDraftSyncReady(false);
           clearStoredBillDraft();
 
           try {
-            await downloadInvoicePdf({
-              ...(result.data as Parameters<typeof downloadInvoicePdf>[0]),
+            const createdInvoice = result.data as Parameters<typeof downloadInvoicePdf>[0] & { id: string };
+            const invoiceData = {
+              ...createdInvoice,
               shop_logo_url: shopLogoUrl ?? null,
               shop_postal_code: shopPostalCode ?? null,
-            });
+              shop_stamp_url: shopStampUrl ?? null,
+              customer_signature_url: customerSignatureUrl,
+            };
+
+            if (needsSendReadyAssets) {
+              const { bytes } = await buildInvoicePdfBytes(invoiceData);
+              const uploadedSendReadyPdf = await uploadInvoicePdfAction(
+                bytesToBase64(bytes),
+                createdInvoice.id,
+              );
+
+              if (!uploadedSendReadyPdf?.url) {
+                throw new Error("Failed to prepare send-ready PDF.");
+              }
+            }
+
+            if (deliveryMode === "download" || deliveryMode === "both") {
+              await downloadInvoicePdf({
+                ...invoiceData,
+                customer_signature_url: null,
+                shop_stamp_url: null,
+              });
+            }
           } catch (pdfError) {
             console.error("[Bill Submit] PDF download failed:", pdfError);
-            // PDF failed but invoice was created, still close
+            throw pdfError;
           }
 
           onInvoiceCreated?.(
@@ -1595,6 +1719,7 @@ export function AddBillModal({
           }
           onClose();
         } else if (result.status === "error") {
+          toast.error(result.message || "Failed to submit bill.");
           console.error("[Bill Submit] Server returned error:", result.message);
         }
       } catch (err) {
@@ -1808,6 +1933,8 @@ export function AddBillModal({
                       <p className="text-sm font-semibold text-stone-900">{buildPaymentSummary(paymentDraft)}</p>
                       {paymentDraft.loan_provider ? <p className="text-xs font-medium text-stone-500">Provider: {paymentDraft.loan_provider}</p> : null}
                       {paymentDraft.loan_number ? <p className="text-xs font-medium text-stone-500">Loan No: {paymentDraft.loan_number}</p> : null}
+                      {paymentDraft.loan_tenure_months ? <p className="text-xs font-medium text-stone-500">Tenure: {paymentDraft.loan_tenure_months} months</p> : null}
+                      {paymentDraft.monthly_emi_amount ? <p className="text-xs font-medium text-stone-500">Monthly EMI: {money(Number(paymentDraft.monthly_emi_amount))}</p> : null}
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -1825,9 +1952,22 @@ export function AddBillModal({
             </section>
           ) : null}
 
+          {currentStep === "delivery" ? (
+            <section className="space-y-4 py-2">
+              <StepTitle step={3} title="Delivery" />
+              <DeliveryStep
+                deliveryMode={deliveryMode}
+                onDeliveryModeChange={setDeliveryMode}
+                shopStampUrl={shopStampUrl ?? null}
+                customerSignatureDataUrl={customerSignatureDataUrl}
+                onSignatureChange={setCustomerSignatureDataUrl}
+              />
+            </section>
+          ) : null}
+
           {currentStep === "preview" ? (
             <section className="space-y-4 py-2">
-              <StepTitle step={3} title="Preview" />
+              <StepTitle step={4} title="Preview" />
               <PreviewCard title="Customer Details" actionLabel="Edit" onAction={() => setCurrentStep("customer")}>
                 <div>
                   <PreviewField label="Customer" value={customer.name} />
@@ -1842,8 +1982,41 @@ export function AddBillModal({
                   <p className="text-sm font-semibold text-stone-900">{buildPaymentSummary(paymentDraft)}</p>
                   {paymentDraft.loan_provider ? <p className="text-xs font-medium text-stone-500">Provider: {paymentDraft.loan_provider}</p> : null}
                   {paymentDraft.loan_number ? <p className="text-xs font-medium text-stone-500">Loan No: {paymentDraft.loan_number}</p> : null}
+                  {paymentDraft.loan_tenure_months ? <p className="text-xs font-medium text-stone-500">Tenure: {paymentDraft.loan_tenure_months} months</p> : null}
+                  {paymentDraft.down_payment ? <p className="text-xs font-medium text-stone-500">Down Payment: {money(Number(paymentDraft.down_payment))}</p> : null}
+                  {paymentDraft.monthly_emi_amount ? <p className="text-xs font-medium text-stone-500">Monthly EMI: {money(Number(paymentDraft.monthly_emi_amount))}</p> : null}
+                  {paymentDraft.first_emi_date ? <p className="text-xs font-medium text-stone-500">First EMI Date: {paymentDraft.first_emi_date}</p> : null}
+                  {paymentDraft.emi_day_of_month ? <p className="text-xs font-medium text-stone-500">EMI Day: {paymentDraft.emi_day_of_month}</p> : null}
                 </div>
               </PreviewCard>
+
+              <PreviewCard title="Delivery" actionLabel="Edit" onAction={() => setCurrentStep("delivery")}>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold text-stone-900 capitalize">{deliveryMode.replace("_", " ")}</p>
+                  {deliveryMode === "download" ? (
+                    <p className="text-xs font-medium text-stone-500">A clean PDF will be downloaded for print.</p>
+                  ) : null}
+                  {deliveryMode === "auto_send" ? (
+                    <p className="text-xs font-medium text-stone-500">A send-ready PDF with customer signature and shop stamp will be prepared.</p>
+                  ) : null}
+                  {deliveryMode === "both" ? (
+                    <p className="text-xs font-medium text-stone-500">We&apos;ll prepare a send-ready PDF and also download a clean print-ready copy.</p>
+                  ) : null}
+                  {customerSignatureDataUrl ? <p className="text-xs font-medium text-emerald-600">Customer signature attached.</p> : null}
+                </div>
+              </PreviewCard>
+
+              {customerSignatureDataUrl ? (
+                <PreviewCard title="Customer Signature" actionLabel="Edit" onAction={() => setCurrentStep("delivery")}>
+                  <div className="relative w-full aspect-[4/1] rounded-xl border border-stone-100 bg-stone-50/50 overflow-hidden">
+                    <img
+                      src={customerSignatureDataUrl}
+                      alt="Customer Signature Preview"
+                      className="h-full w-full object-contain p-2"
+                    />
+                  </div>
+                </PreviewCard>
+              ) : null}
 
               <PreviewCard title="Items" actionLabel="Edit" onAction={() => setCurrentStep("products")}>
                 <div>
@@ -1917,7 +2090,11 @@ export function AddBillModal({
             {currentStep === "preview" ? (
               <Button type="button" onClick={submitInvoice} disabled={isPending || preparedLines.length === 0}>
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Save & Download PDF
+                {deliveryMode === "download"
+                  ? "Save & Download PDF"
+                  : deliveryMode === "auto_send"
+                    ? "Save & Prepare Send PDF"
+                    : "Save, Send & Download"}
               </Button>
             ) : (
               <Button type="button" onClick={() => moveStep(1)}>
@@ -1971,12 +2148,18 @@ export function AddBillModal({
                 </div>
 
                 {pendingPaymentDraft.methods.includes("LOAN") ? (
-                  <LoanProviderPicker
-                    value={pendingPaymentDraft.loan_provider}
-                    loanNumber={pendingPaymentDraft.loan_number}
-                    onProviderChange={(value) => setPendingPaymentDraft((current) => ({ ...current, loan_provider: value }))}
-                    onLoanNumberChange={(value) => setPendingPaymentDraft((current) => ({ ...current, loan_number: value }))}
-                  />
+                  <div className="space-y-4">
+                    <LoanProviderPicker
+                      value={pendingPaymentDraft.loan_provider}
+                      loanNumber={pendingPaymentDraft.loan_number}
+                      onProviderChange={(value) => setPendingPaymentDraft((current) => ({ ...current, loan_provider: value }))}
+                      onLoanNumberChange={(value) => setPendingPaymentDraft((current) => ({ ...current, loan_number: value }))}
+                    />
+                    <LoanDetailsFields
+                      values={pendingPaymentDraft}
+                      onChange={(updates) => setPendingPaymentDraft((current) => ({ ...current, ...updates }))}
+                    />
+                  </div>
                 ) : null}
               </div>
             </div>

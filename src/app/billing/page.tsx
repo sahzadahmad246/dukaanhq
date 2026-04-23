@@ -37,6 +37,7 @@ export default async function BillingPage({ searchParams }: PageProps) {
           brands={brands}
           shopLogoUrl={shop?.logo_url ?? null}
           shopPostalCode={shop?.postal_code ?? null}
+          shopStampUrl={shop?.shop_stamp_url ?? null}
         />
       </Suspense>
     </WorkspaceShell>
