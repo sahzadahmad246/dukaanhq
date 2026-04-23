@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { unstable_noStore as noStore } from "next/cache";
 
 import { syncAuthenticatedUserProfile } from "@/lib/auth/sync-user";
 import {
@@ -40,6 +41,7 @@ export type UserAppState = {
   shopSettings: ShopSettingsRecord | null;
   isOwner: boolean;
   isSuperAdmin: boolean;
+  isSuspendedMembership: boolean;
   hasWorkspaceAccess: boolean;
   canManageStaff: boolean;
   hasCompletedOnboarding: boolean;
@@ -50,6 +52,8 @@ export type UserAppState = {
 };
 
 export async function getUserAppState(supabase: SupabaseClient): Promise<UserAppState> {
+  noStore();
+
   const { user, profile, profileSyncReady } = await syncAuthenticatedUserProfile(supabase);
 
   if (!user) {
@@ -61,6 +65,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
       shopSettings: null,
       isOwner: false,
       isSuperAdmin: false,
+      isSuspendedMembership: false,
       hasWorkspaceAccess: false,
       canManageStaff: false,
       hasCompletedOnboarding: false,
@@ -87,10 +92,11 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
 
   const isOwner = profile?.role === "owner" || membership?.role === "owner";
   const isSuperAdmin = profile?.role === "superadmin";
+  const isSuspendedMembership = membership?.status === "SUSPENDED";
   const hasWorkspaceAccess = Boolean(
-    membership && membership.status !== "SUSPENDED" && ["owner", "staff"].includes(membership.role),
+    membership && !isSuspendedMembership && ["owner", "staff"].includes(membership.role),
   );
-  const canManageStaff = membership?.role === "owner" && membership?.status !== "SUSPENDED";
+  const canManageStaff = membership?.role === "owner" && !isSuspendedMembership;
   const hasCompletedOnboarding = Boolean(shopSettings?.onboarding_completed);
 
   let saasPlatform: SaaSPlatformSettingsRow | null = null;
@@ -141,6 +147,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     shopSettings,
     isOwner,
     isSuperAdmin,
+    isSuspendedMembership,
     hasWorkspaceAccess,
     canManageStaff,
     hasCompletedOnboarding,
@@ -159,8 +166,13 @@ export function getSignedInLandingPath(
     | "hasCompletedOnboarding"
     | "canUseShopProduct"
     | "isSuperAdmin"
+    | "isSuspendedMembership"
   >,
 ) {
+  if (state.isSuspendedMembership) {
+    return "/suspended";
+  }
+
   if (state.hasWorkspaceAccess && state.hasCompletedOnboarding) {
     if (!state.canUseShopProduct) {
       return "/subscribe";
@@ -180,10 +192,14 @@ export function getSignedInLandingPath(
 }
 
 export function redirectSignedInUser(
-  state: Pick<UserAppState, "user" | "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding">,
+  state: Pick<UserAppState, "user" | "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding" | "isSuspendedMembership">,
 ) {
   if (!state.user) {
     redirect("/auth/login");
+  }
+
+  if (state.isSuspendedMembership) {
+    redirect("/suspended");
   }
 
   if (!state.hasWorkspaceAccess && !state.isOwner) {

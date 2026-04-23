@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { inviteStaffAction } from "@/app/staff/actions";
 
 interface InviteStaffModalProps {
@@ -19,7 +18,6 @@ interface InviteStaffModalProps {
 export function InviteStaffModal({ isOpen, onClose, onSuccess }: InviteStaffModalProps) {
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"owner" | "staff">("staff");
   const [isInvitePending, startInviteTransition] = useTransition();
   const [inviteErrors, setInviteErrors] = useState<{ name?: string; email?: string }>({});
 
@@ -40,7 +38,6 @@ export function InviteStaffModal({ isOpen, onClose, onSuccess }: InviteStaffModa
     const formData = new FormData();
     formData.set("full_name", inviteName);
     formData.set("email", inviteEmail);
-    formData.set("role", inviteRole);
 
     startInviteTransition(async () => {
       const result = await inviteStaffAction(formData);
@@ -48,7 +45,6 @@ export function InviteStaffModal({ isOpen, onClose, onSuccess }: InviteStaffModa
         toast.success(result.message);
         setInviteName("");
         setInviteEmail("");
-        setInviteRole("staff");
         onClose();
         onSuccess?.();
       } else {
@@ -65,7 +61,7 @@ export function InviteStaffModal({ isOpen, onClose, onSuccess }: InviteStaffModa
         <div className="border-b border-stone-200 px-5 py-4">
           <h2 className="text-lg font-semibold text-stone-950">Invite Staff</h2>
           <p className="mt-1 text-sm text-stone-500">
-            Must sign in with the same Google email.
+            Full workspace access except staff management. Must sign in with the same Google email.
           </p>
         </div>
         <div className="space-y-4 px-5 py-5">
@@ -88,28 +84,12 @@ export function InviteStaffModal({ isOpen, onClose, onSuccess }: InviteStaffModa
             />
             {inviteErrors.email && <p className="text-xs text-red-500">{inviteErrors.email}</p>}
           </div>
-          <div className="space-y-2.5">
-            <Label className="text-sm font-medium text-stone-700">Access Type</Label>
-            <RadioGroup
-              value={inviteRole}
-              onValueChange={(value) => setInviteRole(value as "owner" | "staff")}
-              className="grid gap-2"
-            >
-              <label className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${inviteRole === "staff" ? "border-emerald-300 bg-emerald-50" : "border-stone-200 bg-white hover:border-stone-300"}`}>
-                <RadioGroupItem value="staff" id="role-staff" className="border-emerald-500 text-emerald-600" />
-                <div>
-                  <p className="text-sm font-medium text-stone-950">Staff</p>
-                  <p className="text-xs text-stone-500">Bills, inventory, reports. Cannot manage staff.</p>
-                </div>
-              </label>
-              <label className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${inviteRole === "owner" ? "border-emerald-300 bg-emerald-50" : "border-stone-200 bg-white hover:border-stone-300"}`}>
-                <RadioGroupItem value="owner" id="role-owner" className="border-emerald-500 text-emerald-600" />
-                <div>
-                  <p className="text-sm font-medium text-stone-950">Full Permission (Owner)</p>
-                  <p className="text-xs text-stone-500">Complete access including staff management.</p>
-                </div>
-              </label>
-            </RadioGroup>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Access</p>
+            <p className="mt-1 text-sm font-semibold text-stone-950">Staff</p>
+            <p className="mt-1 text-xs leading-5 text-stone-600">
+              Billing, inventory, reports, and shop workspace access. Cannot manage staff.
+            </p>
           </div>
         </div>
         <div className="flex items-center justify-between border-t border-stone-200 px-5 py-4">

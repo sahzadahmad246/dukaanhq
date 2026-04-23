@@ -3,6 +3,9 @@ import { SettingsEditor } from "@/app/settings/_components/settings-editor";
 import { ShopStampCard } from "@/app/settings/_components/shop-stamp-card";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function formatTime(value: string | null | undefined) {
   if (!value) return "-";
   return value.slice(0, 5);

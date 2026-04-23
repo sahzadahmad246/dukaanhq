@@ -10,6 +10,9 @@ import {
   subscriptionBlockReason,
 } from "@/lib/subscription/access";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function formatInrFromPaise(paise: number) {
   const rupees = paise / 100;
   return new Intl.NumberFormat("en-IN", {

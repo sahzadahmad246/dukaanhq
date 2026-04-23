@@ -5,6 +5,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { formatShopMemberRole } from "@/lib/auth/display-role";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 async function signOut() {
   "use server";
 

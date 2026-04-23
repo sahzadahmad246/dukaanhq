@@ -13,7 +13,6 @@ import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 const InviteStaffSchema = z.object({
   full_name: z.string().trim().min(1, "Name is required."),
   email: z.string().trim().email("Enter a valid email."),
-  role: z.enum(["owner", "staff"]),
 });
 
 const UpdateStaffMemberSchema = z.object({
@@ -29,40 +28,40 @@ const UpdateStaffStatusSchema = z.object({
 
 function buildInviteEmail(input: {
   inviteUrl: string;
-  ownerName: string;
+  logoUrl: string;
+  senderName: string;
   shopName: string;
   fullName: string;
-  roleLabel: string;
 }) {
   return `
-    <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:32px;">
-      <div style="max-width:560px; margin:0 auto; background:white; border:1px solid #e2e8f0; border-radius:24px; overflow:hidden; box-shadow:0 20px 60px rgba(15,23,42,0.12);">
-        <div style="padding:28px 28px 22px; background:linear-gradient(135deg, #fff4c9 0%, #fffaf0 100%); border-bottom:1px solid #f1f5f9;">
-          <div style="display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:14px; background:#f5c542; color:#080e1a; font-weight:800; font-size:16px;">DH</div>
-          <p style="margin:16px 0 0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; color:#78716c; font-weight:700;">DukaanHQ Staff Access</p>
-          <h1 style="margin:10px 0 0; font-size:26px; line-height:1.2; color:#111827;">You were invited to join ${escapeHtml(input.shopName)}</h1>
+    <div style="margin:0; background:#f6efdf; padding:24px 12px; font-family:Arial,sans-serif; color:#171717;">
+      <div style="max-width:720px; margin:0 auto; background:#fffaf0; border:1px solid #eadfca; border-radius:28px; overflow:hidden; box-shadow:0 22px 70px rgba(15,23,42,0.10);">
+        <div style="padding:26px 28px 18px; background:linear-gradient(135deg, #fff2c7 0%, #fffaf0 62%, #fff6df 100%); border-bottom:1px solid #efe3cc;">
+          <img src="${escapeHtml(input.logoUrl)}" alt="DukaanHQ" width="72" height="72" style="display:block; width:72px; height:72px; border-radius:18px; background:#ffffff; padding:8px; border:1px solid #efe3cc;" />
+          <p style="margin:18px 0 0; font-size:12px; letter-spacing:0.20em; text-transform:uppercase; color:#8a6a18; font-weight:700;">Staff Invitation</p>
+          <h1 style="margin:12px 0 0; font-size:34px; line-height:1.15; color:#111827;">You were invited to join ${escapeHtml(input.shopName)}</h1>
           <p style="margin:12px 0 0; color:#57534e; font-size:14px; line-height:1.7;">
-            ${escapeHtml(input.ownerName)} wants to give you <strong>${escapeHtml(input.roleLabel)}</strong> access on DukaanHQ.
+            ${escapeHtml(input.senderName)} invited you to join the shop on DukaanHQ.
           </p>
         </div>
         <div style="padding:28px;">
-          <p style="margin:0 0 12px; color:#374151; font-size:14px; line-height:1.7;">Hi ${escapeHtml(input.fullName)},</p>
+          <p style="margin:0 0 14px; color:#374151; font-size:16px; line-height:1.8;">Hi ${escapeHtml(input.fullName)},</p>
           <p style="margin:0 0 12px; color:#374151; font-size:14px; line-height:1.7;">
             This invitation is reserved for <strong>${escapeHtml(input.fullName)}</strong> at <strong>${escapeHtml(input.shopName)}</strong>.
           </p>
-          <div style="margin:18px 0; border:1px solid #e7e5e4; border-radius:18px; background:#fafaf9; padding:16px 18px;">
-            <p style="margin:0; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#78716c; font-weight:700;">Access Details</p>
-            <p style="margin:12px 0 0; color:#111827; font-size:14px; line-height:1.7;"><strong>Shop:</strong> ${escapeHtml(input.shopName)}</p>
-            <p style="margin:8px 0 0; color:#111827; font-size:14px; line-height:1.7;"><strong>Access Type:</strong> ${escapeHtml(input.roleLabel)}</p>
+          <div style="margin:20px 0; border:1px solid #efe3cc; border-radius:22px; background:#fffdf8; padding:18px 20px;">
+            <p style="margin:0; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#8a6a18; font-weight:700;">Before you continue</p>
+            <p style="margin:12px 0 0; color:#111827; font-size:14px; line-height:1.8;"><strong>Use the same email:</strong> open this invite with the exact Google email address that received it.</p>
+            <p style="margin:8px 0 0; color:#111827; font-size:14px; line-height:1.8;"><strong>Access:</strong> shop workspace access as staff, except staff management.</p>
           </div>
-          <p style="margin:0 0 18px; color:#374151; font-size:14px; line-height:1.7;">
-            Sign in with Google using the exact same email address that received this invite. If you use another email, DukaanHQ will deny access automatically.
+          <p style="margin:0 0 18px; color:#374151; font-size:14px; line-height:1.8;">
+            Tap the button below to open your secure invite page. From there, continue with Google and we will connect you to the shop automatically.
           </p>
-          <a href="${escapeHtml(input.inviteUrl)}" style="display:inline-block; padding:13px 20px; border-radius:14px; background:#111827; color:white; text-decoration:none; font-weight:700;">
-            Accept Staff Invitation
+          <a href="${escapeHtml(input.inviteUrl)}" style="display:inline-block; padding:15px 22px; border-radius:16px; background:#111827; color:white; text-decoration:none; font-weight:700;">
+            Open Invitation
           </a>
-          <p style="margin:18px 0 0; color:#6b7280; font-size:12px; line-height:1.7;">
-            This invite stays active for 7 days. If the button does not open, copy this link into your browser:<br />
+          <p style="margin:20px 0 0; color:#6b7280; font-size:12px; line-height:1.8;">
+            This invite stays active for 7 days. If the button does not open, use this link:<br />
             <span>${escapeHtml(input.inviteUrl)}</span>
           </p>
           <p style="margin:16px 0 0; color:#78716c; font-size:12px; line-height:1.7;">
@@ -72,10 +71,6 @@ function buildInviteEmail(input: {
       </div>
     </div>
   `;
-}
-
-function getRoleLabel(role: "owner" | "staff") {
-  return role === "owner" ? "Owner (full access)" : "Staff (bills & inventory)";
 }
 
 function escapeHtml(value: string) {
@@ -107,7 +102,6 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
     const parsed = InviteStaffSchema.safeParse({
       full_name: formData.get("full_name"),
       email: formData.get("email"),
-      role: formData.get("role"),
     });
 
     if (!parsed.success) {
@@ -155,7 +149,7 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
         .from("shop_member_invitations")
         .update({
           full_name: parsed.data.full_name,
-          role: parsed.data.role,
+          role: "staff",
           invite_token: inviteToken,
           invited_by: user.id,
           expires_at: expiresAt,
@@ -167,7 +161,7 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
         shop_id: shop.id,
         email: normalizedEmail,
         full_name: parsed.data.full_name,
-        role: parsed.data.role,
+        role: "staff",
         invited_by: user.id,
         invite_token: inviteToken,
         expires_at: expiresAt,
@@ -183,17 +177,17 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
       return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured." };
     }
 
-    const inviteUrl = `${appUrl}/auth/login?invite=${inviteToken}`;
+    const inviteUrl = `${appUrl}/auth/invite?invite=${inviteToken}`;
     await sendResendEmail({
       from: "DukaanHQ <hello@dukaanhq.com>",
       to: normalizedEmail,
-      subject: `Join ${shop.name} on DukaanHQ as ${getRoleLabel(parsed.data.role)}`,
+      subject: `You're invited to join ${shop.name} on DukaanHQ`,
       html: buildInviteEmail({
         inviteUrl,
-        ownerName: profile?.full_name ?? user.user_metadata.full_name ?? shop.name,
+        logoUrl: `${appUrl}/logo.png`,
+        senderName: profile?.full_name ?? user.user_metadata.full_name ?? shop.name,
         shopName: shop.name,
         fullName: parsed.data.full_name,
-        roleLabel: getRoleLabel(parsed.data.role),
       }),
     });
 
@@ -201,6 +195,85 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
     return { status: "success", message: `Invitation sent to ${normalizedEmail}.` };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Failed to send invitation." };
+  }
+}
+
+export async function resendStaffInvitationAction(formData: FormData): Promise<ActionResponse> {
+  try {
+    const { shop, membership, profile, user } = await getWorkspaceData({ requireOwner: true });
+    if (!shop || !membership) {
+      return { status: "error", message: "Shop access not found." };
+    }
+
+    const invitationId = formData.get("invitation_id");
+    if (!invitationId || typeof invitationId !== "string") {
+      return { status: "error", message: "Invitation ID is required." };
+    }
+
+    const supabase = getAdminSupabase();
+    const { data: invitation, error: invitationError } = await supabase
+      .from("shop_member_invitations")
+      .select("id, email, full_name, role, status")
+      .eq("id", invitationId)
+      .eq("shop_id", shop.id)
+      .maybeSingle<{
+        id: string;
+        email: string;
+        full_name: string | null;
+        role: "owner" | "staff";
+        status: string;
+      }>();
+
+    if (invitationError) {
+      return { status: "error", message: invitationError.message || "Failed to load invitation." };
+    }
+
+    if (!invitation || invitation.status !== "PENDING") {
+      return { status: "error", message: "This invitation is no longer pending." };
+    }
+
+    const inviteToken = randomBytes(24).toString("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { error: updateError } = await supabase
+      .from("shop_member_invitations")
+      .update({
+        role: "staff",
+        invite_token: inviteToken,
+        invited_by: user.id,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invitation.id)
+      .eq("shop_id", shop.id);
+
+    if (updateError) {
+      return { status: "error", message: updateError.message || "Failed to refresh invitation." };
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured." };
+    }
+
+    const inviteUrl = `${appUrl}/auth/invite?invite=${inviteToken}`;
+    await sendResendEmail({
+      from: "DukaanHQ <hello@dukaanhq.com>",
+      to: invitation.email,
+      subject: `Reminder: finish joining ${shop.name} on DukaanHQ`,
+      html: buildInviteEmail({
+        inviteUrl,
+        logoUrl: `${appUrl}/logo.png`,
+        senderName: profile?.full_name ?? user.user_metadata.full_name ?? shop.name,
+        shopName: shop.name,
+        fullName: invitation.full_name ?? invitation.email,
+      }),
+    });
+
+    revalidatePath("/staff");
+    return { status: "success", message: `Reminder sent to ${invitation.email}.` };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Failed to resend invitation." };
   }
 }
 
@@ -289,6 +362,15 @@ export async function updateStaffStatusAction(formData: FormData): Promise<Actio
     }
 
     revalidatePath("/staff");
+    revalidatePath("/");
+    revalidatePath("/dashboard");
+    revalidatePath("/billing");
+    revalidatePath("/inventory");
+    revalidatePath("/profile");
+    revalidatePath("/settings");
+    revalidatePath("/subscription");
+    revalidatePath("/subscribe");
+    revalidatePath("/suspended");
     return {
       status: "success",
       message: parsed.data.status === "SUSPENDED" ? "Staff member suspended." : "Staff member reactivated.",

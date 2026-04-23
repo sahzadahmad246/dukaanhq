@@ -5,6 +5,13 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+function buildInviteRedirect(origin: string, inviteToken: string, error: string) {
+  const url = new URL("/auth/invite", origin);
+  url.searchParams.set("invite", inviteToken);
+  url.searchParams.set("error", error);
+  return NextResponse.redirect(url);
+}
+
 async function acceptInviteForUser(input: {
   inviteToken: string;
   user: {
@@ -17,7 +24,7 @@ async function acceptInviteForUser(input: {
   const adminSupabase = createSupabaseAdminClient();
 
   if (!adminSupabase) {
-    return NextResponse.redirect(new URL("/auth/login?error=invite_access_denied", input.origin));
+    return buildInviteRedirect(input.origin, input.inviteToken, "invite_access_denied");
   }
 
   const normalizedUserEmail = (input.user.email ?? "").trim().toLowerCase();
@@ -42,11 +49,11 @@ async function acceptInviteForUser(input: {
     if (invitation && expired) {
       await adminSupabase.from("shop_member_invitations").update({ status: "EXPIRED" }).eq("id", invitation.id);
     }
-    return NextResponse.redirect(new URL("/auth/login?error=invite_invalid", input.origin));
+    return buildInviteRedirect(input.origin, input.inviteToken, "invite_invalid");
   }
 
   if (normalizedUserEmail !== invitation.email.trim().toLowerCase()) {
-    return NextResponse.redirect(new URL("/auth/login?error=invite_email_mismatch", input.origin));
+    return buildInviteRedirect(input.origin, input.inviteToken, "invite_email_mismatch");
   }
 
   const { error: memberUpsertError } = await adminSupabase.from("shop_members").upsert(
@@ -72,7 +79,7 @@ async function acceptInviteForUser(input: {
 
   if (memberUpsertError) {
     console.error("Failed to upsert invited shop member:", memberUpsertError);
-    return NextResponse.redirect(new URL("/auth/login?error=invite_access_denied", input.origin));
+    return buildInviteRedirect(input.origin, input.inviteToken, "invite_access_denied");
   }
 
   await adminSupabase
@@ -159,6 +166,7 @@ export async function GET(request: Request) {
       hasCompletedOnboarding: appState.hasCompletedOnboarding,
       canUseShopProduct: appState.canUseShopProduct,
       isSuperAdmin: appState.isSuperAdmin,
+      isSuspendedMembership: appState.isSuspendedMembership,
     });
     cookieStore.delete("dukaanhq_invite_token");
 
@@ -192,6 +200,7 @@ export async function GET(request: Request) {
         hasCompletedOnboarding: appState.hasCompletedOnboarding,
         canUseShopProduct: appState.canUseShopProduct,
         isSuperAdmin: appState.isSuperAdmin,
+        isSuspendedMembership: appState.isSuspendedMembership,
       });
 
       cookieStore.delete("dukaanhq_invite_token");

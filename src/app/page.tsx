@@ -30,9 +30,18 @@ export default async function Home() {
     membership,
   } = await getUserAppState(supabase);
 
+  const { data: shop } = membership?.shop_id
+    ? await supabase
+        .from("shops")
+        .select("name")
+        .eq("id", membership.shop_id)
+        .maybeSingle<{ name: string }>()
+    : { data: null };
+
   const displayName = profile?.full_name ?? user?.user_metadata.full_name ?? user?.email ?? "there";
   const userEmail = profile?.email ?? user?.email ?? "";
   const initials = getInitials(displayName || "DukaanHQ");
+  const shopName = shop?.name ?? "your shop";
   const primaryAction = (() => {
     if (!user) {
       return { href: "/auth/login", label: "Get Started" };
@@ -52,7 +61,7 @@ export default async function Home() {
       // owner + staff both land on the same workspace dashboard
       return {
         href: "/dashboard",
-        label: membership?.role === "staff" ? "Open Shop Dashboard" : "Access Your Shop",
+        label: membership?.role === "staff" ? `Open ${shopName}` : "Access Your Shop",
       };
     }
 
@@ -93,7 +102,13 @@ export default async function Home() {
           <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#f5c542]/35 bg-[#fff4c9] px-3 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[#4ade80]" />
             <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#a16207]">
-              {user ? (hasWorkspaceAccess && hasCompletedOnboarding ? "Shop active" : "Account ready") : "Electronics retail OS"}
+              {user
+                ? membership?.role === "staff" && hasWorkspaceAccess && hasCompletedOnboarding
+                  ? "Staff access active"
+                  : hasWorkspaceAccess && hasCompletedOnboarding
+                    ? "Shop active"
+                    : "Account ready"
+                : "Electronics retail OS"}
             </span>
           </div>
 
@@ -113,12 +128,19 @@ export default async function Home() {
               <p className="text-[15px] font-bold text-stone-950">{displayName}</p>
               <p className="mt-0.5 text-[13px] text-stone-600">{userEmail}</p>
               <p className="mt-3 text-[13px] leading-relaxed text-stone-700">
-                {hasWorkspaceAccess && hasCompletedOnboarding
-                  ? "Your shop is live — jump back into your dashboard."
-                  : isOwner
-                    ? "Complete onboarding to activate your shop."
-                    : "Your account is signed in, but shop access is not active yet."}
+                {membership?.role === "staff" && hasWorkspaceAccess && hasCompletedOnboarding
+                  ? `You're signed in as staff at ${shopName}. Open the dashboard to continue working in the shop.`
+                  : hasWorkspaceAccess && hasCompletedOnboarding
+                    ? "Your shop is live — jump back into your dashboard."
+                    : isOwner
+                      ? "Complete onboarding to activate your shop."
+                      : "Your account is signed in, but shop access is not active yet."}
               </p>
+              {membership?.role === "staff" && hasWorkspaceAccess && hasCompletedOnboarding ? (
+                <p className="mt-2 text-[12px] leading-relaxed text-stone-500">
+                  You have staff access for billing, inventory, and daily shop work.
+                </p>
+              ) : null}
               {isSuperAdmin ? (
                 <div className="mt-4">
                   <Link

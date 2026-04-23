@@ -4,6 +4,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type StaffMemberRow = {
   id: string;
   user_id: string;

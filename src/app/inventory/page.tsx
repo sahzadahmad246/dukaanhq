@@ -2,6 +2,9 @@ import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { InventoryManager } from "./_components/inventory-manager";
 import { loadInventoryData } from "./load-inventory-data";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function InventoryPage() {
   const { user, profile, shop, membership, products, categories, brands } = await loadInventoryData();
 

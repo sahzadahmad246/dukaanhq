@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
+import { unstable_noStore as noStore } from "next/cache";
 
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
+  noStore();
+
   const supabase = await createSupabaseServerClient();
   const {
     user,
@@ -12,6 +15,7 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
     membership,
     shopSettings,
     hasWorkspaceAccess,
+    isSuspendedMembership,
     canManageStaff,
     hasCompletedOnboarding,
     canUseShopProduct,
@@ -21,6 +25,10 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
 
   if (!user) {
     redirect("/auth/login");
+  }
+
+  if (isSuspendedMembership) {
+    redirect("/suspended");
   }
 
   if (!hasWorkspaceAccess) {

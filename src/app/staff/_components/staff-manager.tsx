@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  resendStaffInvitationAction,
   updateStaffMemberAction,
   updateStaffStatusAction,
   updateStaffAvatarAction,
@@ -80,6 +81,7 @@ export function StaffManager({
   const [viewMember, setViewMember] = useState<StaffMember | null>(null);
   const [confirmSuspend, setConfirmSuspend] = useState<StaffMember | null>(null);
   const [pendingMemberId, setPendingMemberId] = useState<string | null>(null);
+  const [pendingInviteId, setPendingInviteId] = useState<string | null>(null);
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
 
@@ -171,6 +173,19 @@ export function StaffManager({
     }
     setPendingMemberId(null);
     setConfirmSuspend(null);
+  }
+
+  async function resendInvitation(invitationId: string) {
+    setPendingInviteId(invitationId);
+    const formData = new FormData();
+    formData.set("invitation_id", invitationId);
+    const result = await resendStaffInvitationAction(formData);
+    if (result.status === "success") {
+      toast.success(result.message);
+    } else {
+      toast.error(result.message);
+    }
+    setPendingInviteId(null);
   }
 
   const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
@@ -349,6 +364,18 @@ export function StaffManager({
                   <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
                     Pending
                   </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pendingInviteId === invite.id}
+                    onClick={() => resendInvitation(invite.id)}
+                    className="h-9 rounded-xl border-stone-200 px-3 text-stone-700 hover:bg-stone-50"
+                  >
+                    {pendingInviteId === invite.id && (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Resend
+                  </Button>
                 </div>
               );
             })}

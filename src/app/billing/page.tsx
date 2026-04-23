@@ -4,6 +4,9 @@ import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { loadBillingData } from "./load-billing-data";
 import { BillingManager } from "./_components/billing-manager";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PageProps = {
   searchParams: Promise<{ q?: string; period?: string }>;
 };
