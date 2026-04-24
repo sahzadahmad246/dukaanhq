@@ -174,14 +174,15 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
     }
 
     const headerList = await headers();
-    const origin = headerList.get("origin");
-    const appUrl = origin || process.env.NEXT_PUBLIC_APP_URL;
+    const host = headerList.get("host");
+    const proto = headerList.get("x-forwarded-proto") || "https";
+    const appUrl = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL;
 
     if (!appUrl) {
-      return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured and origin is missing." };
+      return { status: "error", message: "Could not determine app URL from headers or environment." };
     }
 
-    const inviteUrl = `${appUrl}/auth/invite?invite=${inviteToken}`;
+    const inviteUrl = `${appUrl}/auth/login?invite=${inviteToken}`;
     await sendResendEmail({
       from: "DukaanHQ <hello@dukaanhq.com>",
       to: normalizedEmail,
@@ -256,14 +257,15 @@ export async function resendStaffInvitationAction(formData: FormData): Promise<A
     }
 
     const headerList = await headers();
-    const origin = headerList.get("origin");
-    const appUrl = origin || process.env.NEXT_PUBLIC_APP_URL;
+    const host = headerList.get("host");
+    const proto = headerList.get("x-forwarded-proto") || "https";
+    const appUrl = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL;
 
     if (!appUrl) {
-      return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured and origin is missing." };
+      return { status: "error", message: "Could not determine app URL from headers or environment." };
     }
 
-    const inviteUrl = `${appUrl}/auth/invite?invite=${inviteToken}`;
+    const inviteUrl = `${appUrl}/auth/login?invite=${inviteToken}`;
     await sendResendEmail({
       from: "DukaanHQ <hello@dukaanhq.com>",
       to: invitation.email,

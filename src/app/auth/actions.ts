@@ -10,14 +10,17 @@ export async function signInWithGoogle(formData: FormData) {
   const cookieStore = await cookies();
   const headerList = await headers();
   
-  // Try to get the origin from headers, or fallback to the env variable
-  const origin = headerList.get("origin");
-  const appUrl = origin || process.env.NEXT_PUBLIC_APP_URL;
+  // Use host and x-forwarded-proto to build a reliable app URL
+  const host = headerList.get("host");
+  const proto = headerList.get("x-forwarded-proto") || "https";
+  
+  // Dynamic URL construction is more reliable than static ENV in many proxy setups
+  const appUrl = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL;
   
   const inviteToken = String(formData.get("invite") ?? "").trim();
 
   if (!appUrl) {
-    throw new Error("NEXT_PUBLIC_APP_URL is not configured and origin header is missing.");
+    throw new Error("Could not determine app URL from headers or environment.");
   }
 
   const redirectUrl = new URL("/auth/callback", appUrl);
