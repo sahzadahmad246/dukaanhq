@@ -81,7 +81,7 @@ export function SignaturePadModal({
         >
           <SignatureCanvas
             ref={sigRef}
-            penColor="#1c1917"
+            penColor="#5125B4"
             canvasProps={{
               width: canvasSize.width,
               height: canvasSize.height,
