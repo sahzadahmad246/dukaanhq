@@ -145,17 +145,44 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL("/auth/login?error=session", requestUrl.origin));
     }
 
-    if (inviteToken) {
+    let activeInviteToken = inviteToken;
+
+    // If no explicit invite token is provided in the URL/cookie, check if this email has a pending invitation
+    if (!activeInviteToken) {
+      const adminSupabase = createSupabaseAdminClient();
+      if (adminSupabase) {
+        const { data: invitation } = await adminSupabase
+          .from("shop_member_invitations")
+          .select("invite_token")
+          .eq("email", user.email?.trim().toLowerCase())
+          .eq("status", "PENDING")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (invitation) {
+          activeInviteToken = invitation.invite_token;
+        }
+      }
+    }
+
+    if (activeInviteToken) {
       const inviteResponse = await acceptInviteForUser({
-        inviteToken,
+        inviteToken: activeInviteToken,
         user,
         origin: requestUrl.origin,
       });
 
       if (inviteResponse) {
-        await supabase.auth.signOut();
-        cookieStore.delete("dukaanhq_invite_token");
-        return inviteResponse;
+        // If it was an explicit invite click that failed (mismatch etc), redirect to error page
+        if (inviteToken) {
+          await supabase.auth.signOut();
+          cookieStore.delete("dukaanhq_invite_token");
+          return inviteResponse;
+        }
+        // If it was just an auto-detected invite that failed, we continue with normal login flow
+        // so the user can at least access their profile or other shops.
       }
     }
 

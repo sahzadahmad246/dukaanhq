@@ -177,7 +177,7 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
       return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured." };
     }
 
-    const inviteUrl = `${appUrl}/auth/invite?invite=${inviteToken}`;
+    const inviteUrl = `${appUrl}/auth/login?invite=${inviteToken}`;
     await sendResendEmail({
       from: "DukaanHQ <hello@dukaanhq.com>",
       to: normalizedEmail,

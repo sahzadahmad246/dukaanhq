@@ -46,10 +46,6 @@ export default async function LoginPage({
   const inviteToken = query.invite ?? "";
   const loginError = getLoginErrorCopy(query.error);
 
-  if (inviteToken) {
-    redirect(`/auth/invite?invite=${encodeURIComponent(inviteToken)}`);
-  }
-
   if (state.user) {
     redirect(getSignedInLandingPath(state));
   }
