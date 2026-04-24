@@ -2,6 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { z } from "zod";
 
 import type { ActionResponse } from "@/app/inventory/actions";
@@ -172,12 +173,15 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
       }
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const headerList = await headers();
+    const origin = headerList.get("origin");
+    const appUrl = origin || process.env.NEXT_PUBLIC_APP_URL;
+
     if (!appUrl) {
-      return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured." };
+      return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured and origin is missing." };
     }
 
-    const inviteUrl = `${appUrl}/auth/login?invite=${inviteToken}`;
+    const inviteUrl = `${appUrl}/auth/invite?invite=${inviteToken}`;
     await sendResendEmail({
       from: "DukaanHQ <hello@dukaanhq.com>",
       to: normalizedEmail,
@@ -251,9 +255,12 @@ export async function resendStaffInvitationAction(formData: FormData): Promise<A
       return { status: "error", message: updateError.message || "Failed to refresh invitation." };
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const headerList = await headers();
+    const origin = headerList.get("origin");
+    const appUrl = origin || process.env.NEXT_PUBLIC_APP_URL;
+
     if (!appUrl) {
-      return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured." };
+      return { status: "error", message: "NEXT_PUBLIC_APP_URL is not configured and origin is missing." };
     }
 
     const inviteUrl = `${appUrl}/auth/invite?invite=${inviteToken}`;
