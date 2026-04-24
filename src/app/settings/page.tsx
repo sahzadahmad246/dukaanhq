@@ -12,7 +12,7 @@ function formatTime(value: string | null | undefined) {
 }
 
 export default async function SettingsPage() {
-  const { user, profile, membership, shop, shopSettings } = await getWorkspaceData({ requireOwner: true });
+  const { user, profile, membership, shop, shopSettings } = await getWorkspaceData({ requireOwner: false });
 
   return (
     <WorkspaceShell

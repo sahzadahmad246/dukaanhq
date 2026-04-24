@@ -10,7 +10,6 @@ import {
   ProductKindSchema,
   ProductVariantDraftSchema,
 } from "@/lib/types/inventory";
-import { formatQrLabelCode, stringifyQrPayload, type QrPayload } from "@/lib/qr";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
@@ -77,125 +76,7 @@ function buildFieldErrors(error: z.ZodError) {
   );
 }
 
-async function allocateQrLabels(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  shopId: string,
-  target: "UNIT" | "QTY",
-  count: number
-) {
-  if (count <= 0) return [];
 
-  const { data, error } = await supabase.rpc("allocate_qr_label_range", {
-    p_shop_id: shopId,
-    p_target: target,
-    p_count: count,
-  });
-
-  if (error || !data || data.length === 0) {
-    throw new Error(error?.message || "Could not allocate QR labels.");
-  }
-
-  const range = data[0] as { start_value: number; prefix: string };
-  return Array.from({ length: count }, (_, index) => formatQrLabelCode(range.prefix, range.start_value + index));
-}
-
-async function syncProductQrMetadata(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  shopId: string,
-  productId: string
-) {
-  const { data: product, error: productError } = await supabase
-    .from("products")
-    .select("id, tracking_type")
-    .eq("id", productId)
-    .eq("shop_id", shopId)
-    .single();
-
-  if (productError || !product) {
-    throw new Error(productError?.message || "Could not load product for QR sync.");
-  }
-
-  const { data: variants, error: variantsError } = await supabase
-    .from("product_variants")
-    .select("id, label_code, qr_payload")
-    .eq("product_id", productId)
-    .eq("shop_id", shopId)
-    .order("created_at");
-
-  if (variantsError) {
-    throw new Error(variantsError.message || "Could not load product variants for QR sync.");
-  }
-
-  const variantsNeedingQr = (variants ?? []).filter((variant) => !variant.label_code || !variant.qr_payload);
-
-  if (product.tracking_type === "QUANTITY_BASED" && variantsNeedingQr.length > 0) {
-    const labels = await allocateQrLabels(supabase, shopId, "QTY", variantsNeedingQr.length);
-
-    await Promise.all(
-      variantsNeedingQr.map((variant, index) => {
-        const payload: QrPayload = {
-          v: 1,
-          kind: "QTY",
-          shop_id: shopId,
-          product_id: productId,
-          variant_id: variant.id,
-          label_code: labels[index],
-        };
-
-        return supabase
-          .from("product_variants")
-          .update({
-            label_code: labels[index],
-            qr_payload: payload,
-          })
-          .eq("id", variant.id)
-          .eq("shop_id", shopId);
-      })
-    );
-  }
-
-  if (product.tracking_type !== "QUANTITY_BASED") {
-    const { data: inventoryItems, error: inventoryError } = await supabase
-      .from("inventory_items")
-      .select("id, variant_id, label_code, qr_payload")
-      .eq("product_id", productId)
-      .eq("shop_id", shopId)
-      .order("added_at");
-
-    if (inventoryError) {
-      throw new Error(inventoryError.message || "Could not load inventory items for QR sync.");
-    }
-
-    const itemsNeedingQr = (inventoryItems ?? []).filter((item) => !item.label_code || !item.qr_payload);
-
-    if (itemsNeedingQr.length > 0) {
-      const labels = await allocateQrLabels(supabase, shopId, "UNIT", itemsNeedingQr.length);
-
-      await Promise.all(
-        itemsNeedingQr.map((item, index) => {
-          const payload: QrPayload = {
-            v: 1,
-            kind: "UNIT",
-            shop_id: shopId,
-            product_id: productId,
-            variant_id: item.variant_id,
-            inventory_item_id: item.id,
-            label_code: labels[index],
-          };
-
-          return supabase
-            .from("inventory_items")
-            .update({
-              label_code: labels[index],
-              qr_payload: payload,
-            })
-            .eq("id", item.id)
-            .eq("shop_id", shopId);
-        })
-      );
-    }
-  }
-}
 
 function parseProductInput(formData: FormData): ActionResponse<ParsedProductInput> {
   const parsed = ProductFormSchema.safeParse({
@@ -454,9 +335,7 @@ export async function createProductAction(
     }
   }
 
-  if (productId) {
-    await syncProductQrMetadata(supabase, shop.id, productId);
-  }
+
 
   revalidatePath("/inventory");
   return { status: "success", message: "Product created successfully." };
@@ -643,7 +522,6 @@ export async function updateProductAction(
     await deleteImagesFromCloudinary(removedPublicIds);
   }
 
-  await syncProductQrMetadata(supabase, shop.id, productId);
 
   revalidatePath("/inventory");
   return { status: "success", message: "Product updated successfully." };
@@ -1064,7 +942,6 @@ export async function addInventoryStockAction(formData: FormData): Promise<Actio
     }
   }
 
-  await syncProductQrMetadata(supabase, shop.id, productId);
 
   revalidatePath("/inventory");
   return { status: "success", message: "Stock added successfully." };
@@ -1075,7 +952,6 @@ export async function getProductDetailsAction(productId: string): Promise<Action
   if (!shop) return { status: "error", message: "No active shop found." };
 
   const supabase = await createSupabaseServerClient();
-  await syncProductQrMetadata(supabase, shop.id, productId);
   type ProductVariantRow = {
     id: string;
     quantity: number | null;
@@ -1085,7 +961,7 @@ export async function getProductDetailsAction(productId: string): Promise<Action
     purchase_price_override: number | null;
     selling_price_override: number | null;
     label_code: string | null;
-    qr_payload: QrPayload | null;
+    qr_payload: any | null;
   };
   type InventoryItemRow = {
     id: string;
@@ -1096,7 +972,7 @@ export async function getProductDetailsAction(productId: string): Promise<Action
     imei_2: string | null;
     unique_identifier: string | null;
     label_code: string | null;
-    qr_payload: QrPayload | null;
+    qr_payload: any | null;
     status: string;
     added_at: string;
     identifiers?: Array<{
@@ -1328,9 +1204,7 @@ export async function getQrExportEntriesAction(input: {
     return { status: "error", message: "No products found for this QR export." };
   }
 
-  for (const productId of productIds) {
-    await syncProductQrMetadata(supabase, shop.id, productId);
-  }
+
 
   const { data: products, error } = await supabase
     .from("products")
@@ -1347,32 +1221,7 @@ export async function getQrExportEntriesAction(input: {
     return { status: "error", message: error.message || "Failed to prepare QR export." };
   }
 
-  const entries = (products ?? []).flatMap((product) => {
-    if (product.tracking_type === "QUANTITY_BASED") {
-      return (product.variants ?? [])
-        .filter((variant) => variant.label_code && variant.qr_payload)
-        .map((variant) => ({
-          labelCode: variant.label_code as string,
-          payload: stringifyQrPayload(variant.qr_payload as QrPayload),
-        }));
-    }
-
-    return (product.inventory_items ?? [])
-      .filter((item) => item.label_code && item.qr_payload)
-      .map((item) => ({
-        labelCode: item.label_code as string,
-        payload: stringifyQrPayload(item.qr_payload as QrPayload),
-      }));
-  });
-
-  return {
-    status: "success",
-    message: "QR export ready.",
-    data: {
-      entries,
-      fileName,
-    },
-  };
+  return { status: "error", message: "QR export is disabled." };
 }
 
 export async function createProductVariantAction(input: {

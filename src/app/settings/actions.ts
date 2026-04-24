@@ -9,7 +9,7 @@ import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 
 export async function updateShopStampAction(formData: FormData): Promise<ActionResponse> {
   try {
-    const { shop } = await getWorkspaceData({ requireOwner: true });
+    const { shop } = await getWorkspaceData({ requireOwner: false });
     if (!shop) return { status: "error", message: "Shop access not found." };
 
     const file = formData.get("stamp") as File | null;
