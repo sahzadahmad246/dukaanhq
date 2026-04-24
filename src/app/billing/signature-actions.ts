@@ -38,7 +38,10 @@ export async function uploadInvoicePdfAction(
     const buffer = Buffer.from(base64Data, "base64");
     const file = new File([buffer], `invoice-${invoiceId}.pdf`, { type: "application/pdf" });
 
-    const result = await uploadRawFileToCloudinary(file, { folder: "dukaanhq_invoices" });
+    const result = await uploadRawFileToCloudinary(file, { 
+      folder: "dukaanhq_invoices",
+      public_id: `invoice-${invoiceId}.pdf`
+    });
     if (!result) return null;
 
     // Store the PDF URL in the invoice record

@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Download, MoreVertical, Pencil, PhoneCall, Receipt, Trash2, X } from "lucide-react";
+import { Download, Loader2, MoreVertical, Pencil, PhoneCall, Receipt, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { downloadExternalPdf, type PrintableInvoice } from "./invoice-print";
@@ -71,6 +71,7 @@ export function BillDetailsDrawer({
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   return (
     <>
@@ -368,15 +369,25 @@ export function BillDetailsDrawer({
                   <div className="text-[11px] uppercase tracking-[0.16em] text-emerald-600 font-bold">Online Copy</div>
                   <button
                     type="button"
+                    disabled={isDownloading}
                     onClick={async (e) => {
                       e.stopPropagation();
-                      const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
-                      await downloadExternalPdf(invoice.send_ready_pdf_url!, `${safeName}-bill.pdf`);
+                      setIsDownloading(true);
+                      try {
+                        const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
+                        await downloadExternalPdf(invoice.send_ready_pdf_url!, `${safeName}-bill.pdf`);
+                      } finally {
+                        setIsDownloading(false);
+                      }
                     }}
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98]"
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-70"
                   >
-                    <Download className="h-4 w-4" />
-                    Download Signed PDF
+                    {isDownloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    {isDownloading ? "Downloading..." : "Download Signed PDF"}
                   </button>
                   
                   <div className="mt-4 border-t border-emerald-100 pt-3">

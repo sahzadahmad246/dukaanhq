@@ -10,7 +10,7 @@ export { cloudinary };
 
 async function uploadFileToCloudinary(
   file: File,
-  options?: { folder?: string; resourceType?: "image" | "raw"; format?: string }
+  options?: { folder?: string; resourceType?: "image" | "raw"; format?: string; public_id?: string }
 ): Promise<{ url: string; public_id: string } | null> {
   if (!file || file.size === 0) return null;
 
@@ -26,6 +26,9 @@ async function uploadFileToCloudinary(
           folder: options?.folder ?? "dukaanhq_products",
           format,
           resource_type: options?.resourceType ?? "image",
+          public_id: options?.public_id,
+          use_filename: true,
+          unique_filename: true,
         },
         (error, result) => {
           if (error || !result) {
@@ -54,12 +57,13 @@ export async function uploadImageToCloudinary(file: File): Promise<{ url: string
 
 export async function uploadRawFileToCloudinary(
   file: File,
-  options?: { folder?: string; format?: string }
+  options?: { folder?: string; format?: string; public_id?: string }
 ): Promise<{ url: string; public_id: string } | null> {
   return uploadFileToCloudinary(file, {
     folder: options?.folder ?? "dukaanhq_documents",
     resourceType: "raw",
     format: options?.format,
+    public_id: options?.public_id,
   });
 }
 
