@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { Download, MoreVertical, Pencil, PhoneCall, Receipt, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
-import type { PrintableInvoice } from "./invoice-print";
+import { downloadExternalPdf, type PrintableInvoice } from "./invoice-print";
 
 type InvoiceDetails = PrintableInvoice & {
   id: string;
@@ -63,7 +63,7 @@ export function BillDetailsDrawer({
   invoice: InvoiceDetails | null;
   open: boolean;
   onClose: () => void;
-  onDownload: (invoice: PrintableInvoice) => void;
+  onDownload: (invoice: PrintableInvoice, withAssets?: boolean) => void;
   onEdit: (invoice: InvoiceDetails) => void;
   onDelete: (invoiceId: string) => void;
   onProductClick?: (productId: string) => void;
@@ -105,27 +105,28 @@ export function BillDetailsDrawer({
                   <button
                     type="button"
                     onClick={(e) => {
-                      if (invoice.send_ready_pdf_url) {
-                        e.stopPropagation();
-                        setShowDownloadMenu(!showDownloadMenu);
-                      } else {
-                        onDownload(invoice);
-                      }
+                      e.stopPropagation();
+                      setShowDownloadMenu(!showDownloadMenu);
                     }}
                     className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 hover:text-stone-900"
                     aria-label="Download bill"
-                    title={invoice.send_ready_pdf_url ? "Download options" : "Download bill"}
+                    title="Download options"
                   >
                     <Download className="h-4 w-4" />
                   </button>
-                  {showDownloadMenu && invoice.send_ready_pdf_url && (
+                  {showDownloadMenu && (
                     <div className="absolute right-0 top-12 z-[60] w-56 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
                       <button
                         type="button"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           setShowDownloadMenu(false);
-                          window.open(invoice.send_ready_pdf_url!, "_blank");
+                          if (invoice.send_ready_pdf_url) {
+                            const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
+                            await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`);
+                          } else {
+                            onDownload(invoice, true);
+                          }
                         }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
                       >
@@ -137,7 +138,7 @@ export function BillDetailsDrawer({
                         onClick={(e) => {
                           e.stopPropagation();
                           setShowDownloadMenu(false);
-                          onDownload(invoice);
+                          onDownload(invoice, false);
                         }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
                       >
@@ -359,6 +360,40 @@ export function BillDetailsDrawer({
                 <section className="rounded-[1.6rem] border border-stone-200 bg-white p-4">
                   <div className="text-[11px] uppercase tracking-[0.16em] text-stone-500">Notes</div>
                   <div className="mt-2 whitespace-pre-line text-sm text-stone-600">{invoice.notes}</div>
+                </section>
+              ) : null}
+
+              {invoice.send_ready_pdf_url ? (
+                <section className="rounded-[1.6rem] border border-emerald-100 bg-emerald-50/30 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-emerald-600 font-bold">Online Copy</div>
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
+                      await downloadExternalPdf(invoice.send_ready_pdf_url!, `${safeName}-bill.pdf`);
+                    }}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98]"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Signed PDF
+                  </button>
+                  
+                  <div className="mt-4 border-t border-emerald-100 pt-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/60">Cloud Storage Link</p>
+                    <a 
+                      href={invoice.send_ready_pdf_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="mt-1 block break-all text-[10px] text-emerald-600 underline transition hover:text-emerald-800"
+                    >
+                      {invoice.send_ready_pdf_url}
+                    </a>
+                  </div>
+
+                  <p className="mt-3 text-center text-[10px] font-medium text-emerald-600/70 italic">
+                    This is the permanent stamped & signed version stored on Cloudinary.
+                  </p>
                 </section>
               ) : null}
             </div>

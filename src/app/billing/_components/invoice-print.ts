@@ -57,8 +57,14 @@ function sanitizeForPdf(text: string): string {
     // Replace non-WinAnsi characters, but keep \n (0x0A), \r (0x0D), and \t (0x09)
     .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, "")
     // Normalize spaces and tabs without destroying newlines
-    .replace(/[ \t]+/g, " ")
-    .trim() || "-";
+  .replace(/[ \t]+/g, " ")
+  .trim() || "-";
+}
+
+function getOrdinalSuffix(n: number) {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 function formatMoney(value: number) {
@@ -129,7 +135,7 @@ function resolvePrintableAssetUrl(value?: string | null) {
   }
 }
 
-function downloadBlob(blob: Blob, filename: string) {
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -138,6 +144,19 @@ function downloadBlob(blob: Blob, filename: string) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+export async function downloadExternalPdf(url: string, filename: string) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const blob = await response.blob();
+    downloadBlob(blob, filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
+  } catch (err) {
+    console.error("[Download] External PDF fetch failed:", err);
+    // Fallback if fetch fails (e.g. CORS)
+    window.open(url, "_blank");
+  }
 }
 
 function sanitizeFilenamePart(value?: string | null) {
@@ -253,6 +272,8 @@ type InvoiceDocData = {
   paymentSummary: string;
   amountInWords: string;
   notes: string | null;
+  emiDayOfMonth: number | null;
+  firstEmiDate: string | null;
 };
 
 function appendPostalCodeToAddress(address?: string | null, postalCode?: string | null) {
@@ -320,22 +341,10 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
         value: `${invoice.payment_details.loan_tenure_months} months`,
       });
     }
-    if (invoice.payment_details.down_payment != null) {
-      loanFields.push({
-        label: "Down Payment",
-        value: `Rs ${formatMoney(invoice.payment_details.down_payment)}`,
-      });
-    }
     if (invoice.payment_details.monthly_emi_amount != null) {
       loanFields.push({
         label: "Monthly EMI",
         value: `Rs ${formatMoney(invoice.payment_details.monthly_emi_amount)}`,
-      });
-    }
-    if (invoice.payment_details.first_emi_date) {
-      loanFields.push({
-        label: "First EMI Date",
-        value: String(invoice.payment_details.first_emi_date),
       });
     }
 
@@ -424,6 +433,8 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
     paymentSummary,
     amountInWords: numberToWordsINR(invoice.grand_total),
     notes: invoice.notes && invoice.notes.trim() ? sanitizeForPdf(invoice.notes) : null,
+    emiDayOfMonth: invoice.payment_details?.emi_day_of_month ?? null,
+    firstEmiDate: invoice.payment_details?.first_emi_date ?? null,
   };
 }
 
@@ -982,6 +993,22 @@ export async function buildInvoicePdfBytes(invoice: PrintableInvoice) {
       });
       awY -= px(14 * 1.4);
     }
+  }
+
+  if (doc.emiDayOfMonth && invoice.payment_details?.methods?.includes("LOAN")) {
+    awY -= px(8);
+    let emiText = `EMI on ${getOrdinalSuffix(doc.emiDayOfMonth)} of each month`;
+    if (doc.firstEmiDate) {
+      emiText += ` (starting from ${doc.firstEmiDate})`;
+    }
+    page.drawText(emiText, {
+      x: contentX,
+      y: awY,
+      size: px(15),
+      font: fontBold,
+      color: headingColor,
+    });
+    awY -= px(15 * 1.4);
   }
 
   const signatureLineWidth = px(260);

@@ -35,7 +35,7 @@ import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
 import { ProductDetailsDrawer } from "@/app/inventory/_components/product-details-drawer";
 import { productDetailsQueryOptions } from "@/app/inventory/queries";
 import { BillDetailsDrawer } from "@/app/billing/_components/bill-details-drawer";
-import { downloadInvoicePdf, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
+import { downloadInvoicePdf, downloadExternalPdf, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
 import { ProductCard, type InventoryProduct } from "@/app/inventory/_components/product-list";
 import { RecordSaleModal } from "@/app/inventory/_components/record-sale-modal";
 import { StockAdjustmentModal } from "@/app/inventory/_components/stock-adjustment-modal";
@@ -298,14 +298,14 @@ export function DashboardHome({
     });
   }
 
-  async function handleDownloadInvoice(invoice: PrintableInvoice) {
+  async function handleDownloadInvoice(invoice: PrintableInvoice, withAssets = false) {
     try {
       await downloadInvoicePdf({
         ...invoice,
         shop_logo_url: shopLogoUrl ?? null,
         shop_postal_code: shopPostalCode ?? null,
-        shop_stamp_url: null,
-        customer_signature_url: null,
+        shop_stamp_url: withAssets ? (shopStampUrl ?? null) : null,
+        customer_signature_url: withAssets ? (invoice.customer_signature_url ?? null) : null,
       });
     } catch (err) {
       console.error("[Download] PDF generation failed:", err);
@@ -649,28 +649,28 @@ export function DashboardHome({
                         <button
                           type="button"
                           aria-label="Download bill"
-                          title={invoice.send_ready_pdf_url ? "Download options" : "Download bill"}
+                          title="Download options"
                           onClick={(e) => {
-                            if (invoice.send_ready_pdf_url) {
-                              e.stopPropagation();
-                              setOpenDownloadDropdownId(openDownloadDropdownId === invoice.id ? null : invoice.id);
-                            } else {
-                              e.stopPropagation();
-                              handleDownloadInvoice(invoice);
-                            }
+                            e.stopPropagation();
+                            setOpenDownloadDropdownId(openDownloadDropdownId === invoice.id ? null : invoice.id);
                           }}
                           style={{ display: "inline-flex", alignItems: "center", justifyItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, background: "#f4f4f5", color: "#52525b", border: "none" }}
                         >
                           <Download style={{ width: 12, height: 12 }} />
                         </button>
-                        {openDownloadDropdownId === invoice.id && invoice.send_ready_pdf_url && (
+                        {openDownloadDropdownId === invoice.id && (
                           <div className="absolute right-0 top-10 z-[60] w-52 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
                             <button
                               type="button"
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
                                 setOpenDownloadDropdownId(null);
-                                window.open(invoice.send_ready_pdf_url!, "_blank");
+                                if (invoice.send_ready_pdf_url) {
+                                  const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
+                                  await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`);
+                                } else {
+                                  handleDownloadInvoice(invoice, true);
+                                }
                               }}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
                             >
@@ -682,7 +682,7 @@ export function DashboardHome({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenDownloadDropdownId(null);
-                                handleDownloadInvoice(invoice);
+                                handleDownloadInvoice(invoice, false);
                               }}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
                             >
