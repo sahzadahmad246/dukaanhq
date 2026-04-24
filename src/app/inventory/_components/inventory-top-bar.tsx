@@ -1,14 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowLeft, Plus, QrCode, Search, X } from "lucide-react";
+import { ArrowLeft, Plus, Search, X } from "lucide-react";
 
 export function InventoryTopBar({
   searchQuery,
   onSearchChange,
   onBack,
   onAdd,
-  onQrExport,
   userAvatarUrl,
   avatarFallback,
   searchPlaceholder = "Search products like Apple iPhone 15",
@@ -17,7 +16,6 @@ export function InventoryTopBar({
   onSearchChange: (value: string) => void;
   onBack: () => void;
   onAdd?: () => void;
-  onQrExport?: () => void;
   userAvatarUrl?: string | null;
   avatarFallback?: string;
   searchPlaceholder?: string;
@@ -51,17 +49,6 @@ export function InventoryTopBar({
           </button>
         ) : null}
       </div>
-      {onQrExport ? (
-        <button
-          type="button"
-          onClick={onQrExport}
-          title="Export QR"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-700 shadow-sm transition hover:bg-stone-200"
-          aria-label="Export QR"
-        >
-          <QrCode className="h-4 w-4" />
-        </button>
-      ) : null}
       {onAdd ? (
         <button
           type="button"
