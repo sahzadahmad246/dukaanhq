@@ -960,8 +960,6 @@ export async function getProductDetailsAction(productId: string): Promise<Action
     storage_label: string | null;
     purchase_price_override: number | null;
     selling_price_override: number | null;
-    label_code: string | null;
-    qr_payload: any | null;
   };
   type InventoryItemRow = {
     id: string;
@@ -971,8 +969,6 @@ export async function getProductDetailsAction(productId: string): Promise<Action
     imei_1: string | null;
     imei_2: string | null;
     unique_identifier: string | null;
-    label_code: string | null;
-    qr_payload: any | null;
     status: string;
     added_at: string;
     identifiers?: Array<{
@@ -1022,7 +1018,7 @@ export async function getProductDetailsAction(productId: string): Promise<Action
       : Promise.resolve({ data: null, error: null }),
     supabase
       .from("product_variants")
-      .select("id, quantity, name, color, storage_label, purchase_price_override, selling_price_override, label_code, qr_payload")
+      .select("id, quantity, name, color, storage_label, purchase_price_override, selling_price_override")
       .eq("product_id", productId)
       .eq("shop_id", shop.id)
       .order("created_at"),
@@ -1036,8 +1032,6 @@ export async function getProductDetailsAction(productId: string): Promise<Action
         imei_1,
         imei_2,
         unique_identifier,
-        label_code,
-        qr_payload,
         status,
         added_at,
         identifiers:inventory_item_identifiers (
@@ -1150,79 +1144,6 @@ export async function getProductDetailsAction(productId: string): Promise<Action
   return { status: "success", data: productWithRelations, message: "Fetched details" };
 }
 
-export async function getQrExportEntriesAction(input: {
-  scope: "product" | "brand" | "category";
-  value: string;
-}): Promise<ActionResponse<{ entries: Array<{ labelCode: string; payload: string }>; fileName: string }>> {
-  const { shop } = await getWorkspaceData();
-  if (!shop) return { status: "error", message: "No active shop found." };
-
-  const supabase = await createSupabaseServerClient();
-  let productIds: string[] = [];
-  let fileName = "qr-labels.pdf";
-
-  if (input.scope === "product") {
-    productIds = [input.value];
-    const { data: product } = await supabase
-      .from("products")
-      .select("name")
-      .eq("id", input.value)
-      .eq("shop_id", shop.id)
-      .maybeSingle();
-    fileName = `${product?.name?.trim().replace(/\s+/g, "-").toLowerCase() || "product"}-qr-labels.pdf`;
-  } else if (input.scope === "brand") {
-    const { data: brand } = await supabase
-      .from("brands")
-      .select("name")
-      .eq("id", input.value)
-      .eq("shop_id", shop.id)
-      .maybeSingle();
-    const { data: products } = await supabase
-      .from("products")
-      .select("id")
-      .eq("brand_id", input.value)
-      .eq("shop_id", shop.id);
-    productIds = (products ?? []).map((product) => product.id);
-    fileName = `${brand?.name?.trim().replace(/\s+/g, "-").toLowerCase() || "brand"}-qr-labels.pdf`;
-  } else {
-    const { data: category } = await supabase
-      .from("categories")
-      .select("name")
-      .eq("id", input.value)
-      .eq("shop_id", shop.id)
-      .maybeSingle();
-    const { data: products } = await supabase
-      .from("products")
-      .select("id")
-      .eq("category_id", input.value)
-      .eq("shop_id", shop.id);
-    productIds = (products ?? []).map((product) => product.id);
-    fileName = `${category?.name?.trim().replace(/\s+/g, "-").toLowerCase() || "category"}-qr-labels.pdf`;
-  }
-
-  if (productIds.length === 0) {
-    return { status: "error", message: "No products found for this QR export." };
-  }
-
-
-
-  const { data: products, error } = await supabase
-    .from("products")
-    .select(`
-      id,
-      tracking_type,
-      variants:product_variants ( id, label_code, qr_payload ),
-      inventory_items ( id, label_code, qr_payload )
-    `)
-    .in("id", productIds)
-    .eq("shop_id", shop.id);
-
-  if (error) {
-    return { status: "error", message: error.message || "Failed to prepare QR export." };
-  }
-
-  return { status: "error", message: "QR export is disabled." };
-}
 
 export async function createProductVariantAction(input: {
   product_id: string;
