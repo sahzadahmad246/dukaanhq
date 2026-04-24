@@ -2,14 +2,12 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { X, PackageOpen, Loader2, TrendingUp, TrendingDown, Tag, Layers, QrCode, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, PackageOpen, Loader2, TrendingUp, TrendingDown, Tag, Layers, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "../queries";
 import { ProductActionsMenu } from "./product-actions-menu";
 import { Button } from "@/components/ui/button";
 import { buildVariantLabel } from "@/lib/inventory-labels";
-import { downloadQrSheetPdf } from "@/lib/qr-pdf";
-import { stringifyQrPayload } from "@/lib/qr";
 
 type InventoryItem = NonNullable<ProductDetails["inventory_items"]>[number];
 type StockMovement = NonNullable<ProductDetails["stock_movements"]>[number];
@@ -66,7 +64,6 @@ export function ProductDetailsDrawer({
   onAdjustStock?: (productId: string) => void;
   onClose: () => void;
 }) {
-  const [showQrModal, setShowQrModal] = useState(false);
 
   const { data: product, isLoading, isError, error } = useQuery({
     queryKey: productId ? productDetailsQueryKey(productId) : ["inventory", "product-details", "idle"],
@@ -95,8 +92,6 @@ export function ProductDetailsDrawer({
         label: buildVariantLabel(variant) ?? product.name,
         sellingPrice: resolveVariantSellingPrice(product, variant),
         purchasePrice: resolveVariantPurchasePrice(product, variant),
-        labelCode: variant.label_code ?? null,
-        qrPayload: variant.qr_payload ?? null,
       };
     });
   }, [product, variants]);
@@ -159,7 +154,6 @@ export function ProductDetailsDrawer({
                 onDelete={() => onDelete(productId)}
                 onRecordSale={onRecordSale ? () => onRecordSale(productId) : undefined}
                 onAdjustStock={onAdjustStock ? () => onAdjustStock(productId) : undefined}
-                onDownloadQr={() => setShowQrModal(true)}
               />
             ) : null}
             <button
@@ -327,17 +321,6 @@ export function ProductDetailsDrawer({
                           {buildVariantLabel(variants.find((v) => v.id === item.variant_id) ?? {}) ?? product.name}
                         </p>
                         <p className="mt-1 font-mono text-[11px] text-stone-500">{buildInventoryItemLabel(item)}</p>
-                        {item.label_code && (
-                          <p className="mt-2 font-mono text-[10px] font-medium text-stone-400">{item.label_code}</p>
-                        )}
-                        {item.label_code && item.qr_payload && (
-                          <button
-                            className="mt-3 w-full rounded-xl border border-stone-200 bg-stone-50 py-2 text-[12px] font-semibold text-stone-600 transition hover:bg-stone-100"
-                            onClick={() => void downloadQrSheetPdf([{ labelCode: item.label_code as string, payload: stringifyQrPayload(item.qr_payload!) }], `${(item.label_code as string).toLowerCase()}-qr.pdf`)}
-                          >
-                            Download QR
-                          </button>
-                        )}
                       </div>
                     ))}
                   </div>
@@ -435,85 +418,6 @@ export function ProductDetailsDrawer({
         </div>
       </div>
 
-      {/* ── QR Select Modal ── */}
-      {showQrModal && (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-stone-950/40 px-4 pb-6 sm:p-0 backdrop-blur-[2px] animate-in fade-in duration-200" onClick={() => setShowQrModal(false)}>
-          <div className="w-full max-w-[340px] rounded-[2rem] bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-            <h4 className="px-1 text-base font-bold tracking-tight text-stone-900">Download QR Labels</h4>
-            <p className="px-1 mt-1 text-[13px] text-stone-500 mb-4">Choose a specific label or download all.</p>
-            
-            <div className="max-h-[50vh] overflow-y-auto space-y-1.5 scrollbar-hide px-1 pb-1">
-              {product?.tracking_type === "QUANTITY_BASED" 
-                ? variantSummaries.filter(v => v.labelCode && v.qrPayload).map(({ variant, label, labelCode, qrPayload }) => (
-                    <button 
-                      key={variant.id}
-                      onClick={() => {
-                        void downloadQrSheetPdf([{ labelCode: labelCode as string, payload: stringifyQrPayload(qrPayload!) }], `${labelCode?.toLowerCase()}-qr.pdf`);
-                        setShowQrModal(false);
-                      }}
-                      className="flex w-full items-center justify-between rounded-[1rem] border border-stone-200 bg-white p-3.5 text-left transition hover:border-stone-400"
-                    >
-                      <div className="min-w-0 pr-2">
-                        <p className="text-[13px] font-bold text-stone-900 line-clamp-1">{label || "Variant"}</p>
-                        <p className="text-[11px] font-mono text-stone-500 mt-0.5">{labelCode}</p>
-                      </div>
-                      <div className="shrink-0 flex items-center justify-center bg-stone-100 rounded-full h-8 w-8 text-stone-600">
-                        <QrCode className="h-4 w-4" />
-                      </div>
-                    </button>
-                  ))
-                : (product?.inventory_items ?? []).filter(i => i.label_code && i.qr_payload).map(item => (
-                    <button 
-                      key={item.id}
-                      onClick={() => {
-                        void downloadQrSheetPdf([{ labelCode: item.label_code as string, payload: stringifyQrPayload(item.qr_payload!) }], `${item.label_code?.toLowerCase()}-qr.pdf`);
-                        setShowQrModal(false);
-                      }}
-                      className="flex w-full items-center justify-between rounded-[1rem] border border-stone-200 bg-white p-3.5 text-left transition hover:border-stone-400"
-                    >
-                      <div className="min-w-0 pr-2">
-                        <p className="text-[13px] font-bold text-stone-900 line-clamp-1">{buildInventoryItemLabel(item)}</p>
-                        <p className="text-[11px] font-mono text-stone-500 mt-0.5">{item.label_code}</p>
-                      </div>
-                      <div className="shrink-0 flex items-center justify-center bg-stone-100 rounded-full h-8 w-8 text-stone-600">
-                        <QrCode className="h-4 w-4" />
-                      </div>
-                    </button>
-                  ))
-              }
-              
-              {((product?.tracking_type === "QUANTITY_BASED" 
-                ? variantSummaries.filter(v => v.labelCode && v.qrPayload).length 
-                : (product?.inventory_items ?? []).filter(i => i.label_code && i.qr_payload).length) > 1) && (
-                <>
-                  <div className="py-2"><hr className="border-stone-100" /></div>
-                  <button 
-                    onClick={() => {
-                      const entries = product?.tracking_type === "QUANTITY_BASED"
-                        ? variantSummaries.filter((e) => e.labelCode && e.qrPayload).map((e) => ({ labelCode: e.labelCode as string, payload: stringifyQrPayload(e.qrPayload!) }))
-                        : (product?.inventory_items ?? []).filter((i) => i.label_code && i.qr_payload).map((i) => ({ labelCode: i.label_code as string, payload: stringifyQrPayload(i.qr_payload!) }));
-                      void downloadQrSheetPdf(entries, `${product?.name.trim().replace(/\s+/g, "-").toLowerCase()}-qr-labels.pdf`);
-                      setShowQrModal(false);
-                    }}
-                    className="flex w-full items-center justify-between rounded-[1rem] bg-stone-900 p-3.5 text-left transition hover:bg-stone-800 shadow-md"
-                  >
-                    <div>
-                      <p className="text-[13px] font-bold text-white">All Labels</p>
-                      <p className="text-[11px] font-medium text-stone-300 mt-0.5">Batch download</p>
-                    </div>
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className="mt-3 flex justify-end px-1">
-              <Button variant="ghost" className="rounded-xl w-full font-semibold" onClick={() => setShowQrModal(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

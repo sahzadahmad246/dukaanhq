@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, ReceiptText, PackagePlus, QrCode } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, ReceiptText, PackagePlus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,7 +10,6 @@ export function ProductActionsMenu({
   onDelete,
   onRecordSale,
   onAdjustStock,
-  onDownloadQr,
   align = "right",
   compact = false,
 }: {
@@ -18,7 +17,6 @@ export function ProductActionsMenu({
   onDelete: () => void;
   onRecordSale?: () => void;
   onAdjustStock?: () => void;
-  onDownloadQr?: () => void;
   align?: "left" | "right";
   compact?: boolean;
 }) {
@@ -84,20 +82,6 @@ export function ProductActionsMenu({
             <Trash2 className="h-4 w-4" />
             Delete
           </button>
-          {onDownloadQr && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setOpen(false);
-                onDownloadQr();
-              }}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-stone-900 transition hover:bg-stone-100"
-            >
-              <QrCode className="h-4 w-4" />
-              Download QR
-            </button>
-          )}
           {onRecordSale || onAdjustStock ? (
             <div className="my-1 border-t border-stone-100" />
           ) : null}
