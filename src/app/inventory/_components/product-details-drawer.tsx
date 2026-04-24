@@ -338,7 +338,6 @@ export function ProductDetailsDrawer({
                           {buildVariantLabel(variants.find((v) => v.id === item.variant_id) ?? {}) ?? product.name}
                         </p>
                         <p className="mt-1 font-mono text-[11px] text-red-500">{buildInventoryItemLabel(item)}</p>
-                        {item.label_code && <p className="mt-2 font-mono text-[10px] font-medium text-red-400">{item.label_code}</p>}
                       </div>
                     ))}
                   </div>
@@ -356,7 +355,6 @@ export function ProductDetailsDrawer({
                           {buildVariantLabel(variants.find((v) => v.id === item.variant_id) ?? {}) ?? product.name}
                         </p>
                         <p className="mt-1 font-mono text-[11px] text-sky-500">{buildInventoryItemLabel(item)}</p>
-                        {item.label_code && <p className="mt-2 font-mono text-[10px] font-medium text-sky-400">{item.label_code}</p>}
                       </div>
                     ))}
                   </div>
