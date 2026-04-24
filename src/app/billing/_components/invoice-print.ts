@@ -146,16 +146,30 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export async function downloadExternalPdf(url: string, filename: string) {
+/** 
+ * Download a PDF from an external URL (e.g. Cloudinary).
+ * Returns true if successful, false otherwise (e.g. CORS block).
+ */
+export async function downloadExternalPdf(url: string, filename: string): Promise<boolean> {
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const response = await fetch(url, {
+      method: "GET",
+      mode: "cors",
+      credentials: "omit",
+    });
+
+    if (!response.ok) {
+      console.warn("[Download] External PDF fetch failed with status:", response.status);
+      return false;
+    }
+
     const blob = await response.blob();
-    downloadBlob(blob, filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
+    const finalFilename = filename.toLowerCase().endsWith(".pdf") ? filename : `${filename}.pdf`;
+    downloadBlob(blob, finalFilename);
+    return true;
   } catch (err) {
-    console.error("[Download] External PDF fetch failed:", err);
-    // Fallback if fetch fails (e.g. CORS)
-    window.open(url, "_blank");
+    console.error("[Download] External PDF fetch encountered a network/CORS error:", err);
+    return false;
   }
 }
 

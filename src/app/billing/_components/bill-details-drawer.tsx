@@ -122,10 +122,13 @@ export function BillDetailsDrawer({
                         onClick={async (e) => {
                           e.stopPropagation();
                           setShowDownloadMenu(false);
-                          if (invoice.send_ready_pdf_url) {
-                            const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
-                            await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`);
-                          } else {
+                          const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
+                          const success = invoice.send_ready_pdf_url 
+                            ? await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`)
+                            : false;
+                          
+                          if (!success) {
+                            console.log("[Download] Online copy failed, falling back to local generation...");
                             onDownload(invoice, true);
                           }
                         }}
@@ -375,7 +378,11 @@ export function BillDetailsDrawer({
                       setIsDownloading(true);
                       try {
                         const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
-                        await downloadExternalPdf(invoice.send_ready_pdf_url!, `${safeName}-bill.pdf`);
+                        const success = await downloadExternalPdf(invoice.send_ready_pdf_url!, `${safeName}-bill.pdf`);
+                        if (!success) {
+                          console.log("[Download] Online copy failed, falling back to local generation...");
+                          onDownload(invoice, true);
+                        }
                       } finally {
                         setIsDownloading(false);
                       }

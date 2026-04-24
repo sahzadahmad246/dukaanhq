@@ -665,10 +665,13 @@ export function DashboardHome({
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 setOpenDownloadDropdownId(null);
-                                if (invoice.send_ready_pdf_url) {
-                                  const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
-                                  await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`);
-                                } else {
+                                const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
+                                const success = invoice.send_ready_pdf_url 
+                                  ? await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`)
+                                  : false;
+                                
+                                if (!success) {
+                                  console.log("[Download] Online copy failed, falling back to local generation...");
                                   handleDownloadInvoice(invoice, true);
                                 }
                               }}
