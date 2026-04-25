@@ -4,18 +4,13 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getAppOrigin } from "@/lib/app-origin";
 
 export async function signInWithGoogle(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const cookieStore = await cookies();
   const headerList = await headers();
-  
-  // Use host and x-forwarded-proto to build a reliable app URL
-  const host = headerList.get("host");
-  const proto = headerList.get("x-forwarded-proto") || "https";
-  
-  // Dynamic URL construction is more reliable than static ENV in many proxy setups
-  const appUrl = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL;
+  const appUrl = getAppOrigin(headerList);
   
   const inviteToken = String(formData.get("invite") ?? "").trim();
 
@@ -23,9 +18,7 @@ export async function signInWithGoogle(formData: FormData) {
     throw new Error("Could not determine app URL from headers or environment.");
   }
 
-  const redirectUrl = new URL("/auth/callback", appUrl);
   if (inviteToken) {
-    redirectUrl.searchParams.set("invite", inviteToken);
     cookieStore.set("dukaanhq_invite_token", inviteToken, {
       path: "/",
       httpOnly: true,
@@ -38,7 +31,7 @@ export async function signInWithGoogle(formData: FormData) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: redirectUrl.toString(),
+      redirectTo: new URL("/auth/callback", appUrl).toString(),
       queryParams: {
         access_type: "offline",
         prompt: "consent",

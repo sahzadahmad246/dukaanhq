@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 
 import type { ActionResponse } from "@/app/inventory/actions";
+import { getAppOrigin } from "@/lib/app-origin";
 import { uploadImageToCloudinary, deleteImageFromCloudinary } from "@/lib/cloudinary";
 import { sendResendEmail } from "@/lib/email/resend";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -174,9 +175,7 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
     }
 
     const headerList = await headers();
-    const host = headerList.get("host");
-    const proto = headerList.get("x-forwarded-proto") || "https";
-    const appUrl = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl = getAppOrigin(headerList);
 
     if (!appUrl) {
       return { status: "error", message: "Could not determine app URL from headers or environment." };
@@ -257,9 +256,7 @@ export async function resendStaffInvitationAction(formData: FormData): Promise<A
     }
 
     const headerList = await headers();
-    const host = headerList.get("host");
-    const proto = headerList.get("x-forwarded-proto") || "https";
-    const appUrl = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl = getAppOrigin(headerList);
 
     if (!appUrl) {
       return { status: "error", message: "Could not determine app URL from headers or environment." };

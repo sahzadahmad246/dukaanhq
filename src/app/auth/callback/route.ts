@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getAppOrigin } from "@/lib/app-origin";
 import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function buildInviteRedirect(origin: string, inviteToken: string, error: string) {
-  const url = new URL("/auth/invite", origin);
+  const url = new URL("/auth/login", origin);
   url.searchParams.set("invite", inviteToken);
   url.searchParams.set("error", error);
   return NextResponse.redirect(url);
@@ -119,6 +120,7 @@ async function acceptInviteForUser(input: {
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
+  const appOrigin = getAppOrigin(request.headers) ?? requestUrl.origin;
   const code = requestUrl.searchParams.get("code");
   const cookieStore = await cookies();
   const inviteToken = requestUrl.searchParams.get("invite") ?? cookieStore.get("dukaanhq_invite_token")?.value ?? null;
@@ -129,7 +131,7 @@ export async function GET(request: Request) {
 
     if (exchangeError) {
       console.error("OAuth callback session exchange failed:", exchangeError);
-      return NextResponse.redirect(new URL("/auth/login?error=oauth_callback", requestUrl.origin));
+      return NextResponse.redirect(new URL("/auth/login?error=oauth_callback", appOrigin));
     }
 
     const {
@@ -142,7 +144,7 @@ export async function GET(request: Request) {
         console.error("OAuth callback user lookup failed:", userError);
       }
 
-      return NextResponse.redirect(new URL("/auth/login?error=session", requestUrl.origin));
+      return NextResponse.redirect(new URL("/auth/login?error=session", appOrigin));
     }
 
     let activeInviteToken = inviteToken;
@@ -171,7 +173,7 @@ export async function GET(request: Request) {
       const inviteResponse = await acceptInviteForUser({
         inviteToken: activeInviteToken,
         user,
-        origin: requestUrl.origin,
+        origin: appOrigin,
       });
 
       if (inviteResponse) {
@@ -197,7 +199,7 @@ export async function GET(request: Request) {
     });
     cookieStore.delete("dukaanhq_invite_token");
 
-    return NextResponse.redirect(new URL(nextPath, requestUrl.origin));
+    return NextResponse.redirect(new URL(nextPath, appOrigin));
   }
 
   if (inviteToken) {
@@ -211,7 +213,7 @@ export async function GET(request: Request) {
       const inviteResponse = await acceptInviteForUser({
         inviteToken,
         user,
-        origin: requestUrl.origin,
+        origin: appOrigin,
       });
 
       if (inviteResponse) {
@@ -231,9 +233,9 @@ export async function GET(request: Request) {
       });
 
       cookieStore.delete("dukaanhq_invite_token");
-      return NextResponse.redirect(new URL(nextPath, requestUrl.origin));
+      return NextResponse.redirect(new URL(nextPath, appOrigin));
     }
   }
 
-  return NextResponse.redirect(new URL("/", requestUrl.origin));
+  return NextResponse.redirect(new URL("/", appOrigin));
 }

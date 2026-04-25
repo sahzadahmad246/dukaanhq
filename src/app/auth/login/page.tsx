@@ -47,6 +47,10 @@ export default async function LoginPage({
   const loginError = getLoginErrorCopy(query.error);
 
   if (state.user) {
+    if (inviteToken) {
+      redirect(`/auth/callback?invite=${encodeURIComponent(inviteToken)}`);
+    }
+
     redirect(getSignedInLandingPath(state));
   }
 
