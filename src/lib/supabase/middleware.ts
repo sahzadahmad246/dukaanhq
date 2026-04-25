@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-const AUTH_SESSION_ERROR_CODES = new Set(["refresh_token_not_found", "session_not_found", "refresh_token_already_used"]);
+const AUTH_SESSION_ERROR_CODES = new Set(["refresh_token_not_found", "session_not_found"]);
 
 function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
   for (const cookie of request.cookies.getAll()) {
@@ -45,6 +45,10 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (error) {
+    if (error.code === "refresh_token_already_used") {
+      return response;
+    }
+
     if (error.code && AUTH_SESSION_ERROR_CODES.has(error.code)) {
       clearSupabaseAuthCookies(request, response);
       return response;

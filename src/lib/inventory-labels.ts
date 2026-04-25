@@ -7,27 +7,41 @@ type VariantLike = {
 };
 
 const SMARTPHONE_STORAGE_PRESETS = [
+  "2GB / 16GB",
+  "2GB / 32GB",
+  "3GB / 32GB",
+  "3GB / 64GB",
+  "4GB / 32GB",
   "4GB / 64GB",
   "4GB / 128GB",
   "6GB / 64GB",
   "6GB / 128GB",
   "6GB / 256GB",
+  "8GB / 64GB",
   "8GB / 128GB",
   "8GB / 256GB",
   "8GB / 512GB",
+  "12GB / 128GB",
   "12GB / 256GB",
   "12GB / 512GB",
   "12GB / 1TB",
+  "16GB / 256GB",
   "16GB / 512GB",
   "16GB / 1TB",
+  "18GB / 512GB",
+  "18GB / 1TB",
+  "24GB / 1TB",
 ];
 
 const APPLE_STORAGE_PRESETS = [
+  "16GB",
+  "32GB",
   "64GB",
   "128GB",
   "256GB",
   "512GB",
   "1TB",
+  "2TB",
 ];
 
 const GENERIC_STORAGE_PRESETS = [

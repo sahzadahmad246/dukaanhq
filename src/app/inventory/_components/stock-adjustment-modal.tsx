@@ -15,9 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { buildVariantLabel } from "@/lib/inventory-labels";
+import { buildVariantLabel, getStoragePresetOptions } from "@/lib/inventory-labels";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "../queries";
 import { adjustInventoryStockAction, createProductVariantAction } from "../actions";
+import { StoragePresetPicker } from "./storage-preset-picker";
 
 type AdjustmentType =
   | "ADJUSTMENT_ADD"
@@ -122,13 +123,24 @@ export function StockAdjustmentModal({
       : undefined,
   });
 
-  const activeVariantId = variantId || product?.variants?.[0]?.id || "";
+  const productVariants = useMemo(() => product?.variants ?? [], [product?.variants]);
+  const activeVariantId = variantId || productVariants[0]?.id || "";
   const isSerialized = product?.tracking_type === "SERIALIZED";
+  const isMobileProduct = product?.product_kind === "MOBILE";
+  const shouldShowVariantControls = Boolean(isMobileProduct && productVariants.length > 0);
   const selectedVariant = useMemo(
-    () => product?.variants?.find((variant) => variant.id === activeVariantId) ?? null,
-    [activeVariantId, product?.variants]
+    () => productVariants.find((variant) => variant.id === activeVariantId) ?? null,
+    [activeVariantId, productVariants]
   );
   const selectedVariantQuantity = Number(selectedVariant?.quantity ?? 0);
+  const storagePresets = useMemo(
+    () =>
+      getStoragePresetOptions({
+        productKind: product?.product_kind ?? null,
+        brandName: product?.brand?.name,
+      }),
+    [product?.brand?.name, product?.product_kind]
+  );
 
   const availableAdjustmentOptions = isSerialized
     ? ADJUSTMENT_OPTIONS.filter((o) => o.serialized)
@@ -323,7 +335,7 @@ export function StockAdjustmentModal({
               ) : null}
 
               {/* Variant selector */}
-              {product.variants && product.variants.length > 0 && (
+              {shouldShowVariantControls && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <SectionLabel>{product.tracking_type === "QUANTITY_BASED" ? "Option / Variant" : "Filter by Variant"}</SectionLabel>
@@ -349,7 +361,7 @@ export function StockAdjustmentModal({
                         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-stone-500">Select Variant</p>
                       </div>
                       <div className="flex flex-col divide-y divide-stone-100 bg-white">
-                        {product.variants.map((variant) => {
+                        {productVariants.map((variant) => {
                           const isActive = activeVariantId === variant.id;
                           const variantQty = Number(variant.quantity ?? 0);
                           return (
@@ -527,7 +539,7 @@ export function StockAdjustmentModal({
       )}
 
       {/* Add New Variant Modal */}
-      {isAddingNewVariant && (
+      {isAddingNewVariant && isMobileProduct && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-900/40 px-4 backdrop-blur-sm sm:items-start sm:pt-[15vh] transition-opacity animate-in fade-in duration-200">
           <div className="w-full max-w-[360px] rounded-3xl bg-white p-5 shadow-2xl animate-in zoom-in-95 duration-200">
             <h3 className="text-base font-bold text-stone-900 mt-1">Add New Variant</h3>
@@ -541,7 +553,12 @@ export function StockAdjustmentModal({
                   <Input value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="e.g. Black" className="h-11 rounded-xl bg-stone-50 text-[13px]" />
                 </FieldGroup>
                 <FieldGroup label="Storage">
-                  <Input value={newStorage} onChange={(e) => setNewStorage(e.target.value)} placeholder="e.g. 128GB" className="h-11 rounded-xl bg-stone-50 text-[13px]" />
+                  <StoragePresetPicker
+                    value={newStorage}
+                    onChange={setNewStorage}
+                    presets={storagePresets}
+                    placeholder="Select storage"
+                  />
                 </FieldGroup>
               </div>
               <FieldGroup label="Selling Price">
