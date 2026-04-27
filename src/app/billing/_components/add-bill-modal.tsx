@@ -31,6 +31,7 @@ import { BarcodeScanner } from "@/app/inventory/_components/barcode-scanner";
 import { LoanDetailsFields } from "./loan-details-fields";
 import { DeliveryStep } from "./delivery-step";
 import { uploadCustomerSignatureAction, uploadInvoicePdfAction } from "../signature-actions";
+import { sendInvoiceWhatsappAction } from "../whatsapp-actions";
 import { toast } from "sonner";
 
 type StepId = "customer" | "products" | "delivery" | "preview";
@@ -219,7 +220,7 @@ function readStoredBillDraft() {
       currentStep,
       customer: {
         name: typeof parsed.customer.name === "string" ? parsed.customer.name : "",
-        country_code: typeof (parsed.customer as any).country_code === "string" ? (parsed.customer as any).country_code : "+91",
+        country_code: typeof parsed.customer.country_code === "string" ? parsed.customer.country_code : "+91",
         mobile: typeof parsed.customer.mobile === "string" ? parsed.customer.mobile : "",
         billing_address: typeof parsed.customer.billing_address === "string" ? parsed.customer.billing_address : "",
         gst_number: typeof parsed.customer.gst_number === "string" ? parsed.customer.gst_number : "",
@@ -648,7 +649,7 @@ function LineEditor({
     if (productDetails?.variants) return productDetails.variants;
     if (selectedProduct?.variants) return selectedProduct.variants as unknown as NonNullable<ProductDetails["variants"]>;
     return [];
-  }, [productDetails?.variants, selectedProduct?.variants]);
+  }, [productDetails, selectedProduct]);
 
   const variantStockMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -1686,6 +1687,20 @@ export function AddBillModal({
 
               if (!uploadedSendReadyPdf?.url) {
                 throw new Error("Failed to prepare send-ready PDF.");
+              }
+
+              const whatsappResult = await sendInvoiceWhatsappAction({
+                customer_mobile: createdInvoice.customer_mobile ?? "",
+                customer_name: createdInvoice.customer_name ?? "Customer",
+                invoice_number: createdInvoice.invoice_number,
+                shop_name: createdInvoice.shop_name_snapshot ?? "Shop",
+                pdf_url: uploadedSendReadyPdf.url,
+              });
+
+              if (whatsappResult.status === "success") {
+                toast.success("Invoice sent to customer on WhatsApp.");
+              } else {
+                toast.error(`Invoice saved, but WhatsApp failed: ${whatsappResult.message}`);
               }
             }
 

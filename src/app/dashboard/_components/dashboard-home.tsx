@@ -25,6 +25,7 @@ import {
   Trash2,
   Loader2,
   Stamp,
+  Send,
 } from "lucide-react";
 
 import type { DashboardStats, RecentInvoice, RecentProduct } from "../load-dashboard-data";
@@ -36,6 +37,7 @@ import { ProductDetailsDrawer } from "@/app/inventory/_components/product-detail
 import { productDetailsQueryOptions } from "@/app/inventory/queries";
 import { BillDetailsDrawer } from "@/app/billing/_components/bill-details-drawer";
 import { downloadInvoicePdf, downloadExternalPdf, type PrintableInvoice } from "@/app/billing/_components/invoice-print";
+import { sendInvoiceWhatsappWithFreshPdf } from "@/app/billing/_components/invoice-whatsapp-client";
 import { ProductCard, type InventoryProduct } from "@/app/inventory/_components/product-list";
 import { RecordSaleModal } from "@/app/inventory/_components/record-sale-modal";
 import { StockAdjustmentModal } from "@/app/inventory/_components/stock-adjustment-modal";
@@ -169,6 +171,7 @@ export function DashboardHome({
   const [openDownloadDropdownId, setOpenDownloadDropdownId] = useState<string | null>(null);
   const [confirmDeleteInvoiceId, setConfirmDeleteInvoiceId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const [sendingWhatsappInvoiceId, setSendingWhatsappInvoiceId] = useState<string | null>(null);
   const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<Set<string>>(new Set());
 
   const recentProductCards = useMemo(
@@ -310,6 +313,30 @@ export function DashboardHome({
     } catch (err) {
       console.error("[Download] PDF generation failed:", err);
       toast.error(`Download failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  }
+
+  async function sendInvoiceToCustomer(invoice: RecentInvoice) {
+    setSendingWhatsappInvoiceId(invoice.id);
+    try {
+      const result = await sendInvoiceWhatsappWithFreshPdf({
+        invoice,
+        shopLogoUrl,
+        shopPostalCode,
+        shopStampUrl,
+      });
+
+      if (result.status === "success") {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+    } catch (err) {
+      console.error("[WhatsApp] Invoice send failed:", err);
+      toast.error(`WhatsApp send failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setSendingWhatsappInvoiceId(null);
     }
   }
 
@@ -712,7 +739,24 @@ export function DashboardHome({
                           <MoreVertical style={{ width: 14, height: 14 }} />
                         </button>
                         {openDropdownId === invoice.id && (
-                          <div className="absolute right-0 top-10 z-[60] w-36 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                          <div className="absolute right-0 top-10 z-[60] w-52 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                            <button
+                              type="button"
+                              disabled={sendingWhatsappInvoiceId === invoice.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDropdownId(null);
+                                void sendInvoiceToCustomer(invoice);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {sendingWhatsappInvoiceId === invoice.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Send className="h-3.5 w-3.5 text-emerald-600" />
+                              )}
+                              Send invoice
+                            </button>
                             <button
                               type="button"
                               onClick={(e) => {

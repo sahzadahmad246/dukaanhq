@@ -18,6 +18,7 @@ import {
   ShoppingBag,
   User,
   Loader2,
+  Send,
 } from "lucide-react";
 import { format, isValid, isToday, isYesterday, formatDistanceToNowStrict } from "date-fns";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ import { downloadInvoicePdf, downloadExternalPdf, type PrintableInvoice } from "
 import { deleteInvoiceAction } from "../actions";
 import type { BillingInvoiceSummary } from "../load-billing-data";
 import { productDetailsQueryKey } from "@/app/inventory/queries";
+import { sendInvoiceWhatsappWithFreshPdf } from "./invoice-whatsapp-client";
 
 type ProductSummary = Product & {
   total_quantity: number;
@@ -154,6 +156,7 @@ export function BillingManager({
   const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<Set<string>>(new Set());
   const [confirmDeleteInvoiceId, setConfirmDeleteInvoiceId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const [sendingWhatsappInvoiceId, setSendingWhatsappInvoiceId] = useState<string | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
 
   const chipScrollRef = useRef<HTMLDivElement>(null);
@@ -265,6 +268,30 @@ export function BillingManager({
     } catch (err) {
       console.error("[Download] PDF generation failed:", err);
       toast.error(`Download failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  }
+
+  async function sendInvoiceToCustomer(invoice: BillingInvoiceSummary) {
+    setSendingWhatsappInvoiceId(invoice.id);
+    try {
+      const result = await sendInvoiceWhatsappWithFreshPdf({
+        invoice,
+        shopLogoUrl,
+        shopPostalCode,
+        shopStampUrl,
+      });
+
+      if (result.status === "success") {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+    } catch (err) {
+      console.error("[WhatsApp] Invoice send failed:", err);
+      toast.error(`WhatsApp send failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setSendingWhatsappInvoiceId(null);
     }
   }
 
@@ -665,7 +692,24 @@ export function BillingManager({
                             <MoreVertical style={{ width: 14, height: 14 }} />
                           </button>
                           {openDropdownId === invoice.id && (
-                            <div className="absolute right-0 top-10 z-[60] w-36 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                            <div className="absolute right-0 top-10 z-[60] w-52 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                              <button
+                                type="button"
+                                disabled={sendingWhatsappInvoiceId === invoice.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenDropdownId(null);
+                                  void sendInvoiceToCustomer(invoice);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {sendingWhatsappInvoiceId === invoice.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Send className="h-3.5 w-3.5 text-emerald-600" />
+                                )}
+                                Send invoice
+                              </button>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -777,7 +821,7 @@ export function BillingManager({
           onSaved={() => router.refresh()}
           categories={categories}
           brands={brands}
-          products={liveProducts as any} // Cast safely since ProductSummary implicitly matches the subset
+          products={liveProducts}
         />
 
         {showScrollTop && (

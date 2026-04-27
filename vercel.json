@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/emi-reminders",
+      "schedule": "30 3 * * *"
+    }
+  ]
+}
