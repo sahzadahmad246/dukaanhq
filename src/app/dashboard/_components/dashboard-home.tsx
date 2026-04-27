@@ -137,6 +137,7 @@ export function DashboardHome({
   categories,
   brands,
   shopStampUrl,
+  shopSlug,
   loadError,
 }: {
   ownerName: string;
@@ -149,6 +150,7 @@ export function DashboardHome({
   categories: Category[];
   brands: Brand[];
   shopStampUrl: string | null;
+  shopSlug?: string | null;
   loadError?: string | null;
 }) {
   const router = useRouter();
@@ -609,7 +611,7 @@ export function DashboardHome({
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <p className="dash-section-label" style={{ marginBottom: 0 }}>Recent Bills</p>
-              <Link href="/billing" style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", display: "flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+              <Link href={shopSlug ? `/${shopSlug}/billing` : "/billing"} style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", display: "flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
                 View all <ArrowRight style={{ width: 12, height: 12 }} />
               </Link>
             </div>
@@ -800,7 +802,7 @@ export function DashboardHome({
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <p className="dash-section-label" style={{ marginBottom: 0 }}>Recent Products</p>
-              <Link href="/inventory" style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", display: "flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+              <Link href={shopSlug ? `/${shopSlug}/inventory` : "/inventory"} style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", display: "flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
                 View all <ArrowRight style={{ width: 12, height: 12 }} />
               </Link>
             </div>
@@ -840,6 +842,7 @@ export function DashboardHome({
         shopLogoUrl={shopLogoUrl}
         shopPostalCode={shopPostalCode}
         shopStampUrl={shopStampUrl}
+        settingsHref={shopSlug ? `/${shopSlug}/settings#stamp` : "/settings#stamp"}
         onInvoiceCreated={() => router.refresh()}
         onOpenAddProduct={() => setIsAddProductOpen(true)}
       />
@@ -1027,7 +1030,7 @@ export function DashboardHome({
                 Maybe Later
               </button>
               <Link
-                href="/settings#stamp"
+                href={shopSlug ? `/${shopSlug}/settings#stamp` : "/settings#stamp"}
                 onClick={dismissStampDrawer}
                 style={{
                   flex: 1,

@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 const COUNTRY_CODES = [
@@ -483,13 +482,11 @@ function ProductPicker({
   products,
   selectedProductId,
   onSelect,
-  onOpenQuickItem,
   onOpenAddProduct,
 }: {
   products: ProductSummary[];
   selectedProductId: string;
   onSelect: (productId: string) => void;
-  onOpenQuickItem: () => void;
   onOpenAddProduct?: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -610,13 +607,11 @@ function LineEditor({
   line,
   products,
   onChange,
-  onOpenQuickItem,
   onOpenAddProduct,
 }: {
   line: BillingLineDraft;
   products: ProductSummary[];
   onChange: (next: Partial<BillingLineDraft>) => void;
-  onOpenQuickItem: () => void;
   onOpenAddProduct?: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -766,7 +761,6 @@ function LineEditor({
           <ProductPicker
             products={products}
             selectedProductId={line.product_id}
-            onOpenQuickItem={onOpenQuickItem}
             onOpenAddProduct={onOpenAddProduct}
             onSelect={(productId) => {
               const nextProduct = products.find((product) => product.id === productId);
@@ -1065,6 +1059,7 @@ export function AddBillModal({
   invoiceToEdit,
   onOpenAddProduct,
   shopStampUrl,
+  settingsHref,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1075,6 +1070,7 @@ export function AddBillModal({
   invoiceToEdit?: BillingInvoiceSummary | null;
   onOpenAddProduct?: () => void;
   shopStampUrl?: string | null;
+  settingsHref?: string;
 }) {
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
@@ -1976,6 +1972,7 @@ export function AddBillModal({
                 shopStampUrl={shopStampUrl ?? null}
                 customerSignatureDataUrl={customerSignatureDataUrl}
                 onSignatureChange={setCustomerSignatureDataUrl}
+                settingsHref={settingsHref}
               />
             </section>
           ) : null}
@@ -2211,7 +2208,6 @@ export function AddBillModal({
                 key={draftLine.id}
                 line={draftLine}
                 products={products}
-                onOpenQuickItem={() => openQuickItemDialog(createQuickLine(), { closeProductDialogOnSave: true })}
                 onOpenAddProduct={onOpenAddProduct}
                 onChange={(next) => setDraftLine((current) => (current ? { ...current, ...next } : current))}
               />

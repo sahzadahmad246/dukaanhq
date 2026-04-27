@@ -4,6 +4,7 @@ import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { formatShopMemberRole } from "@/lib/auth/display-role";
+import { buildShopRoute } from "@/lib/shop-routes";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,14 +17,30 @@ async function signOut() {
   redirect("/");
 }
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ shop?: string }>;
+}) {
+  const query = await searchParams;
   const { user, profile, membership, shop } = await getWorkspaceData();
+
+  if (shop?.slug) {
+    if (!query.shop) {
+      redirect(buildShopRoute(shop.slug, "profile"));
+    }
+
+    if (query.shop !== shop.slug) {
+      redirect(buildShopRoute(shop.slug, "profile"));
+    }
+  }
 
   return (
     <WorkspaceShell
       title="Profile"
       activeNav="staff"
       shopName={shop?.name ?? "Shop"}
+      shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state].filter(Boolean).join(", ")}
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}

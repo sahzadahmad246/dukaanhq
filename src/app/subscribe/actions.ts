@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getUserAppState } from "@/lib/auth/user-flow";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -10,7 +11,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * Dev-only: marks the signed-in owner's shop as actively subscribed (no Cashfree call).
  * Set DUKAANHQ_DEV_ACTIVATE_SUBSCRIPTION=true in .env.local to show the button on /subscribe.
  */
-export async function devActivateShopSubscriptionAction(): Promise<{ ok: boolean; message: string }> {
+export async function devActivateShopSubscriptionAction(): Promise<{ ok: boolean; message: string; redirectTo?: string }> {
   if (process.env.DUKAANHQ_DEV_ACTIVATE_SUBSCRIPTION !== "true") {
     return { ok: false, message: "Dev activation is disabled." };
   }
@@ -48,5 +49,9 @@ export async function devActivateShopSubscriptionAction(): Promise<{ ok: boolean
 
   revalidatePath("/subscribe");
   revalidatePath("/dashboard");
-  return { ok: true, message: "Shop marked active (dev)." };
+  return {
+    ok: true,
+    message: "Shop marked active (dev).",
+    redirectTo: state.shopSlug ? buildShopRoute(state.shopSlug, "dashboard") : "/dashboard",
+  };
 }

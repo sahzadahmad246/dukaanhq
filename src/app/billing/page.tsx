@@ -1,19 +1,31 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { loadBillingData } from "./load-billing-data";
 import { BillingManager } from "./_components/billing-manager";
+import { buildShopRoute } from "@/lib/shop-routes";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type PageProps = {
-  searchParams: Promise<{ q?: string; period?: string }>;
+  searchParams: Promise<{ q?: string; period?: string; shop?: string }>;
 };
 
 export default async function BillingPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const { user, profile, shop, membership, products, invoices, categories, brands } = await loadBillingData(query);
+
+  if (shop?.slug) {
+    if (!query.shop) {
+      redirect(buildShopRoute(shop.slug, "billing"));
+    }
+
+    if (query.shop !== shop.slug) {
+      redirect(buildShopRoute(shop.slug, "billing"));
+    }
+  }
 
   return (
     <WorkspaceShell
@@ -21,6 +33,7 @@ export default async function BillingPage({ searchParams }: PageProps) {
       activeNav="billing"
       hideHeader
       shopName={shop?.name ?? "Shop"}
+      shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state].filter(Boolean).join(", ")}
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}
@@ -38,6 +51,7 @@ export default async function BillingPage({ searchParams }: PageProps) {
           shopLogoUrl={shop?.logo_url ?? null}
           shopPostalCode={shop?.postal_code ?? null}
           shopStampUrl={shop?.shop_stamp_url ?? null}
+          settingsHref={shop?.slug ? `${buildShopRoute(shop.slug, "settings")}#stamp` : "/settings#stamp"}
         />
       </Suspense>
     </WorkspaceShell>

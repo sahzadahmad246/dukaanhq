@@ -3,19 +3,20 @@ import { redirect } from "next/navigation";
 
 import { ProfileMenu } from "@/app/_components/profile-menu";
 import { OnboardingForm } from "@/app/onboarding/_components/onboarding-form";
-import { getUserAppState } from "@/lib/auth/user-flow";
+import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
-  const { user, profile, profileSyncReady, isOwner, hasCompletedOnboarding } = await getUserAppState(supabase);
+  const state = await getUserAppState(supabase);
+  const { user, profile, profileSyncReady, isOwner, hasCompletedOnboarding } = state;
 
   if (!user) {
     redirect("/auth/login");
   }
 
   if (isOwner && hasCompletedOnboarding) {
-    redirect("/dashboard?toast=already-has-shop");
+    redirect(getSignedInLandingPath(state));
   }
 
   const displayName = profile?.full_name ?? user.user_metadata.full_name ?? user.email ?? "User";

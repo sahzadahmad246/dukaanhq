@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { getUserAppState } from "@/lib/auth/user-flow";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
@@ -14,6 +15,7 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
     profileSyncReady,
     membership,
     shopSettings,
+    shopSlug,
     hasWorkspaceAccess,
     isSuspendedMembership,
     canManageStaff,
@@ -40,11 +42,11 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
   }
 
   if (!canUseShopProduct) {
-    redirect("/subscribe");
+    redirect(shopSlug ? buildShopRoute(shopSlug, "subscribe") : "/subscribe");
   }
 
   if (options?.requireOwner && !canManageStaff) {
-    redirect("/dashboard");
+    redirect(shopSlug ? buildShopRoute(shopSlug, "dashboard") : "/dashboard");
   }
 
   const { data: shop } = await supabase

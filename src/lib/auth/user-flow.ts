@@ -8,6 +8,7 @@ import {
   type SaaSPlatformSettingsRow,
   type ShopEntitlementRow,
 } from "@/lib/subscription/access";
+import { buildShopRoute } from "@/lib/shop-routes";
 
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 
@@ -38,6 +39,7 @@ export type UserAppState = {
   profile: ProfileRecord;
   profileSyncReady: boolean;
   membership: MembershipRecord | null;
+  shopSlug: string | null;
   shopSettings: ShopSettingsRecord | null;
   isOwner: boolean;
   isSuperAdmin: boolean;
@@ -62,6 +64,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
       profile,
       profileSyncReady,
       membership: null,
+      shopSlug: null,
       shopSettings: null,
       isOwner: false,
       isSuperAdmin: false,
@@ -81,6 +84,14 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     .select("shop_id, role, status, full_name, email, mobile_number")
     .eq("user_id", user.id)
     .maybeSingle<MembershipRecord>();
+
+  const { data: shopRow } = membership
+    ? await supabase
+        .from("shops")
+        .select("slug")
+        .eq("id", membership.shop_id)
+        .maybeSingle<{ slug: string }>()
+    : { data: null };
 
   const { data: shopSettings } = membership
     ? await supabase
@@ -144,6 +155,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     profile,
     profileSyncReady,
     membership,
+    shopSlug: shopRow?.slug ?? null,
     shopSettings,
     isOwner,
     isSuperAdmin,
@@ -167,6 +179,7 @@ export function getSignedInLandingPath(
     | "canUseShopProduct"
     | "isSuperAdmin"
     | "isSuspendedMembership"
+    | "shopSlug"
   >,
 ) {
   if (state.isSuspendedMembership) {
@@ -175,9 +188,9 @@ export function getSignedInLandingPath(
 
   if (state.hasWorkspaceAccess && state.hasCompletedOnboarding) {
     if (!state.canUseShopProduct) {
-      return "/subscribe";
+      return state.shopSlug ? buildShopRoute(state.shopSlug, "subscribe") : "/subscribe";
     }
-    return "/dashboard";
+    return state.shopSlug ? buildShopRoute(state.shopSlug, "dashboard") : "/dashboard";
   }
 
   if (state.isOwner) {

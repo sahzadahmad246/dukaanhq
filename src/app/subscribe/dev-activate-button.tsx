@@ -20,7 +20,7 @@ export function DevActivateSubscriptionButton() {
           const res = await devActivateShopSubscriptionAction();
           if (res.ok) {
             toast.success(res.message);
-            window.location.href = "/dashboard";
+            window.location.href = res.redirectTo ?? "/dashboard";
           } else {
             toast.error(res.message);
           }

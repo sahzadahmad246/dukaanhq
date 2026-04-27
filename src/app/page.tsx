@@ -3,6 +3,7 @@ import Link from "next/link";
 import { HomePrimaryCta } from "@/app/_components/home-primary-cta";
 import { MarketingHeader } from "@/app/_components/marketing-header";
 import { getUserAppState } from "@/lib/auth/user-flow";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -33,9 +34,9 @@ export default async function Home() {
   const { data: shop } = membership?.shop_id
     ? await supabase
         .from("shops")
-        .select("name")
+        .select("name, slug")
         .eq("id", membership.shop_id)
-        .maybeSingle<{ name: string }>()
+        .maybeSingle<{ name: string; slug: string }>()
     : { data: null };
 
   const displayName = profile?.full_name ?? user?.user_metadata.full_name ?? user?.email ?? "there";
@@ -56,11 +57,11 @@ export default async function Home() {
         return { href: "/onboarding", label: "Complete Onboarding" };
       }
       if (!canUseShopProduct) {
-        return { href: "/subscribe", label: "Subscribe to Continue" };
+        return { href: shop?.slug ? buildShopRoute(shop.slug, "subscribe") : "/subscribe", label: "Subscribe to Continue" };
       }
       // owner + staff both land on the same workspace dashboard
       return {
-        href: "/dashboard",
+        href: shop?.slug ? buildShopRoute(shop.slug, "dashboard") : "/dashboard",
         label: membership?.role === "staff" ? `Open ${shopName}` : "Access Your Shop",
       };
     }

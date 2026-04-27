@@ -37,7 +37,21 @@ export function getConfiguredAppOrigin() {
   );
 }
 
+function chooseBestOrigin(origins: Array<string | null>) {
+  const validOrigins = origins.filter((origin): origin is string => Boolean(origin));
+  const nonLocalOrigin = validOrigins.find((origin) => !isLocalOrigin(origin));
+  return nonLocalOrigin ?? validOrigins[0] ?? null;
+}
+
 export function getRequestOrigin(headers: HeaderReader) {
+  const originHeader = firstHeaderValue(headers.get("origin"));
+  const refererHeader = firstHeaderValue(headers.get("referer"));
+  const explicitOrigin = normalizeOrigin(originHeader) ?? normalizeOrigin(refererHeader);
+
+  if (explicitOrigin) {
+    return explicitOrigin;
+  }
+
   const forwardedHost = firstHeaderValue(headers.get("x-forwarded-host"));
   const host = forwardedHost ?? firstHeaderValue(headers.get("host"));
 
@@ -53,9 +67,17 @@ export function getAppOrigin(headers: HeaderReader) {
   const requestOrigin = getRequestOrigin(headers);
   const configuredOrigin = getConfiguredAppOrigin();
 
-  if (requestOrigin && (!isLocalOrigin(requestOrigin) || !configuredOrigin || isLocalOrigin(configuredOrigin))) {
-    return requestOrigin;
+  if (configuredOrigin && !isLocalOrigin(configuredOrigin)) {
+    return configuredOrigin;
   }
 
-  return configuredOrigin ?? requestOrigin;
+  return chooseBestOrigin([requestOrigin, configuredOrigin]);
+}
+
+export function getAppOriginFromRequest(request: Request) {
+  const requestUrlOrigin = normalizeOrigin(new URL(request.url).origin);
+  const requestOrigin = getRequestOrigin(request.headers);
+  const configuredOrigin = getConfiguredAppOrigin();
+
+  return chooseBestOrigin([requestOrigin, requestUrlOrigin, configuredOrigin]);
 }

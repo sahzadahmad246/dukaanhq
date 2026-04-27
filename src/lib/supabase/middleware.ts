@@ -15,9 +15,15 @@ function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) 
 }
 
 export async function updateSession(request: NextRequest) {
-  const response = NextResponse.next({
+  return updateSessionWithResponse(
     request,
-  });
+    NextResponse.next({
+      request,
+    })
+  );
+}
+
+export async function updateSessionWithResponse(request: NextRequest, response: NextResponse) {
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

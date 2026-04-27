@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { ProfileMenu } from "@/app/_components/profile-menu";
 import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { DevActivateSubscriptionButton } from "@/app/subscribe/dev-activate-button";
 import {
@@ -22,9 +23,14 @@ function formatInrFromPaise(paise: number) {
   }).format(rupees);
 }
 
-export default async function SubscribePage() {
+export default async function SubscribePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ shop?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const state = await getUserAppState(supabase);
+  const query = await searchParams;
 
   if (!state.user) {
     redirect("/auth/login");
@@ -35,7 +41,17 @@ export default async function SubscribePage() {
   }
 
   if (state.canUseShopProduct) {
-    redirect("/dashboard");
+    redirect(state.shopSlug ? buildShopRoute(state.shopSlug, "dashboard") : "/dashboard");
+  }
+
+  if (state.shopSlug) {
+    if (!query.shop) {
+      redirect(buildShopRoute(state.shopSlug, "subscribe"));
+    }
+
+    if (query.shop !== state.shopSlug) {
+      redirect(buildShopRoute(state.shopSlug, "subscribe"));
+    }
   }
 
   const platform = mergePlatformSettings(state.saasPlatform);
@@ -120,7 +136,7 @@ export default async function SubscribePage() {
 
         {state.membership?.role === "owner" ? (
           <Link
-            href="/subscription"
+            href={state.shopSlug ? buildShopRoute(state.shopSlug, "subscription") : "/subscription"}
             className="mt-6 block text-center text-sm font-semibold text-stone-700 underline-offset-4 hover:underline"
           >
             Manage subscription (status &amp; Cashfree refs)

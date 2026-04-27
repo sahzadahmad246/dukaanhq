@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatShopMemberRole } from "@/lib/auth/display-role";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { useMemo, useState } from "react";
 
 type DrawerSection = {
@@ -54,6 +55,7 @@ export function OwnerDrawer({
   open,
   onClose,
   shopName,
+  shopSlug,
   shopAddress,
   shopLogoUrl,
   ownerName,
@@ -65,6 +67,7 @@ export function OwnerDrawer({
   open: boolean;
   onClose: () => void;
   shopName: string;
+  shopSlug: string | null;
   shopAddress: string;
   shopLogoUrl: string | null;
   ownerName: string;
@@ -76,17 +79,37 @@ export function OwnerDrawer({
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const drawerSections = useMemo(() => {
+    const buildHref = (path: string) => {
+      const route = path.replace(/^\//, "");
+      if (!shopSlug) return path;
+      if (route === "dashboard" || route === "billing" || route === "inventory" || route === "staff" || route === "profile" || route === "settings" || route === "subscribe" || route === "subscription") {
+        return buildShopRoute(shopSlug, route as Parameters<typeof buildShopRoute>[1]);
+      }
+      return path;
+    };
+
     const supportItems: DrawerSection["items"] = [
-      { href: "/profile", label: "Owner profile", icon: SquareUserRound },
-      { href: "/dashboard", label: "Help centre", icon: CircleHelp },
-      { href: "/dashboard", label: "Support tickets", icon: Tickets },
+      { href: buildHref("/profile"), label: "Owner profile", icon: SquareUserRound },
+      { href: buildHref("/dashboard"), label: "Help centre", icon: CircleHelp },
+      { href: buildHref("/dashboard"), label: "Support tickets", icon: Tickets },
     ];
     if (ownerRole === "owner") {
-      supportItems.push({ href: "/subscription", label: "Manage subscription", icon: CreditCard });
+      supportItems.push({ href: buildHref("/subscription"), label: "Manage subscription", icon: CreditCard });
     }
-    supportItems.push({ href: "/settings", label: "Shop settings", icon: Settings2 });
-    return [...operationsAndGrowthSections, { title: "Support", items: supportItems }];
-  }, [ownerRole]);
+    supportItems.push({ href: buildHref("/settings"), label: "Shop settings", icon: Settings2 });
+
+    return [
+      {
+        title: "Operations",
+        items: operationsAndGrowthSections[0].items.map((item) => ({ ...item, href: buildHref(item.href) })),
+      },
+      {
+        title: "Growth",
+        items: operationsAndGrowthSections[1].items.map((item) => ({ ...item, href: buildHref(item.href) })),
+      },
+      { title: "Support", items: supportItems },
+    ];
+  }, [ownerRole, shopSlug]);
 
   const handleLogout = async () => {
     try {
@@ -189,15 +212,15 @@ export function OwnerDrawer({
           </section>
 
           <section className="mt-4 grid grid-cols-3 gap-3 px-4">
-            <Link href="/staff" className="rounded-[1.4rem] bg-white px-3 py-4 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+            <Link href={shopSlug ? buildShopRoute(shopSlug, "staff") : "/staff"} className="rounded-[1.4rem] bg-white px-3 py-4 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
               <div className="text-lg font-semibold text-stone-950">04</div>
               <div className="mt-1 text-xs text-stone-600">Staff</div>
             </Link>
-            <Link href="/billing" className="rounded-[1.4rem] bg-white px-3 py-4 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+            <Link href={shopSlug ? buildShopRoute(shopSlug, "billing") : "/billing"} className="rounded-[1.4rem] bg-white px-3 py-4 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
               <div className="text-lg font-semibold text-stone-950">₹</div>
               <div className="mt-1 text-xs text-stone-600">Billing</div>
             </Link>
-            <Link href="/inventory" className="rounded-[1.4rem] bg-white px-3 py-4 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+            <Link href={shopSlug ? buildShopRoute(shopSlug, "inventory") : "/inventory"} className="rounded-[1.4rem] bg-white px-3 py-4 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
               <div className="text-lg font-semibold text-stone-950">#</div>
               <div className="mt-1 text-xs text-stone-600">Stock</div>
             </Link>

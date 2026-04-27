@@ -125,6 +125,7 @@ export function BillingManager({
   shopLogoUrl,
   shopPostalCode,
   shopStampUrl,
+  settingsHref,
 }: {
   products: ProductSummary[];
   invoices: BillingInvoiceSummary[];
@@ -133,6 +134,7 @@ export function BillingManager({
   shopLogoUrl?: string | null;
   shopPostalCode?: string | null;
   shopStampUrl?: string | null;
+  settingsHref?: string;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -761,6 +763,7 @@ export function BillingManager({
           shopLogoUrl={shopLogoUrl}
           shopPostalCode={shopPostalCode}
           shopStampUrl={shopStampUrl ?? null}
+          settingsHref={settingsHref}
           onInvoiceCreated={async (items) => {
             setLiveProducts((current) =>
               current.map((product) => {

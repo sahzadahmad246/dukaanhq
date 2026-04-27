@@ -12,25 +12,27 @@ import {
 
 import { DashboardToastListener } from "@/app/_components/dashboard-toast-listener";
 import { OwnerDrawer } from "@/app/_components/owner-drawer";
+import { buildShopRoute } from "@/lib/shop-routes";
 
 type NavKey = "dashboard" | "billing" | "inventory" | "staff";
 
 const navItems: Array<{
-  href: string;
+  route: NavKey;
   key: NavKey;
   label: string;
   icon: typeof House;
 }> = [
-  { href: "/dashboard", key: "dashboard", label: "Home", icon: House },
-  { href: "/billing", key: "billing", label: "Bill", icon: ReceiptText },
-  { href: "/inventory", key: "inventory", label: "Inventory", icon: Package },
-  { href: "/staff", key: "staff", label: "Staff", icon: Users },
+  { route: "dashboard", key: "dashboard", label: "Home", icon: House },
+  { route: "billing", key: "billing", label: "Bill", icon: ReceiptText },
+  { route: "inventory", key: "inventory", label: "Inventory", icon: Package },
+  { route: "staff", key: "staff", label: "Staff", icon: Users },
 ];
 
 export function WorkspaceShell({
   title,
   activeNav,
   shopName,
+  shopSlug,
   shopAddress,
   shopLogoUrl,
   ownerName,
@@ -44,6 +46,7 @@ export function WorkspaceShell({
   title: string;
   activeNav: NavKey;
   shopName: string;
+  shopSlug: string | null;
   shopAddress: string;
   shopLogoUrl: string | null;
   ownerName: string;
@@ -95,6 +98,7 @@ export function WorkspaceShell({
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         shopName={shopName}
+        shopSlug={shopSlug}
         shopAddress={shopAddress}
         shopLogoUrl={shopLogoUrl}
         ownerName={ownerName}
@@ -166,7 +170,7 @@ export function WorkspaceShell({
               return (
                 <Link
                   key={item.key}
-                  href={item.href}
+                  href={shopSlug ? buildShopRoute(shopSlug, item.route) : `/${item.route}`}
                   className="flex min-w-16 flex-col items-center gap-1 text-xs"
                 >
                   <span

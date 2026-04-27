@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getAppOrigin } from "@/lib/app-origin";
+import { getConfiguredAppOrigin } from "@/lib/app-origin";
 import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -120,7 +120,7 @@ async function acceptInviteForUser(input: {
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const appOrigin = getAppOrigin(request.headers) ?? requestUrl.origin;
+  const appOrigin = getConfiguredAppOrigin() ?? requestUrl.origin;
   const code = requestUrl.searchParams.get("code");
   const cookieStore = await cookies();
   const inviteToken = requestUrl.searchParams.get("invite") ?? cookieStore.get("dukaanhq_invite_token")?.value ?? null;
@@ -196,6 +196,7 @@ export async function GET(request: Request) {
       canUseShopProduct: appState.canUseShopProduct,
       isSuperAdmin: appState.isSuperAdmin,
       isSuspendedMembership: appState.isSuspendedMembership,
+      shopSlug: appState.shopSlug,
     });
     cookieStore.delete("dukaanhq_invite_token");
 
@@ -230,6 +231,7 @@ export async function GET(request: Request) {
         canUseShopProduct: appState.canUseShopProduct,
         isSuperAdmin: appState.isSuperAdmin,
         isSuspendedMembership: appState.isSuspendedMembership,
+        shopSlug: appState.shopSlug,
       });
 
       cookieStore.delete("dukaanhq_invite_token");

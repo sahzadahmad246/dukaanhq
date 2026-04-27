@@ -1,7 +1,9 @@
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { SettingsEditor } from "@/app/settings/_components/settings-editor";
 import { ShopStampCard } from "@/app/settings/_components/shop-stamp-card";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -11,14 +13,30 @@ function formatTime(value: string | null | undefined) {
   return value.slice(0, 5);
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ shop?: string }>;
+}) {
+  const query = await searchParams;
   const { user, profile, membership, shop, shopSettings } = await getWorkspaceData({ requireOwner: false });
+
+  if (shop?.slug) {
+    if (!query.shop) {
+      redirect(buildShopRoute(shop.slug, "settings"));
+    }
+
+    if (query.shop !== shop.slug) {
+      redirect(buildShopRoute(shop.slug, "settings"));
+    }
+  }
 
   return (
     <WorkspaceShell
       title="Settings"
       activeNav="staff"
       shopName={shop?.name ?? "Shop"}
+      shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state, shop?.postal_code].filter(Boolean).join(", ")}
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}

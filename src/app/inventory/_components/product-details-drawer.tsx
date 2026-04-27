@@ -6,7 +6,6 @@ import { X, PackageOpen, Loader2, TrendingUp, TrendingDown, Tag, Layers, Chevron
 import { format } from "date-fns";
 import { fetchProductDetails, productDetailsQueryKey, type ProductDetails } from "../queries";
 import { ProductActionsMenu } from "./product-actions-menu";
-import { Button } from "@/components/ui/button";
 import { buildVariantLabel } from "@/lib/inventory-labels";
 
 type InventoryItem = NonNullable<ProductDetails["inventory_items"]>[number];

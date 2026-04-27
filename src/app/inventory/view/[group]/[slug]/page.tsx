@@ -46,6 +46,7 @@ export default async function InventoryGroupPage({
       activeNav="inventory"
       hideHeader
       shopName={shop?.name ?? "Shop"}
+      shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state].filter(Boolean).join(", ")}
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={profile?.full_name ?? user.user_metadata.full_name ?? "Shop owner"}

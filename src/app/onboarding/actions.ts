@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import type { OnboardingActionState } from "@/app/onboarding/state";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
@@ -271,5 +272,5 @@ export async function createShopAction(
 
   await supabase.from("onboarding_drafts").delete().eq("user_id", user.id);
 
-  redirect("/dashboard?toast=shop-created");
+  redirect(`${buildShopRoute(values.slug, "dashboard")}?toast=shop-created`);
 }

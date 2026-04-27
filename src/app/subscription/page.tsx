@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   mergePlatformSettings,
@@ -32,9 +33,14 @@ function maskReference(id: string | null | undefined) {
   return `${id.slice(0, 4)}…${id.slice(-4)}`;
 }
 
-export default async function SubscriptionManagePage() {
+export default async function SubscriptionManagePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ shop?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const state = await getUserAppState(supabase);
+  const query = await searchParams;
 
   if (!state.user) {
     redirect("/auth/login");
@@ -45,7 +51,7 @@ export default async function SubscriptionManagePage() {
   }
 
   if (state.membership.role !== "owner") {
-    redirect("/dashboard");
+    redirect(state.shopSlug ? buildShopRoute(state.shopSlug, "dashboard") : "/dashboard");
   }
 
   const { data: shop } = await supabase
@@ -53,6 +59,16 @@ export default async function SubscriptionManagePage() {
     .select("id, name, slug, logo_url, address_line_1, city, state")
     .eq("id", state.membership.shop_id)
     .maybeSingle();
+
+  if (shop?.slug) {
+    if (!query.shop) {
+      redirect(buildShopRoute(shop.slug, "subscription"));
+    }
+
+    if (query.shop !== shop.slug) {
+      redirect(buildShopRoute(shop.slug, "subscription"));
+    }
+  }
 
   const { data: cancelRow, error: cancelColError } = await supabase
     .from("shop_entitlements")
@@ -81,6 +97,7 @@ export default async function SubscriptionManagePage() {
       title="Subscription"
       activeNav="staff"
       shopName={shop?.name ?? "Shop"}
+      shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state].filter(Boolean).join(", ")}
       shopLogoUrl={shop?.logo_url ?? null}
       ownerName={state.profile?.full_name ?? state.user.user_metadata.full_name ?? "Shop owner"}
@@ -109,7 +126,7 @@ export default async function SubscriptionManagePage() {
           </p>
           {!hasAccess ? (
             <Link
-              href="/subscribe"
+              href={shop?.slug ? buildShopRoute(shop.slug, "subscribe") : "/subscribe"}
               className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-stone-950 py-3 text-sm font-semibold text-white"
             >
               Go to subscribe

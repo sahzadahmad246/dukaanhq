@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Download, Send, Layers, Pencil, AlertTriangle, X } from "lucide-react";
+import { Download, Send, Layers, Pencil, AlertTriangle } from "lucide-react";
 import { SignaturePadModal } from "./signature-pad-modal";
 
 type DeliveryMode = "download" | "auto_send" | "both";
@@ -44,12 +44,14 @@ export function DeliveryStep({
   shopStampUrl,
   customerSignatureDataUrl,
   onSignatureChange,
+  settingsHref = "/settings#stamp",
 }: {
   deliveryMode: DeliveryMode;
   onDeliveryModeChange: (mode: DeliveryMode) => void;
   shopStampUrl: string | null;
   customerSignatureDataUrl: string | null;
   onSignatureChange: (dataUrl: string | null) => void;
+  settingsHref?: string;
 }) {
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
@@ -127,7 +129,7 @@ export function DeliveryStep({
             <div className="flex-1">
               <p className="text-xs font-semibold text-amber-800">Shop stamp required for auto-send</p>
               <p className="text-xs text-amber-700 mt-0.5">
-                <Link href="/settings#stamp" className="underline font-semibold">
+                <Link href={settingsHref} className="underline font-semibold">
                   Upload your stamp in Settings
                 </Link>{" "}
                 to enable auto-send and both options.
