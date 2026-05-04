@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Download, Loader2, MoreVertical, Pencil, PhoneCall, Receipt, Trash2, X } from "lucide-react";
+import { Download, Loader2, MoreVertical, Pencil, PhoneCall, Receipt, Send, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { downloadExternalPdf, type PrintableInvoice } from "./invoice-print";
@@ -55,6 +55,8 @@ export function BillDetailsDrawer({
   open,
   onClose,
   onDownload,
+  onSendInvoice,
+  isSendingInvoice,
   onEdit,
   onDelete,
   onProductClick,
@@ -64,6 +66,8 @@ export function BillDetailsDrawer({
   open: boolean;
   onClose: () => void;
   onDownload: (invoice: PrintableInvoice, withAssets?: boolean) => void;
+  onSendInvoice?: (invoice: InvoiceDetails) => Promise<void> | void;
+  isSendingInvoice?: boolean;
   onEdit: (invoice: InvoiceDetails) => void;
   onDelete: (invoiceId: string) => void;
   onProductClick?: (productId: string) => void;
@@ -166,7 +170,26 @@ export function BillDetailsDrawer({
                     <MoreVertical className="h-4 w-4" />
                   </button>
                   {showMenu && (
-                    <div className="absolute right-0 top-12 z-[60] w-36 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                    <div className="absolute right-0 top-12 z-[60] w-52 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
+                      {onSendInvoice ? (
+                        <button
+                          type="button"
+                          disabled={isSendingInvoice}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await onSendInvoice(invoice);
+                            setShowMenu(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isSendingInvoice ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Send className="h-3.5 w-3.5 text-emerald-600" />
+                          )}
+                          {isSendingInvoice ? "Sending..." : "Send invoice"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={(e) => {

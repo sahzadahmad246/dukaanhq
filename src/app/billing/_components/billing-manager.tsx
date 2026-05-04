@@ -47,6 +47,11 @@ type ProductSummary = Product & {
   }> | null;
 };
 
+type SendableInvoiceInput = PrintableInvoice & {
+  id: string;
+  customer_mobile?: string | null;
+};
+
 const FILTER_CHIPS = [
   { id: "all", label: "All Time" },
   { id: "today", label: "Today" },
@@ -273,7 +278,7 @@ export function BillingManager({
     }
   }
 
-  async function sendInvoiceToCustomer(invoice: BillingInvoiceSummary) {
+  async function sendInvoiceToCustomer(invoice: SendableInvoiceInput) {
     setSendingWhatsappInvoiceId(invoice.id);
     try {
       const result = await sendInvoiceWhatsappWithFreshPdf({
@@ -698,10 +703,10 @@ export function BillingManager({
                               <button
                                 type="button"
                                 disabled={sendingWhatsappInvoiceId === invoice.id}
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
+                                  await sendInvoiceToCustomer(invoice);
                                   setOpenDropdownId(null);
-                                  void sendInvoiceToCustomer(invoice);
                                 }}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
                               >
@@ -710,7 +715,7 @@ export function BillingManager({
                                 ) : (
                                   <Send className="h-3.5 w-3.5 text-emerald-600" />
                                 )}
-                                Send invoice
+                                {sendingWhatsappInvoiceId === invoice.id ? "Sending..." : "Send invoice"}
                               </button>
                               <button
                                 type="button"
@@ -804,6 +809,8 @@ export function BillingManager({
           open={Boolean(selectedInvoice)}
           onClose={() => setSelectedInvoiceId(null)}
           onDownload={downloadInvoice}
+          onSendInvoice={sendInvoiceToCustomer}
+          isSendingInvoice={selectedInvoice ? sendingWhatsappInvoiceId === selectedInvoice.id : false}
           onEdit={() => {
             setSelectedInvoiceId(null);
             if (selectedInvoice) {

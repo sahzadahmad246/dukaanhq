@@ -45,6 +45,10 @@ import { deleteProductAction } from "@/app/inventory/actions";
 import { deleteInvoiceAction } from "@/app/billing/actions";
 import { InviteStaffModal } from "@/app/staff/_components/invite-staff-modal";
 type ProductSummary = InventoryProduct;
+type SendableInvoiceInput = PrintableInvoice & {
+  id: string;
+  customer_mobile?: string | null;
+};
 
 function formatCurrency(n: number) {
   const value = Number.isFinite(n) ? n : 0;
@@ -318,7 +322,7 @@ export function DashboardHome({
     }
   }
 
-  async function sendInvoiceToCustomer(invoice: RecentInvoice) {
+  async function sendInvoiceToCustomer(invoice: SendableInvoiceInput) {
     setSendingWhatsappInvoiceId(invoice.id);
     try {
       const result = await sendInvoiceWhatsappWithFreshPdf({
@@ -745,10 +749,10 @@ export function DashboardHome({
                             <button
                               type="button"
                               disabled={sendingWhatsappInvoiceId === invoice.id}
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
+                                await sendInvoiceToCustomer(invoice);
                                 setOpenDropdownId(null);
-                                void sendInvoiceToCustomer(invoice);
                               }}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
                             >
@@ -757,7 +761,7 @@ export function DashboardHome({
                               ) : (
                                 <Send className="h-3.5 w-3.5 text-emerald-600" />
                               )}
-                              Send invoice
+                              {sendingWhatsappInvoiceId === invoice.id ? "Sending..." : "Send invoice"}
                             </button>
                             <button
                               type="button"
@@ -908,6 +912,8 @@ export function DashboardHome({
         open={Boolean(selectedInvoice)}
         onClose={() => setSelectedInvoiceId(null)}
         onDownload={handleDownloadInvoice}
+        onSendInvoice={sendInvoiceToCustomer}
+        isSendingInvoice={selectedInvoice ? sendingWhatsappInvoiceId === selectedInvoice.id : false}
         onEdit={() => {
           setSelectedInvoiceId(null);
           if (selectedInvoice) {
