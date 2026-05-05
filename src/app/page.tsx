@@ -336,15 +336,29 @@ export default async function Home() {
 
         <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-6">
           {[
-            { label: "Product", links: ["Billing", "Inventory", "Ecommerce", "Pricing"] },
-            { label: "Company", links: ["About", "Blog", "Contact"] },
+            {
+              label: "Product",
+              links: [
+                { label: "Billing", href: "#billing" },
+                { label: "Inventory", href: "#inventory" },
+                { label: "Pricing", href: "/pricing" },
+              ],
+            },
+            {
+              label: "Company",
+              links: [
+                { label: "About", href: "/about" },
+                { label: "Contact", href: "/contact" },
+                { label: "Refund Policy", href: "/refund-policy" },
+              ],
+            },
           ].map((col) => (
             <div key={col.label}>
               <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.22em] text-stone-400">{col.label}</p>
               <div className="flex flex-col gap-2.5">
                 {col.links.map((link) => (
-                  <a key={link} href={link === "Pricing" ? "/pricing" : "#"} className="text-[13px] text-stone-600 transition-colors hover:text-stone-950">
-                    {link}
+                  <a key={link.href} href={link.href} className="text-[13px] text-stone-600 transition-colors hover:text-stone-950">
+                    {link.label}
                   </a>
                 ))}
               </div>
@@ -355,9 +369,12 @@ export default async function Home() {
         <div className="flex items-center justify-between border-t border-stone-200 pt-5">
           <p className="text-[11px] text-stone-400">© 2025 DukaanHQ</p>
           <div className="flex items-center gap-4">
-            {["Privacy", "Terms"].map((t) => (
-              <a key={t} href="#" className="text-[11px] text-stone-400 transition-colors hover:text-stone-700">
-                {t}
+            {[
+              { label: "Privacy", href: "/privacy-policy" },
+              { label: "Terms", href: "/terms-and-conditions" },
+            ].map((t) => (
+              <a key={t.href} href={t.href} className="text-[11px] text-stone-400 transition-colors hover:text-stone-700">
+                {t.label}
               </a>
             ))}
           </div>
