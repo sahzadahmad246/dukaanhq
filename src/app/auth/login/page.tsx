@@ -38,12 +38,14 @@ function getLoginErrorCopy(error?: string) {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invite?: string; error?: string }>;
+  searchParams: Promise<{ invite?: string; error?: string; plan?: string; billing?: string }>;
 }) {
   const supabase = await createSupabaseServerClient();
   const state = await getUserAppState(supabase);
   const query = await searchParams;
   const inviteToken = query.invite ?? "";
+  const selectedPlan = ["starter", "growth", "pro"].includes(query.plan ?? "") ? query.plan ?? "" : "";
+  const selectedBilling = query.billing === "year" ? "year" : "month";
   const loginError = getLoginErrorCopy(query.error);
 
   if (state.user) {
@@ -145,6 +147,8 @@ export default async function LoginPage({
 
         <form action={signInWithGoogle} className="mt-8">
           {inviteToken ? <input type="hidden" name="invite" value={inviteToken} /> : null}
+          {selectedPlan ? <input type="hidden" name="plan" value={selectedPlan} /> : null}
+          {selectedPlan ? <input type="hidden" name="billing" value={selectedBilling} /> : null}
           <button
             type="submit"
             className="flex h-13 w-full items-center justify-center gap-3 rounded-full bg-[#f5c542] text-sm font-black text-[#080e1a] transition hover:bg-[#f0bb2a]"

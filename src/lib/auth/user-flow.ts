@@ -9,6 +9,10 @@ import {
   type ShopEntitlementRow,
 } from "@/lib/subscription/access";
 import { buildShopRoute } from "@/lib/shop-routes";
+import {
+  getLatestApprovedSubscriptionIntent,
+  type SubscriptionIntentRow,
+} from "@/lib/subscription/intents";
 
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 
@@ -51,6 +55,8 @@ export type UserAppState = {
   shopEntitlement: ShopEntitlementRow | null;
   subscriptionTablesReady: boolean;
   canUseShopProduct: boolean;
+  approvedSubscriptionIntent: SubscriptionIntentRow | null;
+  hasApprovedSubscriptionIntent: boolean;
 };
 
 export async function getUserAppState(supabase: SupabaseClient): Promise<UserAppState> {
@@ -76,6 +82,8 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
       shopEntitlement: null,
       subscriptionTablesReady: false,
       canUseShopProduct: true,
+      approvedSubscriptionIntent: null,
+      hasApprovedSubscriptionIntent: false,
     };
   }
 
@@ -112,6 +120,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
 
   let saasPlatform: SaaSPlatformSettingsRow | null = null;
   let shopEntitlement: ShopEntitlementRow | null = null;
+  let approvedSubscriptionIntent: SubscriptionIntentRow | null = null;
   let subscriptionTablesReady = true;
 
   const { data: platRow, error: platErr } = await supabase
@@ -130,7 +139,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     const { data: entRow, error: entErr } = await supabase
       .from("shop_entitlements")
       .select(
-        "shop_id, billing_status, trial_started_at, trial_ends_at, subscription_valid_until, cashfree_subscription_id, cashfree_customer_id",
+        "shop_id, plan_id, subscription_id, billing_status, trial_started_at, trial_ends_at, subscription_valid_until, cashfree_subscription_id, cashfree_customer_id",
       )
       .eq("shop_id", membership.shop_id)
       .maybeSingle<ShopEntitlementRow>();
@@ -140,6 +149,10 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     } else if (!entErr) {
       shopEntitlement = entRow ?? null;
     }
+  }
+
+  if (subscriptionTablesReady && !membership) {
+    approvedSubscriptionIntent = await getLatestApprovedSubscriptionIntent(supabase, user.id);
   }
 
   let canUseShopProduct = true;
@@ -167,6 +180,8 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     shopEntitlement,
     subscriptionTablesReady,
     canUseShopProduct,
+    approvedSubscriptionIntent,
+    hasApprovedSubscriptionIntent: Boolean(approvedSubscriptionIntent),
   };
 }
 
@@ -180,6 +195,7 @@ export function getSignedInLandingPath(
     | "isSuperAdmin"
     | "isSuspendedMembership"
     | "shopSlug"
+    | "hasApprovedSubscriptionIntent"
   >,
 ) {
   if (state.isSuspendedMembership) {
@@ -191,6 +207,10 @@ export function getSignedInLandingPath(
       return state.shopSlug ? buildShopRoute(state.shopSlug, "subscribe") : "/subscribe";
     }
     return state.shopSlug ? buildShopRoute(state.shopSlug, "dashboard") : "/dashboard";
+  }
+
+  if (state.hasApprovedSubscriptionIntent) {
+    return "/onboarding";
   }
 
   if (state.isOwner) {
@@ -205,7 +225,7 @@ export function getSignedInLandingPath(
 }
 
 export function redirectSignedInUser(
-  state: Pick<UserAppState, "user" | "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding" | "isSuspendedMembership">,
+  state: Pick<UserAppState, "user" | "hasWorkspaceAccess" | "isOwner" | "hasCompletedOnboarding" | "isSuspendedMembership" | "hasApprovedSubscriptionIntent">,
 ) {
   if (!state.user) {
     redirect("/auth/login");
@@ -215,7 +235,7 @@ export function redirectSignedInUser(
     redirect("/suspended");
   }
 
-  if (!state.hasWorkspaceAccess && !state.isOwner) {
+  if (!state.hasWorkspaceAccess && !state.isOwner && !state.hasApprovedSubscriptionIntent) {
     redirect("/");
   }
 

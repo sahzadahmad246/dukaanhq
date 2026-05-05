@@ -9,6 +9,8 @@ export type SaaSPlatformSettingsRow = {
 
 export type ShopEntitlementRow = {
   shop_id: string;
+  plan_id?: string | null;
+  subscription_id?: string | null;
   billing_status: "trialing" | "active" | "locked";
   trial_started_at: string | null;
   trial_ends_at: string | null;

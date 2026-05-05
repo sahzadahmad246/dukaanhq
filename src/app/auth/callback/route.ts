@@ -189,6 +189,21 @@ export async function GET(request: Request) {
     }
 
     const appState = await getUserAppState(supabase);
+    const selectedPlan = cookieStore.get("dukaanhq_selected_plan")?.value;
+    const selectedBilling = cookieStore.get("dukaanhq_selected_billing")?.value;
+
+    if (
+      !appState.hasWorkspaceAccess &&
+      !appState.isSuperAdmin &&
+      selectedPlan &&
+      ["starter", "growth", "pro"].includes(selectedPlan)
+    ) {
+      const startUrl = new URL("/subscribe/start", appOrigin);
+      startUrl.searchParams.set("plan", selectedPlan);
+      startUrl.searchParams.set("billing", selectedBilling === "year" ? "year" : "month");
+      return NextResponse.redirect(startUrl);
+    }
+
     const nextPath = getSignedInLandingPath({
       hasWorkspaceAccess: appState.hasWorkspaceAccess,
       isOwner: appState.isOwner,
@@ -197,6 +212,7 @@ export async function GET(request: Request) {
       isSuperAdmin: appState.isSuperAdmin,
       isSuspendedMembership: appState.isSuspendedMembership,
       shopSlug: appState.shopSlug,
+      hasApprovedSubscriptionIntent: appState.hasApprovedSubscriptionIntent,
     });
     cookieStore.delete("dukaanhq_invite_token");
 
@@ -232,6 +248,7 @@ export async function GET(request: Request) {
         isSuperAdmin: appState.isSuperAdmin,
         isSuspendedMembership: appState.isSuspendedMembership,
         shopSlug: appState.shopSlug,
+        hasApprovedSubscriptionIntent: appState.hasApprovedSubscriptionIntent,
       });
 
       cookieStore.delete("dukaanhq_invite_token");

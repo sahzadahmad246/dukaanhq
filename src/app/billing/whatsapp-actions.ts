@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import type { ActionResponse } from "@/app/inventory/actions";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkPlanEntitlement } from "@/lib/subscription/plan-limits";
 import { sendInvoiceWhatsappMessage } from "@/lib/whatsapp/twilio";
+import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 
 const InvoiceWhatsappPayloadSchema = z.object({
   customer_mobile: z.string().min(1, "Customer mobile number is required."),
@@ -23,6 +26,22 @@ export async function sendInvoiceWhatsappAction(
       status: "error",
       message: parsed.error.issues[0]?.message ?? "Invalid WhatsApp payload.",
     };
+  }
+
+  const { shop } = await getWorkspaceData();
+  if (!shop) {
+    return { status: "error", message: "No active shop found." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const access = await checkPlanEntitlement(
+    supabase,
+    shop.id,
+    "whatsapp_invoice_sending",
+    "WhatsApp invoice sending",
+  );
+  if (!access.ok) {
+    return { status: "error", message: access.message };
   }
 
   try {

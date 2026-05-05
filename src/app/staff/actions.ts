@@ -10,6 +10,7 @@ import { getAppOrigin } from "@/lib/app-origin";
 import { uploadImageToCloudinary, deleteImageFromCloudinary } from "@/lib/cloudinary";
 import { sendResendEmail } from "@/lib/email/resend";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkPlanEntitlement, checkPlanLimit } from "@/lib/subscription/plan-limits";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 
 const InviteStaffSchema = z.object({
@@ -99,6 +100,21 @@ export async function inviteStaffAction(formData: FormData): Promise<ActionRespo
     const { shop, membership, profile, user } = await getWorkspaceData({ requireOwner: true });
     if (!shop || !membership) {
       return { status: "error", message: "Shop access not found." };
+    }
+
+    const access = await checkPlanEntitlement(
+      getAdminSupabase(),
+      shop.id,
+      "staff_access",
+      "Staff access",
+    );
+    if (!access.ok) {
+      return { status: "error", message: access.message };
+    }
+
+    const staffLimit = await checkPlanLimit(getAdminSupabase(), shop.id, "staff");
+    if (!staffLimit.ok) {
+      return { status: "error", message: staffLimit.message };
     }
 
     const parsed = InviteStaffSchema.safeParse({

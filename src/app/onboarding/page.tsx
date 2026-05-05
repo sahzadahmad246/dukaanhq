@@ -19,6 +19,10 @@ export default async function OnboardingPage() {
     redirect(getSignedInLandingPath(state));
   }
 
+  if (!state.membership && !state.hasApprovedSubscriptionIntent) {
+    redirect("/subscribe/start?plan=starter&billing=month");
+  }
+
   const displayName = profile?.full_name ?? user.user_metadata.full_name ?? user.email ?? "User";
   const userEmail = profile?.email ?? user.email ?? "";
   const userInitials = (displayName.slice(0, 1) || "U").toUpperCase();

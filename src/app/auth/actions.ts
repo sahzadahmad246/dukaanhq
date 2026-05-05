@@ -13,6 +13,8 @@ export async function signInWithGoogle(formData: FormData) {
   const appUrl = getAppOrigin(headerList);
   
   const inviteToken = String(formData.get("invite") ?? "").trim();
+  const selectedPlan = String(formData.get("plan") ?? "").trim();
+  const selectedBilling = String(formData.get("billing") ?? "").trim();
 
   if (!appUrl) {
     throw new Error("Could not determine app URL from headers or environment.");
@@ -25,6 +27,23 @@ export async function signInWithGoogle(formData: FormData) {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 15,
+    });
+  }
+
+  if (["starter", "growth", "pro"].includes(selectedPlan)) {
+    cookieStore.set("dukaanhq_selected_plan", selectedPlan, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60,
+    });
+    cookieStore.set("dukaanhq_selected_billing", selectedBilling === "year" ? "year" : "month", {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60,
     });
   }
 

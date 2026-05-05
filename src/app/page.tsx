@@ -29,6 +29,7 @@ export default async function Home() {
     hasCompletedOnboarding,
     canUseShopProduct,
     membership,
+    hasApprovedSubscriptionIntent,
   } = await getUserAppState(supabase);
 
   const { data: shop } = membership?.shop_id
@@ -68,6 +69,10 @@ export default async function Home() {
 
     if (isOwner) {
       return { href: "/onboarding", label: "Complete Onboarding" };
+    }
+
+    if (hasApprovedSubscriptionIntent) {
+      return { href: "/onboarding", label: "Finish Shop Setup" };
     }
 
     // Signed-in user without membership (customer / invited not accepted / etc.)
@@ -331,14 +336,14 @@ export default async function Home() {
 
         <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-6">
           {[
-            { label: "Product", links: ["Billing", "Inventory", "Ecommerce"] },
+            { label: "Product", links: ["Billing", "Inventory", "Ecommerce", "Pricing"] },
             { label: "Company", links: ["About", "Blog", "Contact"] },
           ].map((col) => (
             <div key={col.label}>
               <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.22em] text-stone-400">{col.label}</p>
               <div className="flex flex-col gap-2.5">
                 {col.links.map((link) => (
-                  <a key={link} href="#" className="text-[13px] text-stone-600 transition-colors hover:text-stone-950">
+                  <a key={link} href={link === "Pricing" ? "/pricing" : "#"} className="text-[13px] text-stone-600 transition-colors hover:text-stone-950">
                     {link}
                   </a>
                 ))}

@@ -12,6 +12,7 @@ import {
 } from "@/lib/types/inventory";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkPlanLimit } from "@/lib/subscription/plan-limits";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import {
   deleteImageFromCloudinary,
@@ -223,6 +224,12 @@ export async function createProductAction(
     return { status: "error", message: "No active shop found." };
   }
 
+  const supabase = await createSupabaseServerClient();
+  const productLimit = await checkPlanLimit(supabase, shop.id, "products");
+  if (!productLimit.ok) {
+    return { status: "error", message: productLimit.message };
+  }
+
   const inputResult = parseProductInput(formData);
   if (inputResult.status === "error" || !inputResult.data) {
     return inputResult;
@@ -251,8 +258,6 @@ export async function createProductAction(
 
   const uploadedImages = await uploadImagesToCloudinary(imageFiles);
   const primaryImage = uploadedImages[0] ?? null;
-
-  const supabase = await createSupabaseServerClient();
 
   const { data: productId, error } = await supabase.rpc("create_inventory_product", {
     p_shop_id: shop.id,

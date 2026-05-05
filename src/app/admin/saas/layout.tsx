@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { SaasAdminShell } from "@/app/admin/saas/_components/saas-admin-shell";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -15,5 +16,5 @@ export default async function SaasAdminLayout({ children }: { children: React.Re
     redirect("/");
   }
 
-  return <div className="min-h-screen bg-stone-100 text-stone-950">{children}</div>;
+  return <SaasAdminShell>{children}</SaasAdminShell>;
 }

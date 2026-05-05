@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkPlanLimit } from "@/lib/subscription/plan-limits";
 import { CreateInvoicePayloadSchema } from "@/lib/types/billing";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import type { ActionResponse } from "@/app/inventory/actions";
@@ -66,6 +67,10 @@ export async function createInvoiceAction(
 
   const payload = payloadResult.data;
   const supabase = await createSupabaseServerClient();
+  const invoiceLimit = await checkPlanLimit(supabase, shop.id, "invoices_per_month");
+  if (!invoiceLimit.ok) {
+    return { status: "error", message: invoiceLimit.message };
+  }
 
   const { data: invoiceId, error } = await supabase.rpc("create_inventory_invoice", {
     p_shop_id: shop.id,
@@ -207,4 +212,3 @@ export async function updateInvoiceAction(
       : null,
   };
 }
-

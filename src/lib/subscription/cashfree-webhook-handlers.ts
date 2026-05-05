@@ -13,6 +13,54 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
+function asString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function addBillingPeriod(start: Date, interval: "month" | "year") {
+  const next = new Date(start);
+  if (interval === "year") {
+    next.setFullYear(next.getFullYear() + 1);
+  } else {
+    next.setMonth(next.getMonth() + 1);
+  }
+  return next;
+}
+
+function getSubscriptionDetails(data: Record<string, unknown>) {
+  const statusWebhook = asRecord(data.subscription_status_webhook);
+  return statusWebhook ? asRecord(statusWebhook.subscription_details) : null;
+}
+
+function getSubscriptionTags(data: Record<string, unknown>) {
+  const details = getSubscriptionDetails(data);
+  const nestedTags = details ? asRecord(details.subscription_tags) : null;
+  const topTags = asRecord(data.subscription_tags);
+  return nestedTags ?? topTags;
+}
+
+function getCashfreeStatus(data: Record<string, unknown>) {
+  const details = getSubscriptionDetails(data);
+  return (
+    asString(data.subscription_status) ??
+    (details ? asString(details.subscription_status) : null) ??
+    asString(data.payment_status)
+  );
+}
+
+function getAuthorizationStatus(data: Record<string, unknown>) {
+  const details = getSubscriptionDetails(data);
+  const topAuth = asRecord(data.authorization_details) ?? asRecord(data.authorisation_details);
+  const nestedAuth = details
+    ? asRecord(details.authorization_details) ?? asRecord(details.authorisation_details)
+    : null;
+  return (
+    asString(topAuth?.authorization_status ?? topAuth?.authorisation_status) ??
+    asString(nestedAuth?.authorization_status ?? nestedAuth?.authorisation_status) ??
+    getCashfreeStatus(data)
+  );
+}
+
 /**
  * Find DukaanHQ shop_id from Cashfree webhook JSON after signature verification.
  * Supported sources (in order):
@@ -32,7 +80,7 @@ export async function resolveShopIdFromCashfreePayload(
 
   const statusWebhook = asRecord(data.subscription_status_webhook);
   const subDetails = statusWebhook ? asRecord(statusWebhook.subscription_details) : null;
-  const subscriptionTags = subDetails ? asRecord(subDetails.subscription_tags) : null;
+  const subscriptionTags = getSubscriptionTags(data);
   if (subscriptionTags) {
     const tagId = subscriptionTags.dukaanhq_shop_id ?? subscriptionTags.shop_id;
     if (typeof tagId === "string" && isUuid(tagId)) {
@@ -73,12 +121,56 @@ export async function resolveShopIdFromCashfreePayload(
   return null;
 }
 
+export async function resolveIntentIdFromCashfreePayload(
+  admin: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<string | null> {
+  const data = asRecord(body.data);
+  if (!data) {
+    return null;
+  }
+
+  const subscriptionTags = getSubscriptionTags(data);
+  if (subscriptionTags) {
+    const tagId = subscriptionTags.dukaanhq_intent_id ?? subscriptionTags.intent_id;
+    if (typeof tagId === "string" && isUuid(tagId)) {
+      return tagId;
+    }
+  }
+
+  const { subscriptionId, cfSubscriptionId } = extractSubscriptionIds(data);
+  if (subscriptionId) {
+    const { data: intent } = await admin
+      .from("subscription_intents")
+      .select("id")
+      .eq("cashfree_subscription_id", subscriptionId)
+      .maybeSingle<{ id: string }>();
+
+    if (intent?.id) {
+      return intent.id;
+    }
+  }
+
+  if (cfSubscriptionId) {
+    const { data: intent } = await admin
+      .from("subscription_intents")
+      .select("id")
+      .eq("cashfree_cf_subscription_id", cfSubscriptionId)
+      .maybeSingle<{ id: string }>();
+
+    if (intent?.id) {
+      return intent.id;
+    }
+  }
+
+  return null;
+}
+
 export function extractSubscriptionIds(data: Record<string, unknown>): {
   subscriptionId: string | null;
   cfSubscriptionId: string | null;
 } {
-  const statusWebhook = asRecord(data.subscription_status_webhook);
-  const subDetails = statusWebhook ? asRecord(statusWebhook.subscription_details) : null;
+  const subDetails = getSubscriptionDetails(data);
 
   const subscriptionId =
     (typeof data.subscription_id === "string" ? data.subscription_id : null) ??
@@ -102,8 +194,7 @@ export function extractCashfreeCustomerId(data: Record<string, unknown>): string
 }
 
 export function extractSubscriptionValidUntil(data: Record<string, unknown>): string | null {
-  const statusWebhook = asRecord(data.subscription_status_webhook);
-  const subDetails = statusWebhook ? asRecord(statusWebhook.subscription_details) : null;
+  const subDetails = getSubscriptionDetails(data);
   const exp =
     subDetails && typeof subDetails.subscription_expiry_time === "string"
       ? subDetails.subscription_expiry_time
@@ -114,7 +205,9 @@ export function extractSubscriptionValidUntil(data: Record<string, unknown>): st
   return null;
 }
 
-export type WebhookHandleResult = { ok: true; shopId: string; message: string } | { ok: false; message: string };
+export type WebhookHandleResult =
+  | { ok: true; shopId?: string; intentId?: string; message: string }
+  | { ok: false; message: string };
 
 const ACTIVATE_TYPES = new Set(["SUBSCRIPTION_PAYMENT_SUCCESS", "PAYMENT_SUCCESS_WEBHOOK"]);
 
@@ -136,14 +229,36 @@ export async function applyCashfreeWebhookToEntitlement(
     return { ok: false, message: "missing_data" };
   }
 
-  const shopId = await resolveShopIdFromCashfreePayload(admin, body);
-  if (!shopId) {
-    return { ok: false, message: "shop_not_resolved" };
-  }
-
-  const { subscriptionId } = extractSubscriptionIds(data);
+  const intentId = await resolveIntentIdFromCashfreePayload(admin, body);
+  const { subscriptionId, cfSubscriptionId } = extractSubscriptionIds(data);
   const validUntil = extractSubscriptionValidUntil(data);
   const customerId = extractCashfreeCustomerId(data);
+  const authorizationStatus = getAuthorizationStatus(data);
+
+  const intentLookup = intentId
+    ? await admin
+        .from("subscription_intents")
+        .select("id, plan_code, billing_interval, created_shop_id")
+        .eq("id", intentId)
+        .maybeSingle<{
+          id: string;
+          plan_code: "starter" | "growth" | "pro";
+          billing_interval: "month" | "year";
+          created_shop_id: string | null;
+        }>()
+    : { data: null };
+
+  const resolvedShopId = await resolveShopIdFromCashfreePayload(admin, body);
+  const shopId = resolvedShopId ?? intentLookup.data?.created_shop_id ?? null;
+
+  await admin.from("subscription_events").insert({
+    shop_id: shopId,
+    subscription_intent_id: intentLookup.data?.id ?? null,
+    provider: "cashfree",
+    event_type: type || "UNKNOWN",
+    payload: body,
+    processed_status: "received",
+  });
 
   if (ACTIVATE_TYPES.has(type)) {
     if (type === "PAYMENT_SUCCESS_WEBHOOK") {
@@ -161,32 +276,107 @@ export async function applyCashfreeWebhookToEntitlement(
       }
     }
 
-    const { error } = await admin.from("shop_entitlements").upsert(
-      {
-        shop_id: shopId,
-        billing_status: "active",
-        subscription_valid_until: validUntil,
-        cashfree_subscription_id: subscriptionId ?? undefined,
-        cashfree_customer_id: customerId ?? undefined,
-        cancel_at_period_end: false,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "shop_id" },
-    );
+    const now = new Date();
+    const periodStart = now;
+    const periodEnd = validUntil
+      ? new Date(validUntil)
+      : addBillingPeriod(now, intentLookup.data?.billing_interval ?? "month");
 
-    if (error) {
-      return { ok: false, message: error.message };
+    if (intentLookup.data) {
+      const { error } = await admin
+        .from("subscription_intents")
+        .update({
+          status: "payment_approved",
+          cashfree_subscription_id: subscriptionId ?? undefined,
+          cashfree_cf_subscription_id: cfSubscriptionId ?? undefined,
+          cashfree_customer_id: customerId ?? undefined,
+          cashfree_authorization_status: authorizationStatus,
+          current_period_start: periodStart.toISOString(),
+          current_period_end: periodEnd.toISOString(),
+          next_payment_at: periodEnd.toISOString(),
+          last_payment_at: now.toISOString(),
+          last_payment_status: "SUCCESS",
+          expires_at: periodEnd.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq("id", intentLookup.data.id);
+
+      if (error) {
+        return { ok: false, message: error.message };
+      }
     }
 
-    return { ok: true, shopId, message: "activated" };
+    if (shopId) {
+      const { error } = await admin.from("shop_entitlements").upsert(
+        {
+          shop_id: shopId,
+          billing_status: "active",
+          subscription_valid_until: periodEnd.toISOString(),
+          access_expires_at: periodEnd.toISOString(),
+          cashfree_subscription_id: subscriptionId ?? undefined,
+          cashfree_customer_id: customerId ?? undefined,
+          cancel_at_period_end: false,
+          locked_reason: null,
+          updated_at: now.toISOString(),
+        },
+        { onConflict: "shop_id" },
+      );
+
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+
+      await admin
+        .from("shop_subscriptions")
+        .update({
+          status: "active",
+          current_period_start: periodStart.toISOString(),
+          current_period_end: periodEnd.toISOString(),
+          cashfree_subscription_id: subscriptionId ?? undefined,
+          cashfree_cf_subscription_id: cfSubscriptionId ?? undefined,
+          cashfree_customer_id: customerId ?? undefined,
+          cashfree_authorization_status: authorizationStatus,
+          next_payment_at: periodEnd.toISOString(),
+          last_payment_at: now.toISOString(),
+          last_payment_status: "SUCCESS",
+          last_webhook_event_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq("shop_id", shopId);
+    }
+
+    return { ok: true, shopId: shopId ?? undefined, intentId: intentLookup.data?.id, message: "activated" };
   }
 
   if (DEACTIVATE_TYPES.has(type)) {
+    if (!shopId && intentLookup.data) {
+      const { error } = await admin
+        .from("subscription_intents")
+        .update({
+          status: type === "SUBSCRIPTION_PAYMENT_CANCELLED" ? "cancelled" : "payment_pending",
+          last_payment_status: type === "SUBSCRIPTION_PAYMENT_CANCELLED" ? "CANCELLED" : "FAILED",
+          cashfree_authorization_status: authorizationStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", intentLookup.data.id);
+
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+
+      return { ok: true, intentId: intentLookup.data.id, message: "intent_payment_inactive" };
+    }
+
+    if (!shopId) {
+      return { ok: false, message: "shop_not_resolved" };
+    }
+
     const { error } = await admin
       .from("shop_entitlements")
       .update({
         billing_status: "locked",
         cancel_at_period_end: type === "SUBSCRIPTION_PAYMENT_CANCELLED",
+        locked_reason: type,
         updated_at: new Date().toISOString(),
       })
       .eq("shop_id", shopId);
@@ -194,6 +384,17 @@ export async function applyCashfreeWebhookToEntitlement(
     if (error) {
       return { ok: false, message: error.message };
     }
+
+    await admin
+      .from("shop_subscriptions")
+      .update({
+        status: type === "SUBSCRIPTION_PAYMENT_CANCELLED" ? "cancelled" : "past_due",
+        cancel_at_period_end: type === "SUBSCRIPTION_PAYMENT_CANCELLED",
+        last_payment_status: type === "SUBSCRIPTION_PAYMENT_CANCELLED" ? "CANCELLED" : "FAILED",
+        last_webhook_event_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("shop_id", shopId);
 
     return { ok: true, shopId, message: "locked_or_cancelled" };
   }
@@ -203,42 +404,123 @@ export async function applyCashfreeWebhookToEntitlement(
     const details = sw ? asRecord(sw.subscription_details) : null;
     const status = details && typeof details.subscription_status === "string" ? details.subscription_status : "";
     if (status === "ACTIVE") {
-      const { error } = await admin.from("shop_entitlements").upsert(
-        {
-          shop_id: shopId,
-          billing_status: "active",
-          subscription_valid_until:
-            details && typeof details.subscription_expiry_time === "string"
-              ? details.subscription_expiry_time
-              : validUntil,
-          cashfree_subscription_id:
-            details && typeof details.subscription_id === "string" ? details.subscription_id : subscriptionId,
-          cashfree_customer_id: customerId ?? undefined,
-          cancel_at_period_end: false,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "shop_id" },
-      );
-      if (error) {
-        return { ok: false, message: error.message };
+      const now = new Date();
+      const periodStart = now;
+      const periodEnd = validUntil
+        ? new Date(validUntil)
+        : addBillingPeriod(now, intentLookup.data?.billing_interval ?? "month");
+
+      if (intentLookup.data) {
+        const { error } = await admin
+          .from("subscription_intents")
+          .update({
+            status: "payment_approved",
+            cashfree_subscription_id:
+              details && typeof details.subscription_id === "string" ? details.subscription_id : subscriptionId,
+            cashfree_cf_subscription_id:
+              details && typeof details.cf_subscription_id === "string" ? details.cf_subscription_id : cfSubscriptionId,
+            cashfree_customer_id: customerId ?? undefined,
+            cashfree_authorization_status: status,
+            current_period_start: periodStart.toISOString(),
+            current_period_end: periodEnd.toISOString(),
+            next_payment_at: periodEnd.toISOString(),
+            expires_at: periodEnd.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .eq("id", intentLookup.data.id);
+
+        if (error) {
+          return { ok: false, message: error.message };
+        }
       }
-      return { ok: true, shopId, message: "status_active" };
+
+      if (shopId) {
+        const { error } = await admin.from("shop_entitlements").upsert(
+          {
+            shop_id: shopId,
+            billing_status: "active",
+            subscription_valid_until: periodEnd.toISOString(),
+            access_expires_at: periodEnd.toISOString(),
+            cashfree_subscription_id:
+              details && typeof details.subscription_id === "string" ? details.subscription_id : subscriptionId,
+            cashfree_customer_id: customerId ?? undefined,
+            cancel_at_period_end: false,
+            locked_reason: null,
+            updated_at: now.toISOString(),
+          },
+          { onConflict: "shop_id" },
+        );
+        if (error) {
+          return { ok: false, message: error.message };
+        }
+
+        await admin
+          .from("shop_subscriptions")
+          .update({
+            status: "active",
+            current_period_start: periodStart.toISOString(),
+            current_period_end: periodEnd.toISOString(),
+            cashfree_subscription_id:
+              details && typeof details.subscription_id === "string" ? details.subscription_id : subscriptionId,
+            cashfree_cf_subscription_id:
+              details && typeof details.cf_subscription_id === "string" ? details.cf_subscription_id : cfSubscriptionId,
+            cashfree_customer_id: customerId ?? undefined,
+            cashfree_authorization_status: status,
+            next_payment_at: periodEnd.toISOString(),
+            last_webhook_event_at: now.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .eq("shop_id", shopId);
+      }
+
+      return { ok: true, shopId: shopId ?? undefined, intentId: intentLookup.data?.id, message: "status_active" };
     }
     if (status === "CANCELLED" || status === "EXPIRED") {
+      if (!shopId && intentLookup.data) {
+        const { error } = await admin
+          .from("subscription_intents")
+          .update({
+            status: status === "CANCELLED" ? "cancelled" : "expired",
+            cashfree_authorization_status: status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", intentLookup.data.id);
+        if (error) {
+          return { ok: false, message: error.message };
+        }
+        return { ok: true, intentId: intentLookup.data.id, message: "intent_status_inactive" };
+      }
+
+      if (!shopId) {
+        return { ok: false, message: "shop_not_resolved" };
+      }
+
       const { error } = await admin
         .from("shop_entitlements")
         .update({
           billing_status: "locked",
           cancel_at_period_end: status === "CANCELLED",
+          locked_reason: status,
           updated_at: new Date().toISOString(),
         })
         .eq("shop_id", shopId);
       if (error) {
         return { ok: false, message: error.message };
       }
+
+      await admin
+        .from("shop_subscriptions")
+        .update({
+          status: status === "CANCELLED" ? "cancelled" : "expired",
+          cancel_at_period_end: status === "CANCELLED",
+          last_webhook_event_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("shop_id", shopId);
+
       return { ok: true, shopId, message: "status_inactive" };
     }
-    return { ok: true, shopId, message: "status_ignored" };
+    return { ok: true, shopId: shopId ?? undefined, intentId: intentLookup.data?.id, message: "status_ignored" };
   }
 
   return { ok: false, message: `unhandled_type:${type}` };

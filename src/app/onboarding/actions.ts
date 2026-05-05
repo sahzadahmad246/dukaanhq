@@ -7,8 +7,7 @@ import type { OnboardingActionState } from "@/app/onboarding/state";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
+import { getLatestApprovedSubscriptionIntent } from "@/lib/subscription/intents";
 
 const workingDayValues = [
   "monday",
@@ -125,6 +124,15 @@ export async function createShopAction(
     };
   }
 
+  const approvedIntent = await getLatestApprovedSubscriptionIntent(supabase, user.id);
+  if (!approvedIntent) {
+    return {
+      status: "error",
+      message: "Choose a plan and start a trial or subscription before creating your shop.",
+      fieldErrors: {},
+    };
+  }
+
   const adminSupabase = createSupabaseAdminClient();
   const { data: existingSlug } = await (adminSupabase ?? supabase)
     .from("shops")
@@ -195,54 +203,69 @@ export async function createShopAction(
     return { status: "error", message: memberError.message, fieldErrors: {} };
   }
 
-  const { data: platformRow, error: platformError } = await supabase
-    .from("saas_platform_settings")
-    .select("trial_enabled, trial_duration_days")
-    .eq("id", 1)
-    .maybeSingle<{ trial_enabled: boolean; trial_duration_days: number }>();
+  const subscriptionStatus = approvedIntent.status === "trial_approved" ? "trialing" : "active";
+  const accessExpiresAt = approvedIntent.trial_ends_at ?? approvedIntent.current_period_end;
+  const { data: subscription, error: subscriptionError } = await supabase
+    .from("shop_subscriptions")
+    .insert({
+      shop_id: shop.id,
+      owner_user_id: user.id,
+      plan_id: approvedIntent.plan_id,
+      price_id: approvedIntent.price_id,
+      source_intent_id: approvedIntent.id,
+      status: subscriptionStatus,
+      billing_interval: approvedIntent.billing_interval,
+      current_period_start: approvedIntent.current_period_start ?? approvedIntent.trial_started_at,
+      current_period_end: approvedIntent.current_period_end ?? approvedIntent.trial_ends_at,
+      trial_started_at: approvedIntent.trial_started_at,
+      trial_ends_at: approvedIntent.trial_ends_at,
+      cashfree_subscription_id: approvedIntent.cashfree_subscription_id,
+      cashfree_cf_subscription_id: approvedIntent.cashfree_cf_subscription_id,
+      cashfree_customer_id: approvedIntent.cashfree_customer_id,
+      cashfree_subscription_session_id: approvedIntent.cashfree_subscription_session_id,
+      cashfree_authorization_status: approvedIntent.cashfree_authorization_status,
+      cashfree_payment_method: approvedIntent.cashfree_payment_method,
+      next_payment_at: approvedIntent.next_payment_at,
+      last_payment_at: approvedIntent.last_payment_at,
+      last_payment_status: approvedIntent.last_payment_status,
+    })
+    .select("id")
+    .single<{ id: string }>();
 
-  const billingTablesMissing = Boolean(platformError?.code && MISSING_TABLE_CODES.has(platformError.code));
+  if (subscriptionError || !subscription) {
+    return {
+      status: "error",
+      message:
+        (subscriptionError?.message ?? "Could not create subscription record.") +
+        " (Run db/041_subscription_intents.sql in Supabase first.)",
+      fieldErrors: {},
+    };
+  }
 
-  if (!billingTablesMissing) {
-    if (platformError) {
-      return { status: "error", message: platformError.message, fieldErrors: {} };
-    }
+  const { error: entError } = await supabase.from("shop_entitlements").upsert(
+    {
+      shop_id: shop.id,
+      billing_status: subscriptionStatus === "trialing" ? "trialing" : "active",
+      trial_started_at: approvedIntent.trial_started_at,
+      trial_ends_at: approvedIntent.trial_ends_at,
+      subscription_valid_until: subscriptionStatus === "active" ? approvedIntent.current_period_end : null,
+      plan_id: approvedIntent.plan_id,
+      subscription_id: subscription.id,
+      access_expires_at: accessExpiresAt,
+      locked_reason: null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "shop_id" },
+  );
 
-    const trialEnabled = platformRow?.trial_enabled ?? true;
-    const trialDays = platformRow?.trial_duration_days ?? 30;
-
-    if (trialEnabled) {
-      const trialEnds = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
-      const { error: entError } = await supabase.from("shop_entitlements").insert({
-        shop_id: shop.id,
-        billing_status: "trialing",
-        trial_started_at: new Date().toISOString(),
-        trial_ends_at: trialEnds,
-      });
-      if (entError) {
-        return {
-          status: "error",
-          message:
-            entError.message +
-            " (Run db/complete_data_migration.sql in Supabase if shop_entitlements is missing.)",
-          fieldErrors: {},
-        };
-      }
-    } else {
-      const { error: entError } = await supabase.from("shop_entitlements").insert({
-        shop_id: shop.id,
-        billing_status: "locked",
-      });
-      if (entError) {
-        return {
-          status: "error",
-          message:
-            entError.message +
-            " (Run db/complete_data_migration.sql in Supabase if shop_entitlements is missing.)",
-          fieldErrors: {},
-        };
-      }
-    }
+  if (entError) {
+    return {
+      status: "error",
+      message:
+        entError.message +
+        " (Run db/041_subscription_intents.sql in Supabase after db/complete_data_migration.sql.)",
+      fieldErrors: {},
+    };
   }
 
   const { error: settingsError } = await supabase.from("shop_settings").insert({
@@ -271,6 +294,24 @@ export async function createShopAction(
   }
 
   await supabase.from("onboarding_drafts").delete().eq("user_id", user.id);
+
+  const adminAfterCreate = createSupabaseAdminClient();
+  const mutationClient = adminAfterCreate ?? supabase;
+  await mutationClient
+    .from("subscription_intents")
+    .update({
+      status: "completed",
+      created_shop_id: shop.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", approvedIntent.id);
+
+  if (approvedIntent.status === "trial_approved") {
+    await mutationClient
+      .from("trial_grants")
+      .update({ shop_id: shop.id })
+      .eq("subscription_intent_id", approvedIntent.id);
+  }
 
   redirect(`${buildShopRoute(values.slug, "dashboard")}?toast=shop-created`);
 }

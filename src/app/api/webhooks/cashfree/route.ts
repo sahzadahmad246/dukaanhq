@@ -49,5 +49,6 @@ export async function POST(request: Request) {
     ok: result.ok,
     message: result.message,
     shopId: "shopId" in result ? result.shopId : undefined,
+    intentId: "intentId" in result ? result.intentId : undefined,
   });
 }

@@ -44,40 +44,32 @@ export default async function SaasAdminShopsPage({
   const entByShop = new Map((ents ?? []).map((e: EntRow) => [e.shop_id, e]));
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-8">
-      <div className="mb-6 flex items-start justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">DukaanHQ</p>
-          <h1 className="text-2xl font-bold text-stone-950">Manage shops</h1>
-          <p className="mt-1 text-sm text-stone-600">Search shops, open details, and suspend/unsuspend access.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/admin/saas" className="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">
-            SaaS admin
-          </Link>
-          <Link href="/" className="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">
-            Home
-          </Link>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Tenants</p>
+          <h1 className="mt-2 text-3xl font-bold text-stone-950">Shops</h1>
+          <p className="mt-2 text-sm text-stone-600">Search shops, open details, and suspend or restore access.</p>
         </div>
       </div>
 
       {query.error ? (
-        <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{query.error}</p>
+        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{query.error}</p>
       ) : null}
 
-      <form className="mb-5 flex items-center gap-2 rounded-2xl border border-stone-200 bg-white p-3 shadow-sm">
+      <form className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
         <input
           name="q"
           defaultValue={q}
           placeholder="Search by shop name or slug…"
-          className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm outline-none focus:border-stone-400"
+          className="h-10 w-full rounded-lg border border-stone-200 px-3 text-sm outline-none focus:border-stone-400"
         />
-        <button type="submit" className="rounded-xl bg-stone-950 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-800">
+        <button type="submit" className="h-10 rounded-lg bg-stone-950 px-4 text-sm font-semibold text-white hover:bg-stone-800">
           Search
         </button>
       </form>
 
-      <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white shadow-sm">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-stone-200 text-xs uppercase tracking-wide text-stone-500">
@@ -124,4 +116,3 @@ export default async function SaasAdminShopsPage({
     </div>
   );
 }
-

@@ -64,6 +64,257 @@ export async function updateSaasSettingsAction(formData: FormData) {
   redirect("/admin/saas?saved=1");
 }
 
+const PlanBenefitSchema = z.object({
+  plan_id: z.string().uuid(),
+  display_name: z.string().trim().min(2, "Plan name is required."),
+  tagline: z.string().trim().min(2, "Short tagline is required."),
+  description: z.string().trim().optional().default(""),
+  monthly_price_rupees: z.coerce.number().min(0, "Monthly price must be 0 or more."),
+  yearly_price_rupees: z.coerce.number().min(0, "Yearly price must be 0 or more."),
+  monthly_discount_enabled: z.boolean(),
+  monthly_discount_type: z.enum(["none", "percent", "amount"]),
+  monthly_discount_value: z.coerce.number().min(0).default(0),
+  monthly_discount_ends_at: z.string().trim().optional().default(""),
+  yearly_discount_enabled: z.boolean(),
+  yearly_discount_type: z.enum(["none", "percent", "amount"]),
+  yearly_discount_value: z.coerce.number().min(0).default(0),
+  yearly_discount_ends_at: z.string().trim().optional().default(""),
+  support_level: z.enum(["standard", "priority"]),
+});
+
+function rupeesToPaise(value: number) {
+  return Math.round(value * 100);
+}
+
+function discountedPaise(
+  regularPricePaise: number,
+  enabled: boolean,
+  discountType: "none" | "percent" | "amount",
+  discountValue: number,
+) {
+  if (!enabled || discountType === "none" || discountValue <= 0) {
+    return null;
+  }
+
+  if (discountType === "percent") {
+    const bounded = Math.min(99, discountValue);
+    return Math.max(0, Math.round(regularPricePaise * (1 - bounded / 100)));
+  }
+
+  return Math.max(0, regularPricePaise - rupeesToPaise(discountValue));
+}
+
+function normalizeDateInput(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(`${value}T23:59:59.999+05:30`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+const fixedPlanLimits = {
+  starter: {
+    products: 25,
+    invoices_per_month: 50,
+    staff: 1,
+    whatsapp_messages_per_month: 0,
+  },
+  growth: {
+    products: 250,
+    invoices_per_month: 500,
+    staff: 3,
+    whatsapp_messages_per_month: 0,
+  },
+  pro: {
+    products: null,
+    invoices_per_month: null,
+    staff: null,
+    whatsapp_messages_per_month: null,
+  },
+} as const;
+
+const fixedPlanEntitlements = {
+  starter: {
+    inventory: true,
+    invoices: true,
+    basic_pdf_invoice: true,
+    loan_emi_details: true,
+    customer_signature: false,
+    shop_stamp: false,
+    staff_access: false,
+    public_shop_page: false,
+    whatsapp_invoice_sending: false,
+    auto_emi_reminders: false,
+  },
+  growth: {
+    inventory: true,
+    invoices: true,
+    basic_pdf_invoice: true,
+    loan_emi_details: true,
+    customer_signature: true,
+    shop_stamp: true,
+    staff_access: true,
+    public_shop_page: true,
+    whatsapp_invoice_sending: false,
+    auto_emi_reminders: false,
+  },
+  pro: {
+    inventory: true,
+    invoices: true,
+    basic_pdf_invoice: true,
+    loan_emi_details: true,
+    customer_signature: true,
+    shop_stamp: true,
+    staff_access: true,
+    public_shop_page: true,
+    whatsapp_invoice_sending: true,
+    auto_emi_reminders: true,
+  },
+} as const;
+
+const defaultPlanFeatures = {
+  starter: [
+    "Add up to 25 inventory products",
+    "Create 50 invoices per month",
+    "Basic PDF invoice",
+    "Loan/EMI details inside bills",
+    "Standard support",
+  ],
+  growth: [
+    "Everything in Starter",
+    "Add up to 250 inventory products",
+    "Create 500 invoices per month",
+    "Invite staff to manage the shop",
+    "Customer signature and shop stamp on PDF invoices",
+    "Public shop page",
+    "Priority support",
+  ],
+  pro: [
+    "Everything in Growth",
+    "Unlimited products and invoices",
+    "WhatsApp invoice sending",
+    "Auto EMI WhatsApp reminders",
+    "All current and future advanced features",
+    "Priority support",
+  ],
+} as const;
+
+export async function updateSaasPlanAction(formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  await requireSuperadmin(supabase);
+
+  const parsed = PlanBenefitSchema.safeParse({
+    plan_id: formData.get("plan_id"),
+    display_name: formData.get("display_name"),
+    tagline: formData.get("tagline"),
+    description: formData.get("description"),
+    monthly_price_rupees: formData.get("monthly_price_rupees"),
+    yearly_price_rupees: formData.get("yearly_price_rupees"),
+    monthly_discount_enabled: formData.get("monthly_discount_enabled") === "on",
+    monthly_discount_type: formData.get("monthly_discount_type") || "none",
+    monthly_discount_value: formData.get("monthly_discount_value") || "0",
+    monthly_discount_ends_at: formData.get("monthly_discount_ends_at") || "",
+    yearly_discount_enabled: formData.get("yearly_discount_enabled") === "on",
+    yearly_discount_type: formData.get("yearly_discount_type") || "none",
+    yearly_discount_value: formData.get("yearly_discount_value") || "0",
+    yearly_discount_ends_at: formData.get("yearly_discount_ends_at") || "",
+    support_level: formData.get("support_level") || "standard",
+  });
+
+  if (!parsed.success) {
+    redirect(`/admin/saas/plans?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid plan details.")}`);
+  }
+
+  const { data: currentPlan, error: planReadError } = await supabase
+    .from("saas_plans")
+    .select("id, code")
+    .eq("id", parsed.data.plan_id)
+    .maybeSingle();
+
+  if (planReadError || !currentPlan) {
+    redirect(`/admin/saas/plans?error=${encodeURIComponent(planReadError?.message ?? "Plan not found.")}`);
+  }
+
+  const code = String(currentPlan.code) as keyof typeof fixedPlanLimits;
+  if (!Object.prototype.hasOwnProperty.call(fixedPlanLimits, code)) {
+    redirect("/admin/saas/plans?error=Only%20Starter,%20Growth,%20and%20Pro%20plans%20can%20be%20edited.");
+  }
+
+  const { error: planUpdateError } = await supabase
+    .from("saas_plans")
+    .update({
+      display_name: parsed.data.display_name,
+      tagline: parsed.data.tagline,
+      description: parsed.data.description || null,
+      support_level: parsed.data.support_level,
+      limits: fixedPlanLimits[code],
+      entitlements: fixedPlanEntitlements[code],
+      features: defaultPlanFeatures[code],
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data.plan_id);
+
+  if (planUpdateError) {
+    redirect(`/admin/saas/plans?error=${encodeURIComponent(planUpdateError.message)}`);
+  }
+
+  const monthlyRegular = rupeesToPaise(parsed.data.monthly_price_rupees);
+  const yearlyRegular = rupeesToPaise(parsed.data.yearly_price_rupees);
+  const priceRows = [
+    {
+      plan_id: parsed.data.plan_id,
+      interval: "month",
+      interval_count: 1,
+      regular_price_paise: monthlyRegular,
+      discounted_price_paise: discountedPaise(
+        monthlyRegular,
+        parsed.data.monthly_discount_enabled,
+        parsed.data.monthly_discount_type,
+        parsed.data.monthly_discount_value,
+      ),
+      discount_enabled: parsed.data.monthly_discount_enabled,
+      discount_type: parsed.data.monthly_discount_enabled ? parsed.data.monthly_discount_type : "none",
+      discount_value: parsed.data.monthly_discount_enabled ? parsed.data.monthly_discount_value : 0,
+      discount_ends_at: parsed.data.monthly_discount_enabled ? normalizeDateInput(parsed.data.monthly_discount_ends_at) : null,
+      currency: "INR",
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    },
+    {
+      plan_id: parsed.data.plan_id,
+      interval: "year",
+      interval_count: 1,
+      regular_price_paise: yearlyRegular,
+      discounted_price_paise: discountedPaise(
+        yearlyRegular,
+        parsed.data.yearly_discount_enabled,
+        parsed.data.yearly_discount_type,
+        parsed.data.yearly_discount_value,
+      ),
+      discount_enabled: parsed.data.yearly_discount_enabled,
+      discount_type: parsed.data.yearly_discount_enabled ? parsed.data.yearly_discount_type : "none",
+      discount_value: parsed.data.yearly_discount_enabled ? parsed.data.yearly_discount_value : 0,
+      discount_ends_at: parsed.data.yearly_discount_enabled ? normalizeDateInput(parsed.data.yearly_discount_ends_at) : null,
+      currency: "INR",
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    },
+  ];
+
+  const { error: priceError } = await supabase.from("saas_plan_prices").upsert(priceRows, {
+    onConflict: "plan_id,interval,interval_count",
+  });
+
+  if (priceError) {
+    redirect(`/admin/saas/plans?error=${encodeURIComponent(priceError.message)}`);
+  }
+
+  revalidatePath("/admin/saas");
+  revalidatePath("/admin/saas/plans");
+  redirect("/admin/saas/plans?saved=1");
+}
+
 export async function setShopStatusAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   await requireSuperadmin(supabase);
