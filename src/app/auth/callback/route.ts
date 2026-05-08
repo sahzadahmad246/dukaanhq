@@ -31,7 +31,7 @@ async function acceptInviteForUser(input: {
   const normalizedUserEmail = (input.user.email ?? "").trim().toLowerCase();
   const { data: invitation } = await adminSupabase
     .from("shop_member_invitations")
-    .select("id, shop_id, email, full_name, role, status, invited_by, expires_at")
+    .select("id, shop_id, email, full_name, role, status, invited_by, accepted_by, expires_at")
     .eq("invite_token", input.inviteToken)
     .maybeSingle<{
       id: string;
@@ -41,20 +41,46 @@ async function acceptInviteForUser(input: {
       role: "owner" | "staff";
       status: string;
       invited_by: string | null;
+      accepted_by: string | null;
       expires_at: string;
     }>();
 
-  const expired = invitation ? new Date(invitation.expires_at).getTime() < Date.now() : true;
-
-  if (!invitation || invitation.status !== "PENDING" || expired) {
-    if (invitation && expired) {
-      await adminSupabase.from("shop_member_invitations").update({ status: "EXPIRED" }).eq("id", invitation.id);
-    }
+  if (!invitation) {
     return buildInviteRedirect(input.origin, input.inviteToken, "invite_invalid");
   }
 
   if (normalizedUserEmail !== invitation.email.trim().toLowerCase()) {
     return buildInviteRedirect(input.origin, input.inviteToken, "invite_email_mismatch");
+  }
+
+  if (invitation.status === "ACCEPTED") {
+    const { data: existingMember } = await adminSupabase
+      .from("shop_members")
+      .select("id")
+      .eq("shop_id", invitation.shop_id)
+      .eq("user_id", input.user.id)
+      .eq("role", invitation.role)
+      .maybeSingle<{ id: string }>();
+
+    if (invitation.accepted_by === input.user.id || existingMember) {
+      await syncProfileRoleForInvite({
+        adminSupabase,
+        user: input.user,
+        role: invitation.role,
+      });
+      return null;
+    }
+
+    return buildInviteRedirect(input.origin, input.inviteToken, "invite_invalid");
+  }
+
+  const expired = new Date(invitation.expires_at).getTime() < Date.now();
+
+  if (invitation.status !== "PENDING" || expired) {
+    if (expired) {
+      await adminSupabase.from("shop_member_invitations").update({ status: "EXPIRED" }).eq("id", invitation.id);
+    }
+    return buildInviteRedirect(input.origin, input.inviteToken, "invite_invalid");
   }
 
   const { error: memberUpsertError } = await adminSupabase.from("shop_members").upsert(
@@ -92,7 +118,29 @@ async function acceptInviteForUser(input: {
     })
     .eq("id", invitation.id);
 
-  const { data: existingProfile } = await adminSupabase
+  await syncProfileRoleForInvite({
+    adminSupabase,
+    user: input.user,
+    role: invitation.role,
+  });
+
+  return null;
+}
+
+async function syncProfileRoleForInvite(input: {
+  adminSupabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+  user: {
+    id: string;
+    email?: string | null;
+    user_metadata: Record<string, unknown>;
+  };
+  role: "owner" | "staff";
+}) {
+  if (input.role !== "staff") {
+    return;
+  }
+
+  const { data: existingProfile } = await input.adminSupabase
     .from("profiles")
     .select("role")
     .eq("id", input.user.id)
@@ -101,21 +149,35 @@ async function acceptInviteForUser(input: {
   // Keep profiles.role aligned for shop operators; do not downgrade an existing owner
   // (e.g. second-shop invites). Owner onboarding still sets profile.role to owner.
   if (
-    invitation.role === "staff" &&
     existingProfile?.role !== "superadmin" &&
     existingProfile?.role !== "owner"
   ) {
-    const { error: profileRoleError } = await adminSupabase
+    const profilePayload = {
+      id: input.user.id,
+      email: input.user.email ?? "",
+      full_name:
+        typeof input.user.user_metadata.full_name === "string"
+          ? input.user.user_metadata.full_name
+          : typeof input.user.user_metadata.name === "string"
+            ? input.user.user_metadata.name
+            : null,
+      avatar_url:
+        typeof input.user.user_metadata.avatar_url === "string"
+          ? input.user.user_metadata.avatar_url
+          : typeof input.user.user_metadata.picture === "string"
+            ? input.user.user_metadata.picture
+            : null,
+      role: "staff",
+    };
+
+    const { error: profileRoleError } = await input.adminSupabase
       .from("profiles")
-      .update({ role: "staff" })
-      .eq("id", input.user.id);
+      .upsert(profilePayload, { onConflict: "id" });
 
     if (profileRoleError) {
       console.error("Failed to sync profiles.role after invite accept:", profileRoleError);
     }
   }
-
-  return null;
 }
 
 export async function GET(request: Request) {

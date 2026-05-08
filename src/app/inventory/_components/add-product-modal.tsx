@@ -289,7 +289,7 @@ function createVariant(): VariantDraft {
 }
 
 function getInitialVariants(productKind: ProductKind | null) {
-  return productKind === "MOBILE" ? [] : [createVariant()];
+  return productKind === "SERIALIZED" ? [createVariant()] : [];
 }
 
 function revokeNewImagePreviews(images: SelectedImage[]) {
@@ -387,9 +387,9 @@ function getCategoryNameFromSelection(selectedCategoryId: string, categories: Ca
 
 function getStepsForProfile(productKind: ProductKind | null): StepId[] {
   if (!productKind) return [];
-  if (productKind === "MOBILE") return ["basics", "options", "preview"];
+  if (productKind === "MOBILE" || productKind === "QUANTITY_BASED") return ["basics", "options", "preview"];
   if (productKind === "SERIALIZED") return ["basics", "options", "stock", "preview"];
-  return ["basics", "stock", "preview"];
+  return ["basics", "preview"];
 }
 
 function getProfileCopy(productKind: ProductKind | null) {
@@ -409,7 +409,7 @@ function getProfileCopy(productKind: ProductKind | null) {
   }
   return {
     namePlaceholder: "20W Charger",
-    stockTitle: "Opening Stock",
+    stockTitle: "Color Stock",
     identifierLabel: "Quantity",
   };
 }
@@ -794,7 +794,7 @@ export function AddProductModal({
         temp_key: variant.id,
         name: buildVariantName(variant),
         color: variant.color.trim() || null,
-        storage_label: variant.storage.trim() || null,
+        storage_label: selectedProfile === "QUANTITY_BASED" ? null : variant.storage.trim() || null,
         quantity: selectedProfile === "SERIALIZED" ? 0 : Number.parseInt(variant.quantity || "0", 10) || 0,
         purchase_price_override: null,
         selling_price_override: variant.sellingPrice.trim() ? Number(variant.sellingPrice) : null,
@@ -827,14 +827,39 @@ export function AddProductModal({
       0
     );
   }, [selectedProfile, variants]);
+  const variantsReady = useMemo(() => {
+    if (selectedProfile !== "MOBILE" && selectedProfile !== "QUANTITY_BASED") {
+      return variants.length > 0;
+    }
+
+    return variants.length > 0 && variants.every((variant) => {
+      const quantity = Number.parseInt(variant.quantity || "0", 10);
+      const price = Number(variant.sellingPrice);
+      const hasRequiredOptions =
+        selectedProfile === "QUANTITY_BASED"
+          ? variant.color.trim().length > 0
+          : variant.color.trim().length > 0 && variant.storage.trim().length > 0;
+
+      return (
+        hasRequiredOptions &&
+        variant.sellingPrice.trim().length > 0 &&
+        !Number.isNaN(price) &&
+        price >= 0 &&
+        variant.quantity.trim().length > 0 &&
+        !Number.isNaN(quantity) &&
+        quantity > 0
+      );
+    });
+  }, [selectedProfile, variants]);
 
   const canSubmit =
     currentStep === "preview" &&
     name.trim().length > 0 &&
-    (selectedProfile === "MOBILE" || sellingPrice.trim().length > 0) &&
+    (selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED" || sellingPrice.trim().length > 0) &&
     lowStockThreshold.trim().length > 0 &&
     ((brandMode === "existing" && selectedBrandId.length > 0) || (brandMode === "new" && newBrandName.trim().length > 0)) &&
     ((categoryMode === "existing" && selectedCategoryId.length > 0) || (categoryMode === "new" && newCategoryName.trim().length > 0)) &&
+    variantsReady &&
     totalUnits >= 0;
 
   useEffect(() => {
@@ -1297,7 +1322,7 @@ export function AddProductModal({
 
     if (step === "basics") {
       if (!name.trim()) errors.name = "Product name is required.";
-      if (selectedProfile !== "MOBILE") {
+      if (selectedProfile === "SERIALIZED") {
         if (!sellingPrice.trim()) {
           errors.base_selling_price = "Selling price is required.";
         } else if (Number.isNaN(Number(sellingPrice)) || Number(sellingPrice) < 0) {
@@ -1315,15 +1340,20 @@ export function AddProductModal({
       if (brandMode === "new" && !newBrandName.trim()) errors.brand = "Brand name is required.";
     }
 
-    if (step === "options" && selectedProfile !== "QUANTITY_BASED") {
+    if (step === "options") {
       if (variants.length === 0) {
         errors.options = "Add at least one variant.";
       }
-      const invalidVariant = variants.find(v => !v.color.trim() && !v.storage.trim());
+      const invalidVariant = variants.find(v => {
+        if (selectedProfile === "QUANTITY_BASED") return !v.color.trim();
+        return !v.color.trim() && !v.storage.trim();
+      });
       if (!errors.options && invalidVariant) {
-        errors.options = "Add color, storage, or both for each variant.";
+        errors.options = selectedProfile === "QUANTITY_BASED"
+          ? "Add color for each accessory variant."
+          : "Add color, storage, or both for each variant.";
       }
-      if (selectedProfile === "MOBILE") {
+      if (selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED") {
         const invalidPrice = variants.find(v => !v.sellingPrice.trim() || Number.isNaN(Number(v.sellingPrice)) || Number(v.sellingPrice) < 0);
         if (!errors.options && invalidPrice) errors.options = "Valid selling price is required for each variant.";
         const invalidStock = variants.find(v => !v.quantity.trim() || Number.isNaN(Number(v.quantity)) || Number(v.quantity) <= 0);
@@ -1504,11 +1534,11 @@ export function AddProductModal({
       nextErrors.color = "Color is required.";
     }
 
-    if (!variant.storage.trim()) {
+    if (selectedProfile !== "QUANTITY_BASED" && !variant.storage.trim()) {
       nextErrors.storage = selectedProfile === "MOBILE" ? "Storage / RAM is required." : "Size / Storage is required.";
     }
 
-    if (selectedProfile === "MOBILE") {
+    if (selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED") {
       if (!variant.sellingPrice.trim() || Number.isNaN(Number(variant.sellingPrice)) || Number(variant.sellingPrice) < 0) {
         nextErrors.sellingPrice = "Selling Price is required.";
       }
@@ -1759,7 +1789,7 @@ export function AddProductModal({
                     </div>
 
                     <div className="space-y-5">
-                      {selectedProfile === "MOBILE" ? (
+                      {selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED" ? (
                         <input type="hidden" name="base_selling_price" value="0" />
                       ) : (
                         <Field label="Selling Price" required error={clientErrors.base_selling_price || state.fieldErrors?.base_selling_price}>
@@ -1883,7 +1913,11 @@ export function AddProductModal({
                     {variants.length === 0 ? (
                       <div className="px-4 py-8 text-center">
                         <p className="text-sm font-semibold text-stone-900">No variant added</p>
-                        <p className="mt-1 text-sm text-stone-500">Add a variant to configure storage, color, price, and stock.</p>
+                        <p className="mt-1 text-sm text-stone-500">
+                          {selectedProfile === "QUANTITY_BASED"
+                            ? "Add color variants with price and stock."
+                            : "Add a variant to configure storage, color, price, and stock."}
+                        </p>
                       </div>
                     ) : (
                       <div className="divide-y divide-stone-200/60 transition-all">
@@ -1891,7 +1925,7 @@ export function AddProductModal({
                           <div key={variant.id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/40">
                             <div>
                               <p className="text-[13px] font-bold text-stone-900 tracking-tight">{buildVariantName(variant)}</p>
-                              {selectedProfile === "MOBILE" && (
+                              {(selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED") && (
                                 <div className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold text-stone-500">
                                   <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
                                   {variant.quantity || "0"} initial stock
@@ -1899,7 +1933,7 @@ export function AddProductModal({
                               )}
                             </div>
                             <div className="flex items-center gap-3">
-                              {selectedProfile === "MOBILE" && (
+                              {(selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED") && (
                                 <p className="text-[14px] font-black tracking-tight text-stone-800 lg:w-20 text-right">
                                   {variant.sellingPrice ? `₹${Number(variant.sellingPrice).toLocaleString("en-IN")}` : "-"}
                                 </p>
@@ -1924,9 +1958,11 @@ export function AddProductModal({
                     )}
                   </div>
 
-                  {selectedProfile === "MOBILE" && (
+                  {(selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED") && (
                     <Button type="button" variant="outline" onClick={handleAddVariantClick} className="w-full rounded-[1.6rem] border-dashed border-2 py-6 text-sm font-bold tracking-tight text-stone-500 transition hover:text-stone-900 hover:border-stone-400 hover:bg-stone-50">
-                      {variants.length === 0 ? "Add Variant" : "+ Add Another Variant"}
+                      {selectedProfile === "QUANTITY_BASED"
+                        ? variants.length === 0 ? "Add Color" : "+ Add Another Color"
+                        : variants.length === 0 ? "Add Variant" : "+ Add Another Variant"}
                     </Button>
                   )}
                 </section>
@@ -2017,7 +2053,7 @@ export function AddProductModal({
                         <span className="text-stone-700">{variants.reduce((sum, v) => sum + (Number.parseInt(v.quantity || "0", 10) || 0), 0)} Initial Stock</span>
                         <span className="text-stone-300">•</span>
                         <span className="text-stone-700 text-rose-600/80">Alert at {lowStockThreshold || "0"}</span>
-                        {selectedProfile !== "MOBILE" && sellingPrice ? (
+                        {selectedProfile === "SERIALIZED" && sellingPrice ? (
                           <>
                             <span className="text-stone-300">•</span>
                             <span className="text-stone-700 font-bold">₹{sellingPrice}</span>
@@ -2027,7 +2063,7 @@ export function AddProductModal({
                     </div>
                   </div>
 
-                  {selectedProfile !== "QUANTITY_BASED" ? (
+                  {variants.length > 0 ? (
                     <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
                       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Configured Variants</p>
@@ -2040,25 +2076,25 @@ export function AddProductModal({
                           <div key={variant.id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/40">
                             <div>
                               <p className="text-[13px] font-bold text-stone-900 tracking-tight">{buildVariantName(variant)}</p>
-                              {selectedProfile === "MOBILE" && (
+                              {selectedProfile !== "SERIALIZED" ? (
                                 <div className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold text-stone-500">
                                   <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
                                   {variant.quantity || "0"} initial stock
                                 </div>
-                              )}
+                              ) : null}
                             </div>
-                            {selectedProfile === "MOBILE" && (
+                            {selectedProfile !== "SERIALIZED" ? (
                               <p className="text-[14px] font-black tracking-tight text-stone-800">
                                 {variant.sellingPrice ? `₹${Number(variant.sellingPrice).toLocaleString("en-IN")}` : "-"}
                               </p>
-                            )}
+                            ) : null}
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : null}
 
-                  {selectedProfile !== "MOBILE" && (
+                  {selectedProfile === "SERIALIZED" && (
                     <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
                       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-stone-100/50">
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">
@@ -2219,21 +2255,23 @@ export function AddProductModal({
                   <Field label="Color" required error={variantModalErrors.color}>
                     <Input value={variant.color} onChange={(event) => setVariantDraftField("color", event.target.value)} placeholder="Black" />
                   </Field>
-                  <Field
-                    label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}
-                    required
-                    error={variantModalErrors.storage}
-                  >
-                    <StoragePresetPicker
-                      value={variant.storage}
-                      onChange={(nextValue) => setVariantDraftField("storage", nextValue)}
-                      presets={storagePresets}
-                      placeholder={selectedProfile === "MOBILE" ? "Select or type storage" : "Select or type size"}
-                    />
-                  </Field>
+                  {selectedProfile !== "QUANTITY_BASED" ? (
+                    <Field
+                      label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}
+                      required
+                      error={variantModalErrors.storage}
+                    >
+                      <StoragePresetPicker
+                        value={variant.storage}
+                        onChange={(nextValue) => setVariantDraftField("storage", nextValue)}
+                        presets={storagePresets}
+                        placeholder={selectedProfile === "MOBILE" ? "Select or type storage" : "Select or type size"}
+                      />
+                    </Field>
+                  ) : null}
                 </div>
 
-                {selectedProfile === "MOBILE" ? (
+                {(selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED") ? (
                   <div className="space-y-5">
                     <Field label="Selling Price" required error={variantModalErrors.sellingPrice}>
                       <Input

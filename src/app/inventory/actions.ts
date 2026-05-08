@@ -202,6 +202,32 @@ function parseProductInput(formData: FormData): ActionResponse<ParsedProductInpu
     };
   }
 
+  if (productKind === "QUANTITY_BASED") {
+    const invalidAccessoryVariant = payload.variants.find((variant) => {
+      const quantity = Number(variant.quantity ?? 0);
+      const sellingPrice = Number(variant.selling_price_override);
+      return (
+        !variant.color?.trim() ||
+        variant.selling_price_override === null ||
+        variant.selling_price_override === undefined ||
+        Number.isNaN(sellingPrice) ||
+        sellingPrice < 0 ||
+        !Number.isInteger(quantity) ||
+        quantity <= 0
+      );
+    });
+
+    if (invalidAccessoryVariant) {
+      return {
+        status: "error",
+        message: "Each accessory color needs a color, selling price, and opening stock.",
+        fieldErrors: {
+          product_payload: "Each accessory color needs a color, selling price, and opening stock.",
+        },
+      };
+    }
+  }
+
   return {
     status: "success",
     message: "Validated",
