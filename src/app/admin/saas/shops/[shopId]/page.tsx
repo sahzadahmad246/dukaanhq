@@ -4,6 +4,7 @@ import {
   setShopStatusAction,
   superadminUpdateShopInfoAction,
 } from "@/app/admin/saas/actions";
+import { InvoiceFooterLinesEditor } from "@/components/invoice-footer-lines-editor";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type ShopRow = {
@@ -58,7 +59,7 @@ export default async function SaasAdminShopDetailsPage({
 }) {
   const supabase = await createSupabaseServerClient();
   const { shopId } = await params;
-  const query = await searchParams;
+  await searchParams;
 
   const { data: shop } = await supabase
     .from("shops")
@@ -132,15 +133,6 @@ export default async function SaasAdminShopDetailsPage({
           </Link>
         </div>
       </div>
-
-      {query.saved ? (
-        <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Saved.
-        </p>
-      ) : null}
-      {query.error ? (
-        <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{query.error}</p>
-      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm lg:col-span-2">
@@ -279,10 +271,10 @@ export default async function SaasAdminShopDetailsPage({
             </div>
             <div className="grid gap-1">
               <label className="text-sm font-medium text-stone-800">Invoice footer</label>
-              <input
+              <InvoiceFooterLinesEditor
                 name="invoice_footer"
-                defaultValue={shopSettings?.invoice_footer ?? ""}
-                className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm"
+                value={shopSettings?.invoice_footer ?? ""}
+                buttonLabel="Edit invoice footer lines"
               />
             </div>
           </div>
@@ -336,4 +328,3 @@ export default async function SaasAdminShopDetailsPage({
     </div>
   );
 }
-

@@ -16,7 +16,7 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
       className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-stone-950 px-5 text-sm font-bold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
     >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CreditCard className="h-4 w-4" aria-hidden="true" />}
-      Continue to Cashfree
+      Continue
     </button>
   );
 }
@@ -26,7 +26,7 @@ export function PaidSubscriptionPhoneModal({
   billingInterval,
   planName,
 }: {
-  planCode: "growth" | "pro";
+  planCode: "starter" | "growth" | "pro";
   billingInterval: "month" | "year";
   planName: string;
 }) {
@@ -48,7 +48,7 @@ export function PaidSubscriptionPhoneModal({
         onClick={() => setOpen(true)}
         className="mt-5 w-full rounded-2xl bg-stone-950 py-3.5 text-sm font-bold text-white transition hover:bg-stone-800"
       >
-        Create Cashfree subscription
+        Start subscription
       </button>
 
       {open ? (
@@ -61,7 +61,7 @@ export function PaidSubscriptionPhoneModal({
                 </div>
                 <h3 className="mt-4 text-xl font-black tracking-tight text-stone-950">Confirm mobile number</h3>
                 <p className="mt-2 text-sm leading-6 text-stone-600">
-                  Cashfree needs this number to create the recurring payment authorization for {planName}.
+                  We need this number to set up your recurring subscription for {planName}.
                 </p>
               </div>
               <button

@@ -72,6 +72,14 @@ export type RecentProduct = {
   created_at: string;
 };
 
+export type SubscriptionNotice = {
+  tone: "info" | "warning" | "danger" | "success";
+  title: string;
+  message: string;
+  href?: string;
+  actionLabel?: string;
+};
+
 type VariantQuantityRow = {
   quantity: number | null;
 };
@@ -95,6 +103,98 @@ type LowStockProductRow = {
   product_variants?: VariantQuantityRow[] | null;
 };
 
+function daysUntil(value: string | null | undefined) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return null;
+  return Math.ceil((time - Date.now()) / (24 * 60 * 60 * 1000));
+}
+
+function buildSubscriptionNotice(input: {
+  entitlement: Awaited<ReturnType<typeof getWorkspaceData>>["shopEntitlement"];
+  subscription: {
+    status: string;
+    next_payment_at: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+    last_payment_status: string | null;
+  } | null;
+  shopSlug: string | null | undefined;
+}): SubscriptionNotice | null {
+  const href = input.shopSlug ? `/${input.shopSlug}/subscription` : "/subscription";
+  const ent = input.entitlement;
+  const sub = input.subscription;
+
+  if (sub?.status === "past_due" || sub?.last_payment_status === "FAILED") {
+    const graceRemaining = daysUntil(ent?.grace_ends_at);
+    return {
+      tone: "danger",
+      title: "Payment needs attention",
+      message:
+        graceRemaining !== null && graceRemaining >= 0
+          ? `The latest payment failed. Access remains for ${graceRemaining} day${graceRemaining === 1 ? "" : "s"} while you fix payment.`
+          : "The latest subscription payment failed. Renew or update payment details to avoid losing access.",
+      href,
+      actionLabel: "Manage subscription",
+    };
+  }
+
+  if (ent?.billing_status === "locked") {
+    return {
+      tone: "danger",
+      title: "Subscription locked",
+      message: "This shop is locked because the subscription is inactive or expired.",
+      href,
+      actionLabel: "Restore access",
+    };
+  }
+
+  if (sub?.cancel_at_period_end) {
+    const remaining = daysUntil(sub.current_period_end);
+    return {
+      tone: "warning",
+      title: "Renewal cancelled",
+      message:
+        remaining !== null && remaining >= 0
+          ? `Access remains for ${remaining} more day${remaining === 1 ? "" : "s"}.`
+          : "Access remains until the current paid period ends.",
+      href,
+      actionLabel: "Manage subscription",
+    };
+  }
+
+  if (ent?.billing_status === "trialing") {
+    const remaining = daysUntil(ent.trial_ends_at);
+    if (remaining !== null && remaining <= 7) {
+      return {
+        tone: remaining <= 2 ? "danger" : "warning",
+        title: "Trial ending soon",
+        message:
+          remaining >= 0
+            ? `Your trial ends in ${remaining} day${remaining === 1 ? "" : "s"}. Choose a paid plan to keep access.`
+            : "Your trial has ended. Choose a paid plan to restore access.",
+        href,
+        actionLabel: "Choose plan",
+      };
+    }
+  }
+
+  if (ent?.billing_status === "active") {
+    const nextPaymentDays = daysUntil(sub?.next_payment_at ?? ent.subscription_valid_until);
+    if (nextPaymentDays !== null && nextPaymentDays >= 0 && nextPaymentDays <= 7) {
+      return {
+        tone: "info",
+        title: "Subscription renewal soon",
+        message: `Next payment is due in ${nextPaymentDays} day${nextPaymentDays === 1 ? "" : "s"}.`,
+        href,
+        actionLabel: "View subscription",
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function loadDashboardData() {
   const workspace = await getWorkspaceData();
   const inventory = await loadInventoryData(workspace);
@@ -114,12 +214,51 @@ export async function loadDashboardData() {
 
   let recentInvoices: RecentInvoice[] = [];
   let recentProducts: RecentProduct[] = [];
+  let subscriptionNotice: SubscriptionNotice | null = null;
+  let planEntitlements: Record<string, boolean> | null = null;
+
+  if (workspace.shopEntitlement?.plan_id) {
+    const { data: plan } = await supabase
+      .from("saas_plans")
+      .select("entitlements")
+      .eq("id", workspace.shopEntitlement.plan_id)
+      .maybeSingle<{ entitlements: Record<string, boolean> | null }>();
+    planEntitlements = plan?.entitlements ?? null;
+  }
 
   if (!workspace.shop) {
-    return { ...workspace, stats, recentInvoices, recentProducts, products: inventory.products, categories: inventory.categories, brands: inventory.brands };
+    return {
+      ...workspace,
+      stats,
+      recentInvoices,
+      recentProducts,
+      products: inventory.products,
+      categories: inventory.categories,
+      brands: inventory.brands,
+      subscriptionNotice,
+      planEntitlements,
+    };
   }
 
   const shopId = workspace.shop.id;
+  const { data: subscription } = await supabase
+    .from("shop_subscriptions")
+    .select("status, next_payment_at, current_period_end, cancel_at_period_end, last_payment_status")
+    .eq("shop_id", shopId)
+    .maybeSingle<{
+      status: string;
+      next_payment_at: string | null;
+      current_period_end: string | null;
+      cancel_at_period_end: boolean;
+      last_payment_status: string | null;
+    }>();
+
+  subscriptionNotice = buildSubscriptionNotice({
+    entitlement: workspace.shopEntitlement,
+    subscription: subscription ?? null,
+    shopSlug: workspace.shop.slug,
+  });
+
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -250,5 +389,7 @@ export async function loadDashboardData() {
     products: inventory.products,
     categories: inventory.categories,
     brands: inventory.brands,
+    subscriptionNotice,
+    planEntitlements,
   };
 }

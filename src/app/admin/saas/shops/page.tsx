@@ -53,10 +53,6 @@ export default async function SaasAdminShopsPage({
         </div>
       </div>
 
-      {query.error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{query.error}</p>
-      ) : null}
-
       <form className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
         <input
           name="q"

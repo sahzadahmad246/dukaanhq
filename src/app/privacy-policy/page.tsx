@@ -24,7 +24,7 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection title="Payments">
-        <p>Payments are processed by third-party payment providers such as Cashfree. DukaanHQ does not store full card, UPI mandate, or banking credentials.</p>
+        <p>Payments are processed by third-party payment providers such as Dodo Payments. DukaanHQ does not store full card, UPI mandate, or banking credentials.</p>
       </LegalSection>
 
       <LegalSection title="Data Sharing">
@@ -47,4 +47,3 @@ export default function PrivacyPolicyPage() {
     </LegalPageShell>
   );
 }
-

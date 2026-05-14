@@ -5,6 +5,7 @@ import { MarketingHeader } from "@/app/_components/marketing-header";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { fetchActiveSaasPlans } from "@/lib/subscription/public-plans";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,6 +17,38 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+type HomePlan = {
+  id: string;
+  code: "starter" | "growth" | "pro";
+  display_name: string;
+  tagline: string;
+  features: string[] | null;
+  support_level: "standard" | "priority";
+  saas_plan_prices: Array<{
+    interval: "month" | "year";
+    regular_price_paise: number;
+    discounted_price_paise: number | null;
+    discount_enabled: boolean;
+    provider_trial_days: number | null;
+  }> | null;
+};
+
+function formatInr(paise: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(paise / 100);
+}
+
+function planPrice(plan: HomePlan, interval: "month" | "year") {
+  const price = plan.saas_plan_prices?.find((item) => item.interval === interval);
+  if (!price) return null;
+  return price.discount_enabled && price.discounted_price_paise !== null
+    ? price.discounted_price_paise
+    : price.regular_price_paise;
 }
 
 export default async function Home() {
@@ -40,13 +73,20 @@ export default async function Home() {
         .maybeSingle<{ name: string; slug: string }>()
     : { data: null };
 
+  const { data: planRows } = await fetchActiveSaasPlans<HomePlan>(
+    supabase,
+    "id, code, display_name, tagline, features, support_level, saas_plan_prices(interval, regular_price_paise, discounted_price_paise, discount_enabled, provider_trial_days)",
+  );
+
+  const plans = (planRows ?? []) as HomePlan[];
+
   const displayName = profile?.full_name ?? user?.user_metadata.full_name ?? user?.email ?? "there";
   const userEmail = profile?.email ?? user?.email ?? "";
   const initials = getInitials(displayName || "DukaanHQ");
   const shopName = shop?.name ?? "your shop";
   const primaryAction = (() => {
     if (!user) {
-      return { href: "/auth/login", label: "Get Started" };
+      return { href: "/pricing", label: "View Plans" };
     }
 
     if (isSuperAdmin) {
@@ -170,6 +210,12 @@ export default async function Home() {
                 {secondaryLabel}
               </Link>
             )}
+            <Link
+              href="/pricing"
+              className="flex h-12 items-center justify-center rounded-2xl border border-stone-200 bg-white/70 text-[13px] font-semibold text-stone-700 transition hover:border-stone-300 hover:bg-white hover:text-stone-950"
+            >
+              See pricing
+            </Link>
           </div>
         </div>
       </section>
@@ -188,6 +234,76 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      {plans.length > 0 ? (
+        <section id="pricing" className="border-y border-stone-200 bg-[#fffdf7] px-5 py-12">
+          <div className="mb-7">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-[#a16207]">Pricing</p>
+            <h2 className="text-[26px] font-black leading-tight tracking-tight text-stone-950">
+              Pick the plan before setup.
+            </h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-stone-600">
+              Choose monthly or yearly, then sign in to activate your shop subscription.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            {plans.map((plan) => {
+              const monthly = planPrice(plan, "month");
+              const yearly = planPrice(plan, "year");
+              const monthlyTrialDays = plan.saas_plan_prices?.find((item) => item.interval === "month")?.provider_trial_days ?? 0;
+              const yearlyTrialDays = plan.saas_plan_prices?.find((item) => item.interval === "year")?.provider_trial_days ?? 0;
+              return (
+                <article key={plan.id} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[18px] font-black text-stone-950">{plan.display_name}</p>
+                      <p className="mt-1 text-[13px] leading-relaxed text-stone-600">{plan.tagline}</p>
+                    </div>
+                    <span className="rounded-full bg-[#fff4c9] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#a16207]">
+                      {plan.support_level === "priority" ? "Priority" : "Standard"}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <Link
+                      href={`/subscribe/start?plan=${plan.code}&billing=month`}
+                      className="rounded-2xl border border-stone-200 bg-stone-50 p-3 transition hover:border-stone-300 hover:bg-white"
+                    >
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Monthly</p>
+                      <p className="mt-1 text-[20px] font-black text-stone-950">{monthly !== null ? formatInr(monthly) : "N/A"}</p>
+                      {monthlyTrialDays > 0 ? <p className="mt-1 text-[11px] font-bold text-emerald-700">{monthlyTrialDays}-day trial</p> : null}
+                    </Link>
+                    <Link
+                      href={`/subscribe/start?plan=${plan.code}&billing=year`}
+                      className="rounded-2xl border border-stone-200 bg-stone-50 p-3 transition hover:border-stone-300 hover:bg-white"
+                    >
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Yearly</p>
+                      <p className="mt-1 text-[20px] font-black text-stone-950">{yearly !== null ? formatInr(yearly) : "N/A"}</p>
+                      {yearlyTrialDays > 0 ? <p className="mt-1 text-[11px] font-bold text-emerald-700">{yearlyTrialDays}-day trial</p> : null}
+                    </Link>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-1.5">
+                    {(plan.features ?? []).slice(0, 4).map((feature) => (
+                      <p key={feature} className="text-[12px] leading-relaxed text-stone-600">
+                        {feature}
+                      </p>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <Link
+            href="/pricing"
+            className="mt-5 flex h-12 items-center justify-center rounded-2xl bg-stone-950 text-[13px] font-black text-white transition hover:bg-stone-800"
+          >
+            Compare all plans
+          </Link>
+        </section>
+      ) : null}
 
       <section
         className="relative overflow-hidden px-5 py-12"

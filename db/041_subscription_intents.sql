@@ -139,6 +139,10 @@ create index if not exists idx_shop_subscriptions_owner
 create index if not exists idx_subscription_events_intent
   on public.subscription_events (subscription_intent_id, created_at desc);
 
+create unique index if not exists idx_subscription_events_provider_event_unique
+  on public.subscription_events (provider, provider_event_id)
+  where provider_event_id is not null;
+
 drop trigger if exists set_subscription_intents_updated_at on public.subscription_intents;
 create trigger set_subscription_intents_updated_at
 before update on public.subscription_intents

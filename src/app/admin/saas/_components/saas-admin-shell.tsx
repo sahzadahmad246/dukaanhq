@@ -15,12 +15,13 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { SaasAdminToastListener } from "@/app/admin/saas/_components/saas-admin-toast-listener";
 
 const navItems = [
   { href: "/admin/saas", label: "Home", icon: LayoutDashboard, exact: true },
   { href: "/admin/saas/shops", label: "Shops", icon: Building2 },
   { href: "/admin/saas/plans", label: "Plans", icon: Tags },
-  { href: "/admin/saas/subscriptions", label: "Subscriptions", icon: CreditCard, disabled: true },
+  { href: "/admin/saas/subscriptions", label: "Subscriptions", icon: CreditCard },
   { href: "/admin/saas/reports", label: "Reports", icon: BarChart3, disabled: true },
   { href: "/admin/saas/support", label: "Support", icon: LifeBuoy, disabled: true },
   { href: "/admin/saas/settings", label: "Settings", icon: Settings, disabled: true },
@@ -36,6 +37,7 @@ export function SaasAdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#f6f7f9] text-stone-950">
+      <SaasAdminToastListener />
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-stone-200 bg-white lg:flex lg:flex-col">
         <div className="flex h-20 items-center gap-3 border-b border-stone-200 px-5">
           <div className="grid h-11 w-11 place-items-center rounded-lg bg-stone-950 text-white">

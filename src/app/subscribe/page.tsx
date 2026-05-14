@@ -108,23 +108,14 @@ export default async function SubscribePage({
           <p className="mt-2 text-2xl font-bold text-stone-950">{platform.plan_display_name}</p>
           <p className="mt-1 text-lg text-stone-700">{formatInrFromPaise(platform.plan_price_paise)} / month</p>
           <p className="mt-4 text-sm text-stone-600">
-            Indian checkout with Cashfree will unlock this button. Until then, contact support if you need access.
+            Choose a plan and complete secure checkout to restore access for this shop.
           </p>
-          <button
-            type="button"
-            disabled
-            className="mt-5 w-full rounded-2xl bg-stone-300 py-3.5 text-sm font-semibold text-stone-600"
+          <Link
+            href="/pricing"
+            className="mt-5 flex w-full items-center justify-center rounded-2xl bg-stone-950 py-3.5 text-sm font-semibold text-white transition hover:bg-stone-800"
           >
-            Pay with Cashfree (wire checkout next)
-          </button>
-          <p className="mt-2 text-center text-xs text-stone-500">
-            Webhook URL (for Cashfree dashboard):{" "}
-            <span className="break-all font-mono text-stone-600">
-              {typeof process.env.NEXT_PUBLIC_APP_URL === "string"
-                ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/webhooks/cashfree`
-                : "/api/webhooks/cashfree"}
-            </span>
-          </p>
+            Choose plan
+          </Link>
           {process.env.DUKAANHQ_DEV_ACTIVATE_SUBSCRIPTION === "true" ? <DevActivateSubscriptionButton /> : null}
         </div>
 
@@ -139,7 +130,7 @@ export default async function SubscribePage({
             href={state.shopSlug ? buildShopRoute(state.shopSlug, "subscription") : "/subscription"}
             className="mt-6 block text-center text-sm font-semibold text-stone-700 underline-offset-4 hover:underline"
           >
-            Manage subscription (status &amp; Cashfree refs)
+            Manage subscription
           </Link>
         ) : null}
       </div>

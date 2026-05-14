@@ -372,7 +372,7 @@ Only use `DUKAANHQ_DEV_ACTIVATE_SUBSCRIPTION` locally.
 ### Cashfree dashboard setup
 
 1. Create or open your Cashfree merchant account.
-2. Use sandbox first.
+2. Use sandbox fist.
 3. Go to Developers / API keys.
 4. Copy Client ID into `CASHFREE_APP_ID`.
 5. Copy Client Secret into `CASHFREE_SECRET_KEY`.

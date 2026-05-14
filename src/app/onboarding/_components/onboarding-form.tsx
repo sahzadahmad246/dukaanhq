@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { FormEvent } from "react";
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -19,6 +20,7 @@ import {
   initialOnboardingState,
   type OnboardingActionState,
 } from "@/app/onboarding/state";
+import { InvoiceFooterLinesEditor } from "@/components/invoice-footer-lines-editor";
 
 const DynamicLocationPicker = dynamic(
   () => import("@/app/onboarding/_components/location-picker").then((mod) => mod.LocationPicker),
@@ -48,6 +50,7 @@ const workingDays = [
 ] as const;
 
 const ONBOARDING_DRAFT_STORAGE_KEY = "dukaanhq:onboarding:draft";
+const ONBOARDING_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type OnboardingFormProps = {
   defaultBusinessEmail: string;
@@ -57,6 +60,7 @@ type SlugState = "idle" | "checking" | "available" | "taken" | "error";
 type FieldErrors = Record<string, string>;
 type LatLng = { lat: number; lng: number };
 type OnboardingDraft = {
+  savedAt: number;
   currentStep: number;
   slugManuallyEdited: boolean;
   invoicePrefixEdited: boolean;
@@ -87,6 +91,10 @@ type OnboardingDraft = {
   logoFileName: string;
   logoPublicId: string;
 };
+
+function isOnboardingDraftExpired(draft: Partial<OnboardingDraft>) {
+  return typeof draft.savedAt !== "number" || Date.now() - draft.savedAt > ONBOARDING_DRAFT_TTL_MS;
+}
 
 function isBlobUrl(value: string | null): value is string {
   return Boolean(value?.startsWith("blob:"));
@@ -404,6 +412,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
   const [state, formAction, isPending] = useActionState<OnboardingActionState, FormData>(createShopAction, initialOnboardingState);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [serverDraftChecked, setServerDraftChecked] = useState(false);
+  const [submitArmed, setSubmitArmed] = useState(false);
 
   const slugSuggestion = useMemo(() => buildSlugSuggestion(shopName), [shopName]);
   const invoicePrefixSuggestion = useMemo(() => buildInvoicePrefixSuggestion(shopName), [shopName]);
@@ -430,6 +439,10 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
       }
 
       const draft = JSON.parse(rawDraft) as Partial<OnboardingDraft>;
+      if (isOnboardingDraftExpired(draft)) {
+        window.localStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+        return;
+      }
 
       if (typeof draft.currentStep === "number") {
         setCurrentStep(Math.max(1, Math.min(steps.length, draft.currentStep)));
@@ -497,6 +510,11 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
         const result = (await response.json()) as { draft?: Partial<OnboardingDraft> | null };
         const draft = result.draft;
         if (!draft || cancelled) {
+          return;
+        }
+
+        if (isOnboardingDraftExpired(draft)) {
+          fetch("/api/onboarding-draft", { method: "DELETE" }).catch(() => undefined);
           return;
         }
 
@@ -623,6 +641,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
     }
 
     const draft: OnboardingDraft = {
+      savedAt: Date.now(),
       currentStep,
       slugManuallyEdited,
       invoicePrefixEdited,
@@ -827,8 +846,18 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
   }
 
   function goToStep(step: number) {
+    setSubmitArmed(false);
     if (step > currentStep && !validateStep(currentStep)) return;
     setCurrentStep(Math.max(1, Math.min(steps.length, step)));
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!submitArmed) {
+      event.preventDefault();
+      return;
+    }
+
+    setSubmitArmed(false);
   }
 
   const previewSections = [
@@ -978,7 +1007,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
   }
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} onSubmit={handleFormSubmit} className="space-y-5">
       <div className="sticky top-[-1rem] z-[1100] -mx-4 -mt-5 bg-white px-4 py-3 md:-mx-6 md:px-6">
         <StepIndicator currentStep={currentStep} onStepChange={goToStep} />
       </div>
@@ -1090,10 +1119,12 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
               <SelectField id="taxMode" name="taxMode" value={taxMode} onChange={setTaxMode} options={[{ label: "Tax exclusive", value: "exclusive" }, { label: "Tax inclusive", value: "inclusive" }, { label: "No tax", value: "no_tax" }]} />
             </FieldShell>
             <FieldShell label="Invoice footer" name="invoiceFooter" error={getError("invoiceFooter")}>
-              <div className="grid gap-2">
-                <textarea id="invoiceFooter" name="invoiceFooter" rows={5} value={invoiceFooter} onChange={(event) => setInvoiceFooter(event.target.value)} placeholder={"Thank you for shopping with us.\n1. Goods once sold are not returnable\n2. Please keep this invoice safe"} className="rounded-2xl bg-stone-100 px-4 py-3 outline-none transition focus:bg-stone-50" />
-                <span className="text-xs text-stone-500">Press Enter for a new line. Use numbers for clean policy points.</span>
-              </div>
+              <InvoiceFooterLinesEditor
+                name="invoiceFooter"
+                value={invoiceFooter}
+                onChange={setInvoiceFooter}
+                buttonLabel="Add invoice footer lines"
+              />
             </FieldShell>
           </div>
         ) : null}
@@ -1186,7 +1217,7 @@ export function OnboardingForm({ defaultBusinessEmail }: OnboardingFormProps) {
         {currentStep < steps.length ? (
           <button type="button" onClick={() => goToStep(currentStep + 1)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-stone-800"><span>Next</span><ChevronRight className="h-4 w-4" /></button>
         ) : (
-          <button type="submit" disabled={isPending || isUploadingLogo || slugState === "taken"} className="flex h-12 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60">{isPending ? <Upload className="h-4 w-4 animate-pulse" /> : null}<span>{isPending ? "Creating Shop..." : isUploadingLogo ? "Uploading Logo..." : "Create Shop"}</span><ChevronRight className="h-4 w-4" /></button>
+          <button type="submit" onClick={() => setSubmitArmed(true)} disabled={isPending || isUploadingLogo || slugState === "taken"} className="flex h-12 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60">{isPending ? <Upload className="h-4 w-4 animate-pulse" /> : null}<span>{isPending ? "Creating Shop..." : isUploadingLogo ? "Uploading Logo..." : "Create Shop"}</span><ChevronRight className="h-4 w-4" /></button>
         )}
       </div>
     </form>

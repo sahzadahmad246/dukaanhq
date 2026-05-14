@@ -22,8 +22,6 @@ export default async function SaasPlansPage({
       plans={typedPlans}
       initialBilling={billingInterval}
       initialEditId={query.edit ?? null}
-      saved={query.saved === "1"}
-      errorMessage={query.error}
       tableError={Boolean(error)}
     />
   );

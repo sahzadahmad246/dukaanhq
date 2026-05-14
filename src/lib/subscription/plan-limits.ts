@@ -1,7 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type LimitKind = "products" | "invoices_per_month" | "staff";
-type EntitlementKind = "staff_access" | "whatsapp_invoice_sending";
+type EntitlementKind =
+  | "staff_access"
+  | "whatsapp_invoice_sending"
+  | "customer_signature"
+  | "shop_stamp"
+  | "public_shop_page"
+  | "auto_emi_reminders";
 
 type PlanLimitResult =
   | { ok: true; planName: string | null; limit: number | null; used: number }

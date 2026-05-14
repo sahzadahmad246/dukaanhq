@@ -15,9 +15,12 @@ export type ShopEntitlementRow = {
   trial_started_at: string | null;
   trial_ends_at: string | null;
   subscription_valid_until: string | null;
-  cashfree_subscription_id?: string | null;
-  cashfree_customer_id?: string | null;
+  provider?: string | null;
+  provider_subscription_id?: string | null;
+  provider_customer_id?: string | null;
   cancel_at_period_end?: boolean | null;
+  grace_ends_at?: string | null;
+  locked_reason?: string | null;
 };
 
 const defaultPlatform: Pick<
@@ -56,7 +59,10 @@ export function shopHasProductAccess(
     if (entitlement.subscription_valid_until == null) {
       return true;
     }
-    return new Date(entitlement.subscription_valid_until).getTime() > now;
+    if (new Date(entitlement.subscription_valid_until).getTime() > now) {
+      return true;
+    }
+    return Boolean(entitlement.grace_ends_at && new Date(entitlement.grace_ends_at).getTime() > now);
   }
 
   if (entitlement.billing_status === "trialing") {
@@ -83,6 +89,9 @@ export function subscriptionBlockReason(
   const now = Date.now();
 
   if (entitlement.billing_status === "active") {
+    if (entitlement.grace_ends_at && new Date(entitlement.grace_ends_at).getTime() > now) {
+      return null;
+    }
     if (entitlement.subscription_valid_until != null && new Date(entitlement.subscription_valid_until).getTime() <= now) {
       return "subscription_ended";
     }

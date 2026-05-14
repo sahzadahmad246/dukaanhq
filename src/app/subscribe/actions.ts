@@ -8,7 +8,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
- * Dev-only: marks the signed-in owner's shop as actively subscribed (no Cashfree call).
+ * Dev-only: marks the signed-in owner's shop as actively subscribed (no payment provider call).
  * Set DUKAANHQ_DEV_ACTIVATE_SUBSCRIPTION=true in .env.local to show the button on /subscribe.
  */
 export async function devActivateShopSubscriptionAction(): Promise<{ ok: boolean; message: string; redirectTo?: string }> {

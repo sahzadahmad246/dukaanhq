@@ -17,6 +17,9 @@ export type PlanPriceRow = {
   discount_type: "none" | "percent" | "amount";
   discount_value: number;
   discount_ends_at: string | null;
+  provider_product_id: string | null;
+  provider_price_id: string | null;
+  provider_trial_days: number | null;
 };
 
 export type PlanRow = {
@@ -34,6 +37,7 @@ export type PlanRow = {
   } | null;
   entitlements: Record<string, boolean> | null;
   support_level: "standard" | "priority";
+  is_active: boolean;
   sort_order: number;
   saas_plan_prices: PlanPriceRow[] | null;
 };
@@ -222,6 +226,10 @@ function EditPlanModal({
                   <option value="priority">Priority</option>
                 </select>
               </label>
+              <label className="flex items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm font-semibold text-stone-800">
+                <input type="checkbox" name="is_active" defaultChecked={plan.is_active} className="h-4 w-4 rounded border-stone-300" />
+                Show this plan in pricing and allow new purchases
+              </label>
             </section>
 
             <section className="grid gap-3">
@@ -229,6 +237,27 @@ function EditPlanModal({
               <label className="grid gap-1 text-sm font-semibold text-stone-800">
                 Regular price in rupees
                 <input name="monthly_price_rupees" type="number" min={0} step={1} defaultValue={rupees(monthly)} className="h-11 rounded-lg border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-950" />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-stone-800">
+                Dodo monthly product ID
+                <input
+                  name="monthly_provider_product_id"
+                  defaultValue={monthly?.provider_product_id ?? ""}
+                  placeholder="prod_..."
+                  className="h-11 rounded-lg border border-stone-300 px-3 font-mono text-sm font-normal outline-none focus:border-stone-950"
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-stone-800">
+                Dodo monthly trial days
+                <input
+                  name="monthly_provider_trial_days"
+                  type="number"
+                  min={0}
+                  max={365}
+                  step={1}
+                  defaultValue={monthly?.provider_trial_days ?? 0}
+                  className="h-11 rounded-lg border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-950"
+                />
               </label>
               <DiscountFields prefix="monthly" price={monthly} />
             </section>
@@ -238,6 +267,27 @@ function EditPlanModal({
               <label className="grid gap-1 text-sm font-semibold text-stone-800">
                 Regular price in rupees
                 <input name="yearly_price_rupees" type="number" min={0} step={1} defaultValue={rupees(yearly)} className="h-11 rounded-lg border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-950" />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-stone-800">
+                Dodo yearly product ID
+                <input
+                  name="yearly_provider_product_id"
+                  defaultValue={yearly?.provider_product_id ?? ""}
+                  placeholder="prod_..."
+                  className="h-11 rounded-lg border border-stone-300 px-3 font-mono text-sm font-normal outline-none focus:border-stone-950"
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-stone-800">
+                Dodo yearly trial days
+                <input
+                  name="yearly_provider_trial_days"
+                  type="number"
+                  min={0}
+                  max={365}
+                  step={1}
+                  defaultValue={yearly?.provider_trial_days ?? 0}
+                  className="h-11 rounded-lg border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-950"
+                />
               </label>
               <DiscountFields prefix="yearly" price={yearly} />
             </section>
@@ -291,6 +341,11 @@ function PlanCard({
             <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase tracking-wide ${planTone[plan.code]}`}>
               {plan.display_name}
             </span>
+            <p className={`mt-3 inline-flex rounded-md px-2 py-1 text-xs font-bold uppercase tracking-wide ${
+              plan.is_active ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-600"
+            }`}>
+              {plan.is_active ? "Active" : "Inactive"}
+            </p>
             <h2 className="mt-6 text-xl font-bold text-stone-950">{plan.display_name}</h2>
             <p className="mt-1 text-sm leading-6 text-stone-600">{plan.tagline}</p>
           </div>
@@ -372,15 +427,11 @@ export function SaasPlansBoard({
   plans,
   initialBilling,
   initialEditId,
-  saved,
-  errorMessage,
   tableError,
 }: {
   plans: PlanRow[];
   initialBilling: BillingInterval;
   initialEditId: string | null;
-  saved?: boolean;
-  errorMessage?: string;
   tableError?: boolean;
 }) {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>(initialBilling);
@@ -408,8 +459,6 @@ export function SaasPlansBoard({
 
   return (
     <div className="space-y-6">
-      {saved ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Plan saved.</p> : null}
-      {errorMessage ? <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{errorMessage}</p> : null}
       {tableError ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           Plans table is not ready yet. Run <code className="font-mono">db/040_saas_plans.sql</code> in Supabase SQL Editor.

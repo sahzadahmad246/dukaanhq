@@ -45,6 +45,8 @@ export function DeliveryStep({
   customerSignatureDataUrl,
   onSignatureChange,
   settingsHref = "/settings#stamp",
+  allowDigitalInvoiceAssets = true,
+  allowWhatsappInvoiceSending = true,
 }: {
   deliveryMode: DeliveryMode;
   onDeliveryModeChange: (mode: DeliveryMode) => void;
@@ -52,6 +54,8 @@ export function DeliveryStep({
   customerSignatureDataUrl: string | null;
   onSignatureChange: (dataUrl: string | null) => void;
   settingsHref?: string;
+  allowDigitalInvoiceAssets?: boolean;
+  allowWhatsappInvoiceSending?: boolean;
 }) {
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
@@ -78,7 +82,10 @@ export function DeliveryStep({
           {DELIVERY_OPTIONS.map((option) => {
             const Icon = option.icon;
             const active = deliveryMode === option.id;
-            const disabled = option.requiresStamp && !shopStampUrl;
+            const disabled =
+              (option.requiresStamp && !shopStampUrl) ||
+              (option.requiresStamp && !allowDigitalInvoiceAssets) ||
+              (option.requiresStamp && !allowWhatsappInvoiceSending);
 
             return (
               <button
@@ -123,7 +130,27 @@ export function DeliveryStep({
         </div>
 
         {/* Stamp missing warning */}
-        {!shopStampUrl && (
+        {!allowDigitalInvoiceAssets ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-stone-500" />
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-stone-800">Basic PDF included in this plan</p>
+              <p className="mt-0.5 text-xs text-stone-600">
+                Signature and shop stamp PDFs are available on Growth and Pro.
+              </p>
+            </div>
+          </div>
+        ) : !allowWhatsappInvoiceSending ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-stone-500" />
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-stone-800">WhatsApp automation is a Pro feature</p>
+              <p className="mt-0.5 text-xs text-stone-600">
+                You can still download professional PDFs with signature and stamp on this plan.
+              </p>
+            </div>
+          </div>
+        ) : !shopStampUrl ? (
           <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
             <div className="flex-1">
@@ -136,7 +163,7 @@ export function DeliveryStep({
               </p>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Customer signature section — only when auto_send or both */}
         {needsSignature && (

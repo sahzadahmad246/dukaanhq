@@ -5,6 +5,7 @@ import { Check, LoaderCircle, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { LocationPicker } from "@/app/onboarding/_components/location-picker";
+import { InvoiceFooterLinesEditor } from "@/components/invoice-footer-lines-editor";
 
 type EditableField =
   | "shopName"
@@ -132,7 +133,7 @@ function DetailSection({
           >
             <div className="flex-1">
               <div className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">{row.label}</div>
-              <div className="mt-1 text-base font-semibold text-stone-950">{formatDisplayValue(row.field, row.value)}</div>
+              <div className="mt-1 whitespace-pre-line text-base font-semibold text-stone-950">{formatDisplayValue(row.field, row.value)}</div>
             </div>
             {row.control === "none" || !row.field ? null : (
               <button
@@ -566,11 +567,10 @@ export function SettingsEditor({
                   maxLength={10}
                 />
               ) : editingField === "invoiceFooter" ? (
-                <textarea
+                <InvoiceFooterLinesEditor
+                  variant="inline"
                   value={draftValue}
-                  onChange={(event) => setDraftValue(event.target.value)}
-                  rows={5}
-                  className="w-full rounded-2xl bg-stone-100 px-4 py-3 outline-none"
+                  onChange={setDraftValue}
                 />
               ) : (
                 <div className="relative">

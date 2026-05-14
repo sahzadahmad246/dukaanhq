@@ -24,12 +24,14 @@ export type SubscriptionIntentRow = {
   trial_ends_at: string | null;
   current_period_start: string | null;
   current_period_end: string | null;
-  cashfree_subscription_id: string | null;
-  cashfree_cf_subscription_id: string | null;
-  cashfree_subscription_session_id: string | null;
-  cashfree_customer_id: string | null;
-  cashfree_authorization_status: string | null;
-  cashfree_payment_method: string | null;
+  provider: string | null;
+  provider_checkout_session_id: string | null;
+  provider_checkout_url: string | null;
+  provider_subscription_id: string | null;
+  provider_customer_id: string | null;
+  provider_payment_id: string | null;
+  provider_status: string | null;
+  provider_payment_method: string | null;
   next_payment_at: string | null;
   last_payment_at: string | null;
   last_payment_status: string | null;
@@ -72,7 +74,7 @@ export async function getLatestApprovedSubscriptionIntent(
   const { data, error } = await supabase
     .from("subscription_intents")
     .select(
-      "id, owner_user_id, owner_email, plan_id, price_id, plan_code, billing_interval, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, cashfree_subscription_id, cashfree_cf_subscription_id, cashfree_subscription_session_id, cashfree_customer_id, cashfree_authorization_status, cashfree_payment_method, next_payment_at, last_payment_at, last_payment_status, expires_at, created_shop_id",
+      "id, owner_user_id, owner_email, plan_id, price_id, plan_code, billing_interval, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, provider, provider_checkout_session_id, provider_checkout_url, provider_subscription_id, provider_customer_id, provider_payment_id, provider_status, provider_payment_method, next_payment_at, last_payment_at, last_payment_status, expires_at, created_shop_id",
     )
     .eq("owner_user_id", userId)
     .in("status", ["trial_approved", "payment_approved"])

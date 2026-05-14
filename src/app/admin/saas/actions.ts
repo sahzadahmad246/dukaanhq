@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { isValidInvoiceFooter, normalizeInvoiceFooter } from "@/lib/invoice-footer";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -71,6 +72,10 @@ const PlanBenefitSchema = z.object({
   description: z.string().trim().optional().default(""),
   monthly_price_rupees: z.coerce.number().min(0, "Monthly price must be 0 or more."),
   yearly_price_rupees: z.coerce.number().min(0, "Yearly price must be 0 or more."),
+  monthly_provider_product_id: z.string().trim().optional().default(""),
+  yearly_provider_product_id: z.string().trim().optional().default(""),
+  monthly_provider_trial_days: z.coerce.number().int().min(0).max(365).default(0),
+  yearly_provider_trial_days: z.coerce.number().int().min(0).max(365).default(0),
   monthly_discount_enabled: z.boolean(),
   monthly_discount_type: z.enum(["none", "percent", "amount"]),
   monthly_discount_value: z.coerce.number().min(0).default(0),
@@ -80,6 +85,7 @@ const PlanBenefitSchema = z.object({
   yearly_discount_value: z.coerce.number().min(0).default(0),
   yearly_discount_ends_at: z.string().trim().optional().default(""),
   support_level: z.enum(["standard", "priority"]),
+  is_active: z.boolean(),
 });
 
 function rupeesToPaise(value: number) {
@@ -211,6 +217,10 @@ export async function updateSaasPlanAction(formData: FormData) {
     description: formData.get("description"),
     monthly_price_rupees: formData.get("monthly_price_rupees"),
     yearly_price_rupees: formData.get("yearly_price_rupees"),
+    monthly_provider_product_id: formData.get("monthly_provider_product_id"),
+    yearly_provider_product_id: formData.get("yearly_provider_product_id"),
+    monthly_provider_trial_days: formData.get("monthly_provider_trial_days") || "0",
+    yearly_provider_trial_days: formData.get("yearly_provider_trial_days") || "0",
     monthly_discount_enabled: formData.get("monthly_discount_enabled") === "on",
     monthly_discount_type: formData.get("monthly_discount_type") || "none",
     monthly_discount_value: formData.get("monthly_discount_value") || "0",
@@ -220,6 +230,7 @@ export async function updateSaasPlanAction(formData: FormData) {
     yearly_discount_value: formData.get("yearly_discount_value") || "0",
     yearly_discount_ends_at: formData.get("yearly_discount_ends_at") || "",
     support_level: formData.get("support_level") || "standard",
+    is_active: formData.get("is_active") === "on",
   });
 
   if (!parsed.success) {
@@ -248,6 +259,7 @@ export async function updateSaasPlanAction(formData: FormData) {
       tagline: parsed.data.tagline,
       description: parsed.data.description || null,
       support_level: parsed.data.support_level,
+      is_active: parsed.data.is_active,
       limits: fixedPlanLimits[code],
       entitlements: fixedPlanEntitlements[code],
       features: defaultPlanFeatures[code],
@@ -277,8 +289,11 @@ export async function updateSaasPlanAction(formData: FormData) {
       discount_type: parsed.data.monthly_discount_enabled ? parsed.data.monthly_discount_type : "none",
       discount_value: parsed.data.monthly_discount_enabled ? parsed.data.monthly_discount_value : 0,
       discount_ends_at: parsed.data.monthly_discount_enabled ? normalizeDateInput(parsed.data.monthly_discount_ends_at) : null,
+      provider: "dodo",
+      provider_product_id: parsed.data.monthly_provider_product_id || null,
+      provider_trial_days: parsed.data.monthly_provider_trial_days,
       currency: "INR",
-      is_active: true,
+      is_active: parsed.data.is_active,
       updated_at: new Date().toISOString(),
     },
     {
@@ -296,8 +311,11 @@ export async function updateSaasPlanAction(formData: FormData) {
       discount_type: parsed.data.yearly_discount_enabled ? parsed.data.yearly_discount_type : "none",
       discount_value: parsed.data.yearly_discount_enabled ? parsed.data.yearly_discount_value : 0,
       discount_ends_at: parsed.data.yearly_discount_enabled ? normalizeDateInput(parsed.data.yearly_discount_ends_at) : null,
+      provider: "dodo",
+      provider_product_id: parsed.data.yearly_provider_product_id || null,
+      provider_trial_days: parsed.data.yearly_provider_trial_days,
       currency: "INR",
-      is_active: true,
+      is_active: parsed.data.is_active,
       updated_at: new Date().toISOString(),
     },
   ];
@@ -336,6 +354,70 @@ export async function setShopStatusAction(formData: FormData) {
   redirect(`/admin/saas/shops/${encodeURIComponent(shop_id)}?saved=1`);
 }
 
+export async function superadminExtendSubscriptionAction(formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  await requireSuperadmin(supabase);
+
+  const shopId = String(formData.get("shop_id") ?? "").trim();
+  const days = Math.min(3650, Math.max(1, Math.floor(Number(formData.get("days")) || 365)));
+
+  if (!shopId) {
+    redirect("/admin/saas/subscriptions?error=Missing%20shop%20id");
+  }
+
+  const admin = getAdminSupabase();
+  const validUntil = new Date();
+  validUntil.setDate(validUntil.getDate() + days);
+
+  const { error } = await admin.from("shop_entitlements").upsert(
+    {
+      shop_id: shopId,
+      billing_status: "active",
+      subscription_valid_until: validUntil.toISOString(),
+      access_expires_at: validUntil.toISOString(),
+      grace_ends_at: null,
+      locked_reason: null,
+      cancel_at_period_end: false,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "shop_id" },
+  );
+
+  if (error) {
+    redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/admin/saas/subscriptions");
+  redirect("/admin/saas/subscriptions?saved=1");
+}
+
+export async function superadminLockSubscriptionAction(formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  await requireSuperadmin(supabase);
+
+  const shopId = String(formData.get("shop_id") ?? "").trim();
+  if (!shopId) {
+    redirect("/admin/saas/subscriptions?error=Missing%20shop%20id");
+  }
+
+  const admin = getAdminSupabase();
+  const { error } = await admin
+    .from("shop_entitlements")
+    .update({
+      billing_status: "locked",
+      locked_reason: "superadmin_locked",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("shop_id", shopId);
+
+  if (error) {
+    redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/admin/saas/subscriptions");
+  redirect("/admin/saas/subscriptions?saved=1");
+}
+
 const SuperadminUpdateShopSchema = z.object({
   shop_id: z.string().uuid(),
   name: z.string().trim().min(1, "Shop name is required."),
@@ -348,7 +430,12 @@ const SuperadminUpdateShopSchema = z.object({
   postal_code: z.string().trim().min(1, "Postal code is required."),
   logo_url: z.string().trim().optional().default(""),
   invoice_prefix: z.string().trim().min(1, "Invoice prefix is required."),
-  invoice_footer: z.string().trim().optional().default(""),
+  invoice_footer: z
+    .string()
+    .refine(isValidInvoiceFooter, "Add up to 7 footer lines, with 140 characters per line.")
+    .transform(normalizeInvoiceFooter)
+    .optional()
+    .default(""),
 });
 
 export async function superadminUpdateShopInfoAction(formData: FormData) {

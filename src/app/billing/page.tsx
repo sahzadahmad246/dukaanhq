@@ -15,7 +15,7 @@ type PageProps = {
 
 export default async function BillingPage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const { user, profile, shop, membership, products, invoices, categories, brands } = await loadBillingData(query);
+  const { user, profile, shop, membership, products, invoices, categories, brands, planEntitlements } = await loadBillingData(query);
 
   if (shop?.slug) {
     if (!query.shop) {
@@ -52,6 +52,12 @@ export default async function BillingPage({ searchParams }: PageProps) {
           shopPostalCode={shop?.postal_code ?? null}
           shopStampUrl={shop?.shop_stamp_url ?? null}
           settingsHref={shop?.slug ? `${buildShopRoute(shop.slug, "settings")}#stamp` : "/settings#stamp"}
+          allowDigitalInvoiceAssets={
+            planEntitlements
+              ? planEntitlements.customer_signature === true && planEntitlements.shop_stamp === true
+              : true
+          }
+          allowWhatsappInvoiceSending={planEntitlements ? planEntitlements.whatsapp_invoice_sending === true : true}
         />
       </Suspense>
     </WorkspaceShell>

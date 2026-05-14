@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Check, Clock, CreditCard } from "lucide-react";
+import { Check, CreditCard } from "lucide-react";
 
 import { ProfileMenu } from "@/app/_components/profile-menu";
-import { startStarterTrialAction } from "@/app/subscribe/start/actions";
-import { CashfreeSubscriptionCheckout } from "@/app/subscribe/start/cashfree-subscription-checkout";
+import { DodoSubscriptionCheckout } from "@/app/subscribe/start/dodo-subscription-checkout";
 import { PaidSubscriptionPhoneModal } from "@/app/subscribe/start/paid-subscription-phone-modal";
-import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
+import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { fetchActiveSaasPlanByCode } from "@/lib/subscription/public-plans";
 import {
   normalizeBillingInterval,
   normalizePlanCode,
@@ -22,10 +22,8 @@ function formatMoney(paise: number) {
 }
 
 function errorCopy(error?: string) {
-  if (error === "trial_already_used") return "This Google account has already used the Starter trial.";
   if (error === "server_not_configured") return "Server billing configuration is missing.";
-  if (error === "trial_only_starter") return "Free trial is available only on Starter.";
-  if (error === "valid_phone_required") return "Enter a valid 10-digit mobile number before starting Cashfree authorization.";
+  if (error === "valid_phone_required") return "Enter a valid 10-digit mobile number before continuing.";
   if (error === "owner_required") return "Only the active shop owner can change this subscription.";
   if (error) return decodeURIComponent(error);
   return null;
@@ -34,7 +32,7 @@ function errorCopy(error?: string) {
 export default async function StartSubscriptionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; billing?: string; error?: string; cashfree?: string; intent?: string }>;
+  searchParams: Promise<{ plan?: string; billing?: string; error?: string; checkout?: string; intent?: string }>;
 }) {
   const query = await searchParams;
   const planCode = normalizePlanCode(query.plan);
@@ -50,50 +48,66 @@ export default async function StartSubscriptionPage({
     redirect("/onboarding");
   }
 
-  const { data: plan } = await supabase
-    .from("saas_plans")
-    .select("id, code, display_name, tagline, description, features, limits, saas_plan_prices(id, interval, regular_price_paise, discounted_price_paise, discount_enabled)")
-    .eq("code", planCode)
-    .maybeSingle<{
+  const { data: plan } = await fetchActiveSaasPlanByCode<{
       id: string;
-      code: string;
+      code: "starter" | "growth" | "pro";
       display_name: string;
       tagline: string;
       description: string | null;
       features: string[] | null;
       limits: { products?: number | null; invoices_per_month?: number | null } | null;
+      support_level: "standard" | "priority";
       saas_plan_prices: Array<{
         id: string;
         interval: "month" | "year";
         regular_price_paise: number;
         discounted_price_paise: number | null;
         discount_enabled: boolean;
+        provider_trial_days: number | null;
       }> | null;
-    }>();
+    }>(
+      supabase,
+      planCode,
+      "id, code, display_name, tagline, description, features, limits, support_level, saas_plan_prices(id, interval, regular_price_paise, discounted_price_paise, discount_enabled, provider_trial_days)",
+    );
 
   const price = plan?.saas_plan_prices?.find((item) => item.interval === billingInterval);
   const effectivePrice =
     price?.discount_enabled && price.discounted_price_paise !== null
       ? price.discounted_price_paise
       : price?.regular_price_paise;
+  const trialDays = price?.provider_trial_days ?? 0;
 
   const displayName = state.profile?.full_name ?? state.user.user_metadata.full_name ?? state.user.email ?? "User";
   const userEmail = state.profile?.email ?? state.user.email ?? "";
   const userInitials = (displayName.slice(0, 1) || "U").toUpperCase();
   const message = errorCopy(query.error);
+  const pendingIntentQuery = supabase
+    .from("subscription_intents")
+    .select("id, owner_user_id, provider_checkout_url, status")
+    .eq("owner_user_id", state.user.id)
+    .eq("plan_code", planCode)
+    .eq("billing_interval", billingInterval)
+    .eq("provider", "dodo")
+    .eq("status", "payment_pending")
+    .not("provider_checkout_url", "is", null)
+    .neq("last_payment_status", "FAILED")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
   const { data: pendingIntent } = query.intent
-    ? await supabase
-        .from("subscription_intents")
-        .select("id, owner_user_id, cashfree_subscription_session_id, status")
-        .eq("id", query.intent)
-        .eq("owner_user_id", state.user.id)
-        .maybeSingle<{
-          id: string;
-          owner_user_id: string;
-          cashfree_subscription_session_id: string | null;
-          status: string;
-        }>()
-    : { data: null };
+    ? await pendingIntentQuery.eq("id", query.intent).maybeSingle<{
+        id: string;
+        owner_user_id: string;
+        provider_checkout_url: string | null;
+        status: string;
+      }>()
+    : await pendingIntentQuery.maybeSingle<{
+        id: string;
+        owner_user_id: string;
+        provider_checkout_url: string | null;
+        status: string;
+      }>();
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-950">
@@ -124,9 +138,15 @@ export default async function StartSubscriptionPage({
           </div>
         ) : null}
 
-        {query.cashfree === "created" ? (
+        {query.checkout === "created" ? (
           <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
-            Cashfree subscription intent was created. Open the authorization flow to approve recurring payments.
+            Your secure checkout is ready. Continue to add your payment method.
+          </div>
+        ) : null}
+
+        {query.checkout === "returned" ? (
+          <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+            Payment setup received. If it was successful, your subscription will activate shortly. You can refresh this page in a moment; once confirmed, we will send you to shop setup.
           </div>
         ) : null}
 
@@ -140,49 +160,30 @@ export default async function StartSubscriptionPage({
           </p>
         </section>
 
-        {planCode === "starter" ? (
-          <section className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-            <div className="flex items-start gap-3">
-              <Clock className="mt-1 h-5 w-5 text-emerald-700" aria-hidden="true" />
-              <div>
-                <h3 className="font-bold text-emerald-950">7-day Starter trial</h3>
-                <p className="mt-1 text-sm leading-6 text-emerald-900">
-                  Start the trial first. After trial approval, you can create your shop in onboarding. No shop data is created before this step.
-                </p>
-              </div>
+        <section className="mt-5 rounded-2xl border border-stone-200 bg-white p-5">
+          <div className="flex items-start gap-3">
+            <CreditCard className="mt-1 h-5 w-5 text-stone-500" aria-hidden="true" />
+            <div>
+              <h3 className="font-bold text-stone-950">{pendingIntent?.provider_checkout_url ? "Complete secure checkout" : "Payment setup"}</h3>
+              <p className="mt-1 text-sm leading-6 text-stone-600">
+                {pendingIntent?.provider_checkout_url
+                  ? "Your checkout link is ready. Continue securely to finish subscription setup."
+                  : trialDays > 0
+                    ? `Add a payment method now. Your ${trialDays}-day trial starts after setup, and billing begins automatically when it ends.`
+                    : "Add a payment method now so your subscription renews automatically."}
+              </p>
             </div>
-            <form action={startStarterTrialAction} className="mt-5">
-              <input type="hidden" name="plan" value={planCode} />
-              <input type="hidden" name="billing" value={billingInterval} />
-              <button type="submit" className="w-full rounded-2xl bg-emerald-700 py-3.5 text-sm font-bold text-white transition hover:bg-emerald-800">
-                Start free trial and continue
-              </button>
-            </form>
-          </section>
-        ) : (
-          <section className="mt-5 rounded-2xl border border-stone-200 bg-white p-5">
-            <div className="flex items-start gap-3">
-              <CreditCard className="mt-1 h-5 w-5 text-stone-500" aria-hidden="true" />
-              <div>
-                <h3 className="font-bold text-stone-950">Cashfree checkout is next</h3>
-                <p className="mt-1 text-sm leading-6 text-stone-600">
-                  This phase sets up the pre-onboarding subscription gate. Growth and Pro paid checkout will connect here in the Cashfree phase.
-                </p>
-              </div>
-            </div>
+          </div>
+          {pendingIntent?.provider_checkout_url ? (
+            <DodoSubscriptionCheckout checkoutUrl={pendingIntent.provider_checkout_url} />
+          ) : (
             <PaidSubscriptionPhoneModal
               planCode={planCode}
               billingInterval={billingInterval}
               planName={plan?.display_name ?? planCode}
             />
-            {pendingIntent?.cashfree_subscription_session_id ? (
-              <CashfreeSubscriptionCheckout
-                environment={process.env.CASHFREE_ENV === "production" ? "production" : "sandbox"}
-                subscriptionSessionId={pendingIntent.cashfree_subscription_session_id}
-              />
-            ) : null}
-          </section>
-        )}
+          )}
+        </section>
 
         <div className="mt-5 grid gap-2 rounded-2xl border border-stone-200 bg-white p-5 text-sm text-stone-700">
           {(plan?.features ?? ["Inventory", "Invoices", "Basic PDF invoice"]).slice(0, 5).map((feature) => (
@@ -193,9 +194,6 @@ export default async function StartSubscriptionPage({
           ))}
         </div>
 
-        <Link href={getSignedInLandingPath(state)} className="mt-6 text-center text-sm font-semibold text-stone-600 underline-offset-4 hover:text-stone-950 hover:underline">
-          Continue without changing plan
-        </Link>
       </div>
     </main>
   );

@@ -13,7 +13,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ shop?: string }>;
 }) {
   const query = await searchParams;
-  const { user, profile, shop, membership, stats, recentInvoices, recentProducts, products, categories, brands } =
+  const { user, profile, shop, membership, stats, recentInvoices, recentProducts, products, categories, brands, subscriptionNotice, planEntitlements } =
     await loadDashboardData();
 
   if (shop?.slug) {
@@ -52,6 +52,8 @@ export default async function DashboardPage({
         brands={brands}
         shopStampUrl={shop?.shop_stamp_url ?? null}
         shopSlug={shop?.slug ?? null}
+        subscriptionNotice={subscriptionNotice}
+        planEntitlements={planEntitlements}
       />
     </WorkspaceShell>
   );

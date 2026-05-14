@@ -28,7 +28,7 @@ import {
   Send,
 } from "lucide-react";
 
-import type { DashboardStats, RecentInvoice, RecentProduct } from "../load-dashboard-data";
+import type { DashboardStats, RecentInvoice, RecentProduct, SubscriptionNotice } from "../load-dashboard-data";
 import type { BillingInvoiceSummary } from "@/app/billing/load-billing-data";
 import type { Brand, Category } from "@/lib/types/inventory";
 import { AddBillModal } from "@/app/billing/_components/add-bill-modal";
@@ -142,6 +142,8 @@ export function DashboardHome({
   brands,
   shopStampUrl,
   shopSlug,
+  subscriptionNotice,
+  planEntitlements,
   loadError,
 }: {
   ownerName: string;
@@ -155,6 +157,8 @@ export function DashboardHome({
   brands: Brand[];
   shopStampUrl: string | null;
   shopSlug?: string | null;
+  subscriptionNotice?: SubscriptionNotice | null;
+  planEntitlements?: Record<string, boolean> | null;
   loadError?: string | null;
 }) {
   const router = useRouter();
@@ -189,6 +193,11 @@ export function DashboardHome({
     [recentInvoices, selectedInvoiceId]
   );
   const greetingName = useMemo(() => getDisplayFirstName(ownerName), [ownerName]);
+  const allowStaffAccess = planEntitlements ? planEntitlements.staff_access === true : true;
+  const allowWhatsappInvoiceSending = planEntitlements ? planEntitlements.whatsapp_invoice_sending === true : true;
+  const allowDigitalInvoiceAssets = planEntitlements
+    ? planEntitlements.customer_signature === true && planEntitlements.shop_stamp === true
+    : true;
 
   useEffect(() => {
     if (!loadError) return;
@@ -199,32 +208,24 @@ export function DashboardHome({
   const [showStampDrawer, setShowStampDrawer] = useState(false);
 
   useEffect(() => {
-    const STORAGE_KEY = "dukaanhq_stamp_feature_v1";
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const data = stored ? JSON.parse(stored) : { shown: 0, lastDismissed: 0 };
-
-    const now = Date.now();
     const oneHour = 60 * 60 * 1000;
 
-    // First 2 times: show for ALL users as a feature introduction
-    if (data.shown < 2) {
-      setShowStampDrawer(true);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ shown: data.shown + 1, lastDismissed: data.lastDismissed }));
+    if (shopStampUrl) {
+      setShowStampDrawer(false);
       return;
     }
 
-    // After 2 intros: only keep reminding users who haven't uploaded stamp yet
-    if (!shopStampUrl && now - data.lastDismissed > oneHour) {
+    setShowStampDrawer(true);
+
+    const reminderId = window.setInterval(() => {
       setShowStampDrawer(true);
-    }
+    }, oneHour);
+
+    return () => window.clearInterval(reminderId);
   }, [shopStampUrl]);
 
   function dismissStampDrawer() {
     setShowStampDrawer(false);
-    const STORAGE_KEY = "dukaanhq_stamp_feature_v1";
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const data = stored ? JSON.parse(stored) : { shown: 2, lastDismissed: 0 };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, lastDismissed: Date.now() }));
   }
 
   function prefetchProduct(productId: string) {
@@ -323,6 +324,10 @@ export function DashboardHome({
   }
 
   async function sendInvoiceToCustomer(invoice: SendableInvoiceInput) {
+    if (!allowWhatsappInvoiceSending) {
+      toast.error("WhatsApp invoice sending is included in Pro only.");
+      return;
+    }
     setSendingWhatsappInvoiceId(invoice.id);
     try {
       const result = await sendInvoiceWhatsappWithFreshPdf({
@@ -477,6 +482,15 @@ export function DashboardHome({
           font-size: 13px;
           font-weight: 700;
         }
+        .dash-subscription-alert {
+          border-radius: 18px;
+          padding: 13px 14px;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 14px;
+          border: 1.5px solid;
+        }
       `}</style>
 
       {/* Low stock alert — persistent, non-dismissible, flush edge-to-edge */}
@@ -530,6 +544,54 @@ export function DashboardHome({
           </div>
         ) : null}
 
+        {subscriptionNotice ? (
+          <div
+            className="dash-subscription-alert"
+            style={{
+              background:
+                subscriptionNotice.tone === "danger"
+                  ? "#fef2f2"
+                  : subscriptionNotice.tone === "warning"
+                    ? "#fffbeb"
+                    : subscriptionNotice.tone === "success"
+                      ? "#f0fdf4"
+                      : "#eff6ff",
+              borderColor:
+                subscriptionNotice.tone === "danger"
+                  ? "#fecaca"
+                  : subscriptionNotice.tone === "warning"
+                    ? "#fde68a"
+                    : subscriptionNotice.tone === "success"
+                      ? "#bbf7d0"
+                      : "#bfdbfe",
+              color:
+                subscriptionNotice.tone === "danger"
+                  ? "#991b1b"
+                  : subscriptionNotice.tone === "warning"
+                    ? "#92400e"
+                    : subscriptionNotice.tone === "success"
+                      ? "#166534"
+                      : "#1e40af",
+            }}
+          >
+            <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2 }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ fontSize: 13, fontWeight: 900, margin: 0 }}>{subscriptionNotice.title}</p>
+              <p style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.5, margin: "3px 0 0", opacity: 0.86 }}>
+                {subscriptionNotice.message}
+              </p>
+              {subscriptionNotice.href && subscriptionNotice.actionLabel ? (
+                <Link
+                  href={subscriptionNotice.href}
+                  style={{ display: "inline-flex", marginTop: 8, fontSize: 12, fontWeight: 900, textDecoration: "underline" }}
+                >
+                  {subscriptionNotice.actionLabel}
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
 
         {/* Stats Grid — 2 columns */}
         <div className="grid grid-cols-2 gap-2 mb-5">
@@ -577,11 +639,23 @@ export function DashboardHome({
           </button>
           <button
             type="button"
-            onClick={() => setIsInviteStaffOpen(true)}
+            onClick={() => {
+              if (!allowStaffAccess) {
+                toast.error("Staff access is included in Growth and Pro.");
+                return;
+              }
+              setIsInviteStaffOpen(true);
+            }}
+            disabled={!allowStaffAccess}
             className="dash-chip"
-            style={{ background: "#f4f4f5", color: "#18181b", border: "1.5px solid #e4e4e7" }}
+            style={{
+              background: "#f4f4f5",
+              color: allowStaffAccess ? "#18181b" : "#a1a1aa",
+              border: "1.5px solid #e4e4e7",
+              opacity: allowStaffAccess ? 1 : 0.7,
+            }}
           >
-            <Plus style={{ width: 14, height: 14 }} /> Add Staff
+            <Plus style={{ width: 14, height: 14 }} /> {allowStaffAccess ? "Add Staff" : "Staff in Growth"}
           </button>
         </div>
 
@@ -748,10 +822,12 @@ export function DashboardHome({
                           <div className="absolute right-0 top-10 z-[60] w-52 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
                             <button
                               type="button"
-                              disabled={sendingWhatsappInvoiceId === invoice.id}
+                              disabled={!allowWhatsappInvoiceSending || sendingWhatsappInvoiceId === invoice.id}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                await sendInvoiceToCustomer(invoice);
+                                if (allowWhatsappInvoiceSending) {
+                                  await sendInvoiceToCustomer(invoice);
+                                }
                                 setOpenDropdownId(null);
                               }}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -761,7 +837,11 @@ export function DashboardHome({
                               ) : (
                                 <Send className="h-3.5 w-3.5 text-emerald-600" />
                               )}
-                              {sendingWhatsappInvoiceId === invoice.id ? "Sending..." : "Send invoice"}
+                              {allowWhatsappInvoiceSending
+                                ? sendingWhatsappInvoiceId === invoice.id
+                                  ? "Sending..."
+                                  : "Send invoice"
+                                : "Pro only"}
                             </button>
                             <button
                               type="button"
@@ -847,6 +927,8 @@ export function DashboardHome({
         shopPostalCode={shopPostalCode}
         shopStampUrl={shopStampUrl}
         settingsHref={shopSlug ? `/${shopSlug}/settings#stamp` : "/settings#stamp"}
+        allowDigitalInvoiceAssets={allowDigitalInvoiceAssets}
+        allowWhatsappInvoiceSending={allowWhatsappInvoiceSending}
         onInvoiceCreated={() => router.refresh()}
         onOpenAddProduct={() => setIsAddProductOpen(true)}
       />
@@ -912,7 +994,7 @@ export function DashboardHome({
         open={Boolean(selectedInvoice)}
         onClose={() => setSelectedInvoiceId(null)}
         onDownload={handleDownloadInvoice}
-        onSendInvoice={sendInvoiceToCustomer}
+        onSendInvoice={allowWhatsappInvoiceSending ? sendInvoiceToCustomer : undefined}
         isSendingInvoice={selectedInvoice ? sendingWhatsappInvoiceId === selectedInvoice.id : false}
         onEdit={() => {
           setSelectedInvoiceId(null);

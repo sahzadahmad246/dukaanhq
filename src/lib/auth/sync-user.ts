@@ -3,7 +3,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
-const AUTH_SESSION_ERROR_CODES = new Set(["refresh_token_not_found", "session_not_found"]);
+const AUTH_SESSION_ERROR_CODES = new Set(["refresh_token_not_found", "session_not_found", "user_not_found"]);
 
 function isMissingAuthSessionError(error: { code?: string; status?: number; message?: string; name?: string } | null | undefined) {
   if (!error) {
@@ -15,7 +15,10 @@ function isMissingAuthSessionError(error: { code?: string; status?: number; mess
   }
 
   const normalizedMessage = (error.message ?? "").toLowerCase();
-  return error.status === 400 && (error.name === "AuthSessionMissingError" || normalizedMessage.includes("auth session missing"));
+  return (
+    (error.status === 400 && (error.name === "AuthSessionMissingError" || normalizedMessage.includes("auth session missing"))) ||
+    (error.status === 403 && normalizedMessage.includes("user") && normalizedMessage.includes("does not exist"))
+  );
 }
 
 type ProfileRecord = {
@@ -43,6 +46,7 @@ export async function syncAuthenticatedUserProfile(supabase: SupabaseClient) {
 
   if (authError) {
     if (isMissingAuthSessionError(authError)) {
+      await supabase.auth.signOut();
       return { user: null, profile: null, profileSyncReady: false };
     }
 

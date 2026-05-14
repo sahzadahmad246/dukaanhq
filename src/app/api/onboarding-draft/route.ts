@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+const ONBOARDING_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isExpiredDraft(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return true;
+  }
+
+  const savedAt = (payload as { savedAt?: unknown }).savedAt;
+  return typeof savedAt !== "number" || Date.now() - savedAt > ONBOARDING_DRAFT_TTL_MS;
+}
+
 export async function GET() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -20,6 +31,11 @@ export async function GET() {
 
   if (error) {
     return NextResponse.json({ message: error.message }, { status: 500 });
+  }
+
+  if (data?.payload && isExpiredDraft(data.payload)) {
+    await supabase.from("onboarding_drafts").delete().eq("user_id", user.id);
+    return NextResponse.json({ draft: null });
   }
 
   return NextResponse.json({ draft: data?.payload ?? null });

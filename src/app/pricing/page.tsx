@@ -1,7 +1,9 @@
 import { MarketingHeader } from "@/app/_components/marketing-header";
 import { PublicPricingBoard, type PublicPlan } from "@/app/pricing/_components/public-pricing-board";
 import { getUserAppState } from "@/lib/auth/user-flow";
+import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { fetchActiveSaasPlans } from "@/lib/subscription/public-plans";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -35,8 +37,8 @@ const fallbackPlans: PublicPlan[] = [
     },
     support_level: "standard",
     saas_plan_prices: [
-      { interval: "month", regular_price_paise: 49900, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null },
-      { interval: "year", regular_price_paise: 499000, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null },
+      { interval: "month", regular_price_paise: 49900, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null, provider_trial_days: 7 },
+      { interval: "year", regular_price_paise: 499000, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null, provider_trial_days: 7 },
     ],
   },
   {
@@ -69,8 +71,8 @@ const fallbackPlans: PublicPlan[] = [
     },
     support_level: "priority",
     saas_plan_prices: [
-      { interval: "month", regular_price_paise: 99900, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null },
-      { interval: "year", regular_price_paise: 999000, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null },
+      { interval: "month", regular_price_paise: 99900, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null, provider_trial_days: 0 },
+      { interval: "year", regular_price_paise: 999000, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null, provider_trial_days: 0 },
     ],
   },
   {
@@ -102,8 +104,8 @@ const fallbackPlans: PublicPlan[] = [
     },
     support_level: "priority",
     saas_plan_prices: [
-      { interval: "month", regular_price_paise: 149900, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null },
-      { interval: "year", regular_price_paise: 1499000, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null },
+      { interval: "month", regular_price_paise: 149900, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null, provider_trial_days: 0 },
+      { interval: "year", regular_price_paise: 1499000, discounted_price_paise: null, discount_enabled: false, discount_type: "none", discount_value: 0, discount_ends_at: null, provider_trial_days: 0 },
     ],
   },
 ];
@@ -131,16 +133,30 @@ export default async function PricingPage() {
   const supabase = await createSupabaseServerClient();
   const state = await getUserAppState(supabase);
 
-  const { data } = await supabase
-    .from("saas_plans")
-    .select("id, code, display_name, tagline, description, features, limits, entitlements, support_level, saas_plan_prices(interval, regular_price_paise, discounted_price_paise, discount_enabled, discount_type, discount_value, discount_ends_at)")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true });
+  const { data, error } = await fetchActiveSaasPlans<PublicPlan>(
+    supabase,
+    "id, code, display_name, tagline, description, features, limits, entitlements, support_level, saas_plan_prices(interval, regular_price_paise, discounted_price_paise, discount_enabled, discount_type, discount_value, discount_ends_at, provider_trial_days)",
+  );
 
-  const plans = data && data.length > 0 ? (data as PublicPlan[]).map(normalizePlan) : fallbackPlans;
+  const plans = error ? fallbackPlans : ((data ?? []) as PublicPlan[]).map(normalizePlan);
+  const { data: currentSubscription } = state.membership?.shop_id
+    ? await supabase
+        .from("shop_subscriptions")
+        .select("billing_interval")
+        .eq("shop_id", state.membership.shop_id)
+        .maybeSingle<{ billing_interval: "month" | "year" | null }>()
+    : { data: null };
   const displayName = state.profile?.full_name ?? state.user?.user_metadata.full_name ?? state.user?.email ?? "";
   const userEmail = state.profile?.email ?? state.user?.email ?? "";
   const initials = displayName ? getInitials(displayName) : null;
+  const currentPlan = plans.find((plan) => plan.id === state.shopEntitlement?.plan_id) ?? null;
+  const currentBillingInterval =
+    currentSubscription?.billing_interval === "year"
+      ? "year"
+      : currentSubscription?.billing_interval === "month"
+        ? "month"
+        : null;
+  const subscriptionHref = state.shopSlug ? buildShopRoute(state.shopSlug, "subscription") : "/subscription";
 
   return (
     <main className="min-h-screen bg-[#fffdf7] pt-[72px] text-stone-950">
@@ -156,7 +172,12 @@ export default async function PricingPage() {
       />
 
       <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <PublicPricingBoard plans={plans} />
+        <PublicPricingBoard
+          plans={plans}
+          currentPlanCode={currentPlan?.code ?? null}
+          currentBillingInterval={currentBillingInterval}
+          subscriptionHref={state.hasCompletedOnboarding ? subscriptionHref : null}
+        />
       </div>
     </main>
   );

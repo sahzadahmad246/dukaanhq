@@ -15,6 +15,7 @@ export type PublicPlanPrice = {
   discount_type: "none" | "percent" | "amount";
   discount_value: number;
   discount_ends_at: string | null;
+  provider_trial_days?: number | null;
 };
 
 export type PublicPlan = {
@@ -136,11 +137,47 @@ function BooleanMark({ value }: { value: string }) {
   return <span>{value}</span>;
 }
 
-function PlanCard({ plan, interval }: { plan: PublicPlan; interval: BillingInterval }) {
+function planRank(code: PlanCode) {
+  return code === "starter" ? 1 : code === "growth" ? 2 : 3;
+}
+
+function PlanCard({
+  plan,
+  interval,
+  currentPlanCode,
+  currentBillingInterval,
+  subscriptionHref,
+}: {
+  plan: PublicPlan;
+  interval: BillingInterval;
+  currentPlanCode?: PlanCode | null;
+  currentBillingInterval?: BillingInterval | null;
+  subscriptionHref?: string | null;
+}) {
   const price = priceFor(plan, interval);
   const effective = effectivePrice(price);
   const discount = discountText(price);
   const yearlySavings = interval === "year" ? yearlySavingsText(plan) : null;
+  const trialDays = price?.provider_trial_days ?? 0;
+  const isCurrentPlan = currentPlanCode === plan.code && (!currentBillingInterval || currentBillingInterval === interval);
+  const isDifferentSubscribedPlan = Boolean(currentPlanCode) && !isCurrentPlan;
+  const direction = currentPlanCode && planRank(plan.code) > planRank(currentPlanCode)
+    ? "Upgrade"
+    : currentPlanCode && planRank(plan.code) < planRank(currentPlanCode)
+      ? "Downgrade"
+      : "Switch";
+  const actionHref = isCurrentPlan
+    ? subscriptionHref ?? "#"
+    : isDifferentSubscribedPlan && subscriptionHref
+      ? subscriptionHref
+      : `/subscribe/start?plan=${plan.code}&billing=${interval}`;
+  const actionLabel = isCurrentPlan
+    ? "Current plan"
+    : isDifferentSubscribedPlan
+      ? `${direction} plan`
+      : plan.code === "starter"
+        ? "Start free trial"
+        : "Choose plan";
 
   return (
     <article className="flex min-h-[520px] flex-col rounded-lg border border-stone-200 bg-white text-stone-950 shadow-sm">
@@ -173,13 +210,23 @@ function PlanCard({ plan, interval }: { plan: PublicPlan; interval: BillingInter
         </div>
 
         <Link
-          href={`/subscribe/start?plan=${plan.code}&billing=${interval}`}
+          href={actionHref}
           className={plan.code === "pro"
             ? "mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-stone-950 px-4 text-sm font-bold text-white transition hover:bg-stone-800"
             : "mt-6 inline-flex h-11 items-center justify-center rounded-lg border border-stone-300 bg-white px-4 text-sm font-bold text-stone-900 transition hover:border-stone-400 hover:bg-stone-50"}
         >
-          {plan.code === "starter" ? "Start free trial" : "Choose plan"}
+          {actionLabel}
         </Link>
+        {isCurrentPlan ? (
+          <p className="mt-2 text-center text-xs font-semibold text-stone-500">
+            Managing {currentBillingInterval === "year" ? "yearly" : "monthly"} subscription
+          </p>
+        ) : null}
+        {trialDays > 0 && !isCurrentPlan ? (
+          <p className="mt-2 text-center text-xs font-semibold text-emerald-700">
+            {trialDays}-day trial with payment method
+          </p>
+        ) : null}
 
         <div className="mt-6 grid gap-2 text-sm text-stone-700">
           <div className="flex items-center gap-2">
@@ -215,7 +262,17 @@ function PlanCard({ plan, interval }: { plan: PublicPlan; interval: BillingInter
   );
 }
 
-export function PublicPricingBoard({ plans }: { plans: PublicPlan[] }) {
+export function PublicPricingBoard({
+  plans,
+  currentPlanCode,
+  currentBillingInterval,
+  subscriptionHref,
+}: {
+  plans: PublicPlan[];
+  currentPlanCode?: PlanCode | null;
+  currentBillingInterval?: BillingInterval | null;
+  subscriptionHref?: string | null;
+}) {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
 
   return (
@@ -252,12 +309,19 @@ export function PublicPricingBoard({ plans }: { plans: PublicPlan[] }) {
 
         <div className="mt-9 grid gap-5 xl:grid-cols-3">
           {plans.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} interval={billingInterval} />
+            <PlanCard
+              key={plan.id}
+              plan={plan}
+              interval={billingInterval}
+              currentPlanCode={currentPlanCode}
+              currentBillingInterval={currentBillingInterval}
+              subscriptionHref={subscriptionHref}
+            />
           ))}
         </div>
 
         <p className="mt-7 text-center text-xs leading-5 text-stone-500">
-          Prices include applicable taxes. Starter trial eligibility is checked when subscriptions are connected.
+          Prices include applicable taxes. Trials require payment setup and billing starts after the trial ends.
         </p>
       </section>
 

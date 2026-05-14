@@ -9,12 +9,14 @@ import {
   type LoanPaymentDetails,
 } from "@/lib/billing/emi-reminders";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkPlanEntitlement } from "@/lib/subscription/plan-limits";
 import { sendEmiReminderWhatsappMessage } from "@/lib/whatsapp/twilio";
 
 export const runtime = "nodejs";
 
 type LoanInvoiceRow = {
   id: string;
+  shop_id: string;
   invoice_number: string;
   customer_name: string | null;
   customer_mobile: string | null;
@@ -51,6 +53,7 @@ async function handleEmiReminders(request: Request) {
     .from("invoices")
     .select(`
       id,
+      shop_id,
       invoice_number,
       customer_name,
       customer_mobile,
@@ -92,6 +95,24 @@ async function handleEmiReminders(request: Request) {
     }
 
     summary.eligible += 1;
+
+    const access = await checkPlanEntitlement(
+      admin,
+      invoice.shop_id,
+      "auto_emi_reminders",
+      "Auto EMI reminders",
+    );
+    if (!access.ok) {
+      summary.skipped += 1;
+      summary.results.push({
+        invoiceId: invoice.id,
+        dueDate: match.dueDate,
+        reminderType: match.reminderType,
+        status: "skipped",
+        message: access.message,
+      });
+      continue;
+    }
 
     if (!invoice.customer_mobile?.trim()) {
       summary.failed += 1;

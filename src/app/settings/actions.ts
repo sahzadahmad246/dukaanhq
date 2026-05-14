@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { ActionResponse } from "@/app/inventory/actions";
 import { uploadImageToCloudinary, deleteImageFromCloudinary } from "@/lib/cloudinary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkPlanEntitlement } from "@/lib/subscription/plan-limits";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 
 export async function updateShopStampAction(formData: FormData): Promise<ActionResponse> {
@@ -21,6 +22,11 @@ export async function updateShopStampAction(formData: FormData): Promise<ActionR
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { status: "error", message: "Supabase admin client not configured." };
+    }
+
+    const access = await checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp");
+    if (!access.ok) {
+      return { status: "error", message: access.message };
     }
 
     // Check if there's an existing stamp to delete

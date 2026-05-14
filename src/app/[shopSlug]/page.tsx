@@ -6,11 +6,13 @@ import { notFound } from "next/navigation";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkPlanEntitlement } from "@/lib/subscription/plan-limits";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type PublicShop = {
+  id: string;
   name: string;
   slug: string;
   logo_url: string | null;
@@ -43,11 +45,21 @@ export default async function PublicShopPage({
 
   const { data: shop } = await adminSupabase
     .from("shops")
-    .select("name, slug, logo_url, category, address_line_1, address_line_2, city, state, postal_code, phone, email, latitude, longitude")
+    .select("id, name, slug, logo_url, category, address_line_1, address_line_2, city, state, postal_code, phone, email, latitude, longitude")
     .eq("slug", shopSlug)
     .maybeSingle<PublicShop>();
 
   if (!shop) {
+    notFound();
+  }
+
+  const publicPageAccess = await checkPlanEntitlement(
+    adminSupabase,
+    shop.id,
+    "public_shop_page",
+    "Public shop page",
+  );
+  if (!publicPageAccess.ok) {
     notFound();
   }
 

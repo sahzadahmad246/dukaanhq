@@ -58,6 +58,16 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
   const supabase = await createSupabaseServerClient();
 
   let invoices: BillingInvoiceSummary[] = [];
+  let planEntitlements: Record<string, boolean> | null = null;
+
+  if (workspace.shopEntitlement?.plan_id) {
+    const { data: plan } = await supabase
+      .from("saas_plans")
+      .select("entitlements")
+      .eq("id", workspace.shopEntitlement.plan_id)
+      .maybeSingle<{ entitlements: Record<string, boolean> | null }>();
+    planEntitlements = plan?.entitlements ?? null;
+  }
 
   if (workspace.shop) {
     let query = supabase
@@ -145,5 +155,6 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
     categories: inventory.categories,
     brands: inventory.brands,
     invoices,
+    planEntitlements,
   };
 }

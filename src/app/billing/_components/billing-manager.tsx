@@ -131,6 +131,8 @@ export function BillingManager({
   shopPostalCode,
   shopStampUrl,
   settingsHref,
+  allowDigitalInvoiceAssets = true,
+  allowWhatsappInvoiceSending = true,
 }: {
   products: ProductSummary[];
   invoices: BillingInvoiceSummary[];
@@ -140,6 +142,8 @@ export function BillingManager({
   shopPostalCode?: string | null;
   shopStampUrl?: string | null;
   settingsHref?: string;
+  allowDigitalInvoiceAssets?: boolean;
+  allowWhatsappInvoiceSending?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -279,6 +283,10 @@ export function BillingManager({
   }
 
   async function sendInvoiceToCustomer(invoice: SendableInvoiceInput) {
+    if (!allowWhatsappInvoiceSending) {
+      toast.error("WhatsApp invoice sending is included in Pro only.");
+      return;
+    }
     setSendingWhatsappInvoiceId(invoice.id);
     try {
       const result = await sendInvoiceWhatsappWithFreshPdf({
@@ -702,10 +710,12 @@ export function BillingManager({
                             <div className="absolute right-0 top-10 z-[60] w-52 rounded-xl border border-stone-200 bg-white py-1.5 shadow-lg">
                               <button
                                 type="button"
-                                disabled={sendingWhatsappInvoiceId === invoice.id}
+                                disabled={!allowWhatsappInvoiceSending || sendingWhatsappInvoiceId === invoice.id}
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  await sendInvoiceToCustomer(invoice);
+                                  if (allowWhatsappInvoiceSending) {
+                                    await sendInvoiceToCustomer(invoice);
+                                  }
                                   setOpenDropdownId(null);
                                 }}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -715,7 +725,11 @@ export function BillingManager({
                                 ) : (
                                   <Send className="h-3.5 w-3.5 text-emerald-600" />
                                 )}
-                                {sendingWhatsappInvoiceId === invoice.id ? "Sending..." : "Send invoice"}
+                                {allowWhatsappInvoiceSending
+                                  ? sendingWhatsappInvoiceId === invoice.id
+                                    ? "Sending..."
+                                    : "Send invoice"
+                                  : "Pro only"}
                               </button>
                               <button
                                 type="button"
@@ -769,6 +783,8 @@ export function BillingManager({
           shopPostalCode={shopPostalCode}
           shopStampUrl={shopStampUrl ?? null}
           settingsHref={settingsHref}
+          allowDigitalInvoiceAssets={allowDigitalInvoiceAssets}
+          allowWhatsappInvoiceSending={allowWhatsappInvoiceSending}
           onInvoiceCreated={async (items) => {
             setLiveProducts((current) =>
               current.map((product) => {
@@ -809,7 +825,7 @@ export function BillingManager({
           open={Boolean(selectedInvoice)}
           onClose={() => setSelectedInvoiceId(null)}
           onDownload={downloadInvoice}
-          onSendInvoice={sendInvoiceToCustomer}
+          onSendInvoice={allowWhatsappInvoiceSending ? sendInvoiceToCustomer : undefined}
           isSendingInvoice={selectedInvoice ? sendingWhatsappInvoiceId === selectedInvoice.id : false}
           onEdit={() => {
             setSelectedInvoiceId(null);

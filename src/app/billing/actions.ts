@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { checkPlanLimit } from "@/lib/subscription/plan-limits";
+import { checkPlanEntitlement, checkPlanLimit } from "@/lib/subscription/plan-limits";
 import { CreateInvoicePayloadSchema } from "@/lib/types/billing";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import type { ActionResponse } from "@/app/inventory/actions";
@@ -72,14 +72,18 @@ export async function createInvoiceAction(
     return { status: "error", message: invoiceLimit.message };
   }
 
+  const signatureAccess = await checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices");
+  const stampAccess = await checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices");
+  const allowDigitalInvoiceAssets = signatureAccess.ok && stampAccess.ok;
+
   const { data: invoiceId, error } = await supabase.rpc("create_inventory_invoice", {
     p_shop_id: shop.id,
     p_customer: payload.customer,
     p_items: payload.items,
     p_payment_method: payload.payment_method,
     p_payment_details: payload.payment_details,
-    p_customer_signature_url: payload.customer_signature_url ?? null,
-    p_invoice_pdf_url: payload.send_ready_pdf_url ?? null,
+    p_customer_signature_url: allowDigitalInvoiceAssets ? payload.customer_signature_url ?? null : null,
+    p_invoice_pdf_url: allowDigitalInvoiceAssets ? payload.send_ready_pdf_url ?? null : null,
     p_notes: payload.notes ?? null,
   });
 
@@ -167,6 +171,9 @@ export async function updateInvoiceAction(
 
   const payload = payloadResult.data;
   const supabase = await createSupabaseServerClient();
+  const signatureAccess = await checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices");
+  const stampAccess = await checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices");
+  const allowDigitalInvoiceAssets = signatureAccess.ok && stampAccess.ok;
 
   const { data: updatedId, error } = await supabase.rpc("update_invoice_details", {
     p_invoice_id: payload.invoice_id,
@@ -174,8 +181,8 @@ export async function updateInvoiceAction(
     p_items: payload.items,
     p_payment_method: payload.payment_method,
     p_payment_details: payload.payment_details,
-    p_customer_signature_url: payload.customer_signature_url ?? null,
-    p_invoice_pdf_url: payload.send_ready_pdf_url ?? null,
+    p_customer_signature_url: allowDigitalInvoiceAssets ? payload.customer_signature_url ?? null : null,
+    p_invoice_pdf_url: allowDigitalInvoiceAssets ? payload.send_ready_pdf_url ?? null : null,
     p_notes: payload.notes ?? null,
   });
 

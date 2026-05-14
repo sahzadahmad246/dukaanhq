@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import type { OnboardingActionState } from "@/app/onboarding/state";
+import { isValidInvoiceFooter, normalizeInvoiceFooter } from "@/lib/invoice-footer";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -48,7 +49,11 @@ const onboardingSchema = z.object({
     .regex(/^[A-Z0-9-]+$/, "Invoice prefix should use capital letters, numbers, or hyphens."),
   currency: z.string().min(3, "Currency is required.").max(5),
   taxMode: z.enum(["exclusive", "inclusive", "no_tax"]),
-  invoiceFooter: z.string().optional(),
+  invoiceFooter: z
+    .string()
+    .refine(isValidInvoiceFooter, "Add up to 7 footer lines, with 140 characters per line.")
+    .transform(normalizeInvoiceFooter)
+    .optional(),
   openingTime: z.string().min(1, "Opening time is required."),
   closingTime: z.string().min(1, "Closing time is required."),
   workingDays: z.array(z.enum(workingDayValues)).min(1, "Select at least one working day."),
@@ -219,12 +224,12 @@ export async function createShopAction(
       current_period_end: approvedIntent.current_period_end ?? approvedIntent.trial_ends_at,
       trial_started_at: approvedIntent.trial_started_at,
       trial_ends_at: approvedIntent.trial_ends_at,
-      cashfree_subscription_id: approvedIntent.cashfree_subscription_id,
-      cashfree_cf_subscription_id: approvedIntent.cashfree_cf_subscription_id,
-      cashfree_customer_id: approvedIntent.cashfree_customer_id,
-      cashfree_subscription_session_id: approvedIntent.cashfree_subscription_session_id,
-      cashfree_authorization_status: approvedIntent.cashfree_authorization_status,
-      cashfree_payment_method: approvedIntent.cashfree_payment_method,
+      provider: approvedIntent.provider,
+      provider_subscription_id: approvedIntent.provider_subscription_id,
+      provider_customer_id: approvedIntent.provider_customer_id,
+      provider_checkout_session_id: approvedIntent.provider_checkout_session_id,
+      provider_status: approvedIntent.provider_status,
+      provider_payment_method: approvedIntent.provider_payment_method,
       next_payment_at: approvedIntent.next_payment_at,
       last_payment_at: approvedIntent.last_payment_at,
       last_payment_status: approvedIntent.last_payment_status,
@@ -252,6 +257,9 @@ export async function createShopAction(
       plan_id: approvedIntent.plan_id,
       subscription_id: subscription.id,
       access_expires_at: accessExpiresAt,
+      provider: approvedIntent.provider,
+      provider_subscription_id: approvedIntent.provider_subscription_id,
+      provider_customer_id: approvedIntent.provider_customer_id,
       locked_reason: null,
       updated_at: new Date().toISOString(),
     },

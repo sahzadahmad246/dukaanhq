@@ -139,7 +139,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     const { data: entRow, error: entErr } = await supabase
       .from("shop_entitlements")
       .select(
-        "shop_id, plan_id, subscription_id, billing_status, trial_started_at, trial_ends_at, subscription_valid_until, cashfree_subscription_id, cashfree_customer_id",
+        "shop_id, plan_id, subscription_id, billing_status, trial_started_at, trial_ends_at, subscription_valid_until, provider, provider_subscription_id, provider_customer_id, cancel_at_period_end, grace_ends_at, locked_reason",
       )
       .eq("shop_id", membership.shop_id)
       .maybeSingle<ShopEntitlementRow>();
@@ -221,7 +221,7 @@ export function getSignedInLandingPath(
     return "/admin/saas";
   }
 
-  return "/";
+  return "/pricing";
 }
 
 export function redirectSignedInUser(

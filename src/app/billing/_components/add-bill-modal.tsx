@@ -2,6 +2,7 @@
 
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronLeft, ChevronRight, Gift, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -1060,6 +1061,8 @@ export function AddBillModal({
   onOpenAddProduct,
   shopStampUrl,
   settingsHref,
+  allowDigitalInvoiceAssets = true,
+  allowWhatsappInvoiceSending = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1071,6 +1074,8 @@ export function AddBillModal({
   onOpenAddProduct?: () => void;
   shopStampUrl?: string | null;
   settingsHref?: string;
+  allowDigitalInvoiceAssets?: boolean;
+  allowWhatsappInvoiceSending?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
@@ -1150,8 +1155,12 @@ export function AddBillModal({
           first_emi_date: invoiceToEdit.payment_details?.first_emi_date || "",
           emi_day_of_month: invoiceToEdit.payment_details?.emi_day_of_month ? String(invoiceToEdit.payment_details.emi_day_of_month) : "",
         });
-        setDeliveryMode(invoiceToEdit.customer_signature_url || invoiceToEdit.send_ready_pdf_url ? "auto_send" : "download");
-        setCustomerSignatureDataUrl(invoiceToEdit.customer_signature_url || null);
+        setDeliveryMode(
+          allowDigitalInvoiceAssets && allowWhatsappInvoiceSending && (invoiceToEdit.customer_signature_url || invoiceToEdit.send_ready_pdf_url)
+            ? "auto_send"
+            : "download",
+        );
+        setCustomerSignatureDataUrl(allowDigitalInvoiceAssets ? invoiceToEdit.customer_signature_url || null : null);
         setNotes(invoiceToEdit.notes || "");
         setLines(
           (invoiceToEdit.invoice_items || []).map((item) => {
@@ -1179,8 +1188,8 @@ export function AddBillModal({
         setCustomer({ name: "", country_code: "+91", mobile: "", billing_address: "", gst_number: "" });
         setPaymentDraft(createEmptyPaymentDraft());
         setPendingPaymentDraft(createEmptyPaymentDraft());
-        setDeliveryMode(existingDraft?.deliveryMode ?? "download");
-        setCustomerSignatureDataUrl(existingDraft?.customerSignatureDataUrl ?? null);
+        setDeliveryMode(allowDigitalInvoiceAssets && allowWhatsappInvoiceSending ? existingDraft?.deliveryMode ?? "download" : "download");
+        setCustomerSignatureDataUrl(allowDigitalInvoiceAssets ? existingDraft?.customerSignatureDataUrl ?? null : null);
         setNotes("");
         setLines([]);
         setCurrentStep("customer");
@@ -1197,7 +1206,7 @@ export function AddBillModal({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [open, invoiceToEdit]);
+  }, [allowDigitalInvoiceAssets, allowWhatsappInvoiceSending, open, invoiceToEdit]);
 
   useEffect(() => {
     if (!open || invoiceToEdit || !draftSyncReady) return;
@@ -1566,6 +1575,14 @@ export function AddBillModal({
 
     if (step === "delivery") {
       const requiresDigitalAssets = deliveryMode === "auto_send" || deliveryMode === "both";
+      if (requiresDigitalAssets && !allowDigitalInvoiceAssets) {
+        setClientError("Signature and stamp PDFs are not included in this plan.");
+        return false;
+      }
+      if (requiresDigitalAssets && !allowWhatsappInvoiceSending) {
+        setClientError("WhatsApp invoice sending is included in Pro only.");
+        return false;
+      }
       if (requiresDigitalAssets && !shopStampUrl) {
         setClientError("Upload your shop stamp in Settings to enable auto-send.");
         return false;
@@ -1608,7 +1625,7 @@ export function AddBillModal({
 
     startTransition(async () => {
       try {
-        const needsSendReadyAssets = deliveryMode === "auto_send" || deliveryMode === "both";
+        const needsSendReadyAssets = allowDigitalInvoiceAssets && allowWhatsappInvoiceSending && (deliveryMode === "auto_send" || deliveryMode === "both");
         let customerSignatureUrl: string | null = null;
 
         if (needsSendReadyAssets && customerSignatureDataUrl) {
@@ -1643,8 +1660,8 @@ export function AddBillModal({
             first_emi_date: paymentDraft.first_emi_date || null,
             emi_day_of_month: paymentDraft.emi_day_of_month ? Number(paymentDraft.emi_day_of_month) : null,
           },
-          delivery_mode: deliveryMode,
-          customer_signature_url: deliveryMode === "download" ? null : customerSignatureUrl,
+          delivery_mode: allowDigitalInvoiceAssets && allowWhatsappInvoiceSending ? deliveryMode : "download",
+          customer_signature_url: !allowDigitalInvoiceAssets || !allowWhatsappInvoiceSending || deliveryMode === "download" ? null : customerSignatureUrl,
           send_ready_pdf_url: null,
           notes,
         };
@@ -1973,6 +1990,8 @@ export function AddBillModal({
                 customerSignatureDataUrl={customerSignatureDataUrl}
                 onSignatureChange={setCustomerSignatureDataUrl}
                 settingsHref={settingsHref}
+                allowDigitalInvoiceAssets={allowDigitalInvoiceAssets}
+                allowWhatsappInvoiceSending={allowWhatsappInvoiceSending}
               />
             </section>
           ) : null}
@@ -2018,13 +2037,16 @@ export function AddBillModal({
                 </div>
               </PreviewCard>
 
-              {customerSignatureDataUrl ? (
+                  {customerSignatureDataUrl ? (
                 <PreviewCard title="Customer Signature" actionLabel="Edit" onAction={() => setCurrentStep("delivery")}>
                   <div className="relative w-full aspect-[4/1] rounded-xl border border-stone-100 bg-stone-50/50 overflow-hidden">
-                    <img
+                    <Image
                       src={customerSignatureDataUrl}
                       alt="Customer Signature Preview"
-                      className="h-full w-full object-contain p-2"
+                      fill
+                      unoptimized
+                      sizes="380px"
+                      className="object-contain p-2"
                     />
                   </div>
                 </PreviewCard>
