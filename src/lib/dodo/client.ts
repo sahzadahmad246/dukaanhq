@@ -11,6 +11,9 @@ export type DodoCheckoutSessionPayload = {
   metadata?: Record<string, string>;
   return_url?: string;
   cancel_url?: string;
+  feature_flags?: {
+    allow_discount_code?: boolean;
+  };
   subscription_data?: {
     trial_period_days?: number;
   };
@@ -140,7 +143,13 @@ export async function cancelDodoSubscriptionAtPeriodEnd(subscriptionId: string):
   const response = await fetchDodo(`${config.baseUrl}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
     method: "PATCH",
     headers: dodoHeaders(),
-    body: JSON.stringify({ cancel_at_next_billing_date: true }),
+    body: JSON.stringify({
+      billing: {
+        cancel_at_next_billing_date: true,
+        cancel_reason: "cancelled_by_customer",
+        cancellation_comment: "Customer requested cancellation from DukaanHQ.",
+      },
+    }),
     cache: "no-store",
   });
 
@@ -152,7 +161,11 @@ export async function resumeDodoSubscriptionRenewal(subscriptionId: string): Pro
   const response = await fetchDodo(`${config.baseUrl}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
     method: "PATCH",
     headers: dodoHeaders(),
-    body: JSON.stringify({ cancel_at_next_billing_date: false }),
+    body: JSON.stringify({
+      billing: {
+        cancel_at_next_billing_date: false,
+      },
+    }),
     cache: "no-store",
   });
 

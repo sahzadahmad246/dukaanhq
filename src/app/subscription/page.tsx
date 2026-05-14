@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
+import { CancelRenewalConfirmButton } from "@/app/subscription/_components/cancel-renewal-confirm-button";
 import {
   cancelCurrentShopSubscriptionAction,
   changeCurrentShopSubscriptionPlanAction,
@@ -233,7 +234,7 @@ export default async function SubscriptionManagePage({
   return (
     <WorkspaceShell
       title="Subscription"
-      activeNav="staff"
+      activeNav={null}
       shopName={shop?.name ?? "Shop"}
       shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state].filter(Boolean).join(", ")}
@@ -458,9 +459,7 @@ export default async function SubscriptionManagePage({
             </div>
             {!cancelAtPeriodEnd && currentSubscription?.provider === "dodo" && currentSubscription.provider_subscription_id ? (
               <form action={cancelCurrentShopSubscriptionAction} className="mt-4">
-                <button type="submit" className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-amber-300 bg-amber-50 text-sm font-bold text-amber-950 transition hover:bg-amber-100">
-                  Cancel future renewals
-                </button>
+                <CancelRenewalConfirmButton benefitsUntil={compactDate(cancelEffectiveAt)} />
               </form>
             ) : null}
           </div>

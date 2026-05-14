@@ -2,6 +2,7 @@ import { WorkspaceShell } from "@/app/_components/workspace-shell";
 import { SettingsEditor } from "@/app/settings/_components/settings-editor";
 import { ShopStampCard } from "@/app/settings/_components/shop-stamp-card";
 import { buildShopRoute } from "@/lib/shop-routes";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import { redirect } from "next/navigation";
 
@@ -20,6 +21,25 @@ export default async function SettingsPage({
 }) {
   const query = await searchParams;
   const { user, profile, membership, shop, shopSettings } = await getWorkspaceData({ requireOwner: false });
+  const supabase = await createSupabaseServerClient();
+  let planEntitlements: Record<string, boolean> | null = null;
+
+  if (membership?.shop_id) {
+    const { data: entitlement } = await supabase
+      .from("shop_entitlements")
+      .select("saas_plans(entitlements)")
+      .eq("shop_id", membership.shop_id)
+      .maybeSingle<{
+        saas_plans: { entitlements: Record<string, boolean> | null } | { entitlements: Record<string, boolean> | null }[] | null;
+      }>();
+
+    const plan = Array.isArray(entitlement?.saas_plans) ? entitlement?.saas_plans[0] : entitlement?.saas_plans;
+    planEntitlements = plan?.entitlements ?? null;
+  }
+
+  const allowDigitalInvoiceAssets = planEntitlements
+    ? planEntitlements.customer_signature === true && planEntitlements.shop_stamp === true
+    : true;
 
   if (shop?.slug) {
     if (!query.shop) {
@@ -34,7 +54,7 @@ export default async function SettingsPage({
   return (
     <WorkspaceShell
       title="Settings"
-      activeNav="staff"
+      activeNav={null}
       shopName={shop?.name ?? "Shop"}
       shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state, shop?.postal_code].filter(Boolean).join(", ")}
@@ -71,7 +91,7 @@ export default async function SettingsPage({
             longitude: shop?.longitude ? Number(shop.longitude) : null,
           }}
         />
-        <ShopStampCard initialStampUrl={shop?.shop_stamp_url ?? null} />
+        <ShopStampCard initialStampUrl={shop?.shop_stamp_url ?? null} isAvailable={allowDigitalInvoiceAssets} />
       </div>
     </WorkspaceShell>
   );

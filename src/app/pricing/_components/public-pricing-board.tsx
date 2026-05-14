@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Boxes, Check, Minus, ReceiptText, Sparkles, Users } from "lucide-react";
+import { Boxes, Check, Lock, ReceiptText, Sparkles, Users } from "lucide-react";
 
 export type BillingInterval = "month" | "year";
 export type PlanCode = "starter" | "growth" | "pro";
@@ -130,7 +130,7 @@ function BooleanMark({ value }: { value: string }) {
   if (value === "no") {
     return (
       <span className="inline-grid h-6 w-6 place-items-center rounded-full bg-stone-100 text-stone-400">
-        <Minus className="h-4 w-4" aria-hidden="true" />
+        <Lock className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
     );
   }

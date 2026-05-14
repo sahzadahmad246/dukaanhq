@@ -3,13 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Cropper from "react-easy-crop";
-import { LoaderCircle, Pencil, X } from "lucide-react";
+import { LoaderCircle, Lock, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { updateShopStampAction } from "@/app/settings/actions";
 import { getCroppedImg, type PixelCrop } from "@/lib/crop-image";
 
-export function ShopStampCard({ initialStampUrl }: { initialStampUrl: string | null }) {
+export function ShopStampCard({
+  initialStampUrl,
+  isAvailable,
+}: {
+  initialStampUrl: string | null;
+  isAvailable: boolean;
+}) {
   const [stampUrl, setStampUrl] = useState<string | null>(initialStampUrl);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +98,22 @@ export function ShopStampCard({ initialStampUrl }: { initialStampUrl: string | n
       </div>
 
       <div className="overflow-hidden rounded-[1.7rem] bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] flex flex-col">
-        {!stampUrl ? (
+        {!isAvailable ? (
+          <div className="flex items-start justify-between gap-4 px-5 py-4">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-stone-800">
+                <Lock className="h-4 w-4 text-stone-400" aria-hidden="true" />
+                Locked on your current plan
+              </div>
+              <p className="mt-1 text-sm leading-6 text-stone-500">
+                Stamp and signature on PDF invoices are available on Growth and Pro plans.
+              </p>
+            </div>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-400">
+              <Lock className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </div>
+        ) : !stampUrl ? (
           <div className="flex items-center justify-between gap-4 px-5 py-4">
             <div className="text-sm font-medium text-stone-500">No stamp or signature uploaded yet.</div>
             <button

@@ -3,7 +3,9 @@ import Link from "next/link";
 import {
   superadminExtendSubscriptionAction,
   superadminLockSubscriptionAction,
+  superadminUnlockSubscriptionAction,
 } from "@/app/admin/saas/actions";
+import { SubscriptionActionButton } from "@/app/admin/saas/subscriptions/_components/subscription-action-button";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -110,6 +112,7 @@ export default async function SaasSubscriptionsPage({
               {(entitlements ?? []).map((row) => {
                 const shop = Array.isArray(row.shops) ? row.shops[0] : row.shops;
                 const plan = Array.isArray(row.saas_plans) ? row.saas_plans[0] : row.saas_plans;
+                const isLocked = row.billing_status === "locked";
                 return (
                   <tr key={row.shop_id}>
                     <td className="px-4 py-3">
@@ -134,15 +137,22 @@ export default async function SaasSubscriptionsPage({
                             defaultValue="365"
                             className="h-9 w-20 rounded-lg border border-stone-200 px-2 text-sm"
                           />
-                          <button className="h-9 rounded-lg bg-stone-950 px-3 text-xs font-bold text-white">
+                          <SubscriptionActionButton className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-stone-950 px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-70">
                             Extend
-                          </button>
+                          </SubscriptionActionButton>
                         </form>
-                        <form action={superadminLockSubscriptionAction}>
+                        <form action={isLocked ? superadminUnlockSubscriptionAction : superadminLockSubscriptionAction}>
                           <input type="hidden" name="shop_id" value={row.shop_id} />
-                          <button className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700">
-                            Lock
-                          </button>
+                          <SubscriptionActionButton
+                            className={[
+                              "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-70",
+                              isLocked
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-red-200 bg-red-50 text-red-700",
+                            ].join(" ")}
+                          >
+                            {isLocked ? "Unlock" : "Lock"}
+                          </SubscriptionActionButton>
                         </form>
                       </div>
                     </td>

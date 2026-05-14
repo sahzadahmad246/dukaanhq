@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import {
   cancelDodoSubscriptionAtPeriodEnd,
   changeDodoSubscriptionPlan,
+  retrieveDodoSubscription,
   resumeDodoSubscriptionRenewal,
 } from "@/lib/dodo/client";
 import { getUserAppState } from "@/lib/auth/user-flow";
@@ -27,14 +28,15 @@ function isBillingInterval(value: string): value is BillingInterval {
 export async function cancelCurrentShopSubscriptionAction(): Promise<void> {
   const supabase = await createSupabaseServerClient();
   const state = await getUserAppState(supabase);
+  const returnPath = state.shopSlug ? buildShopRoute(state.shopSlug, "subscription") : "/subscription";
 
   if (!state.user || !state.membership || state.membership.role !== "owner") {
-    return;
+    redirect(`${returnPath}?error=owner-required`);
   }
 
   const admin = createSupabaseAdminClient();
   if (!admin) {
-    return;
+    redirect(`${returnPath}?error=server-config`);
   }
 
   const shopId = state.membership.shop_id;
@@ -50,14 +52,22 @@ export async function cancelCurrentShopSubscriptionAction(): Promise<void> {
     }>();
 
   if (!subscription?.provider_subscription_id || subscription.provider !== "dodo") {
-    return;
+    redirect(`${returnPath}?error=no-active-payment`);
   }
 
   const now = new Date().toISOString();
   try {
     const response = await cancelDodoSubscriptionAtPeriodEnd(subscription.provider_subscription_id);
+    const verifiedSubscription =
+      response.cancel_at_next_billing_date === true
+        ? response
+        : await retrieveDodoSubscription(subscription.provider_subscription_id);
 
-    await admin
+    if (verifiedSubscription.cancel_at_next_billing_date !== true) {
+      throw new Error("Payment provider did not confirm cancellation scheduling.");
+    }
+
+    const { error: subscriptionUpdateError } = await admin
       .from("shop_subscriptions")
       .update({
         status: "cancel_at_period_end",
@@ -68,7 +78,11 @@ export async function cancelCurrentShopSubscriptionAction(): Promise<void> {
       })
       .eq("id", subscription.id);
 
-    await admin
+    if (subscriptionUpdateError) {
+      throw new Error(`Could not save subscription cancellation: ${subscriptionUpdateError.message}`);
+    }
+
+    const { error: entitlementUpdateError } = await admin
       .from("shop_entitlements")
       .update({
         cancel_at_period_end: true,
@@ -78,15 +92,24 @@ export async function cancelCurrentShopSubscriptionAction(): Promise<void> {
       })
       .eq("shop_id", shopId);
 
-    await admin.from("subscription_events").insert({
+    if (entitlementUpdateError) {
+      throw new Error(`Could not save entitlement cancellation: ${entitlementUpdateError.message}`);
+    }
+
+    const { error: eventError } = await admin.from("subscription_events").insert({
       shop_id: shopId,
       subscription_id: subscription.id,
       provider: "dodo",
       event_type: "OWNER_CANCELLED_SUBSCRIPTION",
-      payload: response,
+      payload: verifiedSubscription,
       processed_status: "cancelled",
     });
+
+    if (eventError) {
+      console.error("Failed to record cancellation event", eventError);
+    }
   } catch (error) {
+    console.error("Subscription cancellation failed", error);
     await admin.from("subscription_events").insert({
       shop_id: shopId,
       subscription_id: subscription.id,
@@ -96,12 +119,12 @@ export async function cancelCurrentShopSubscriptionAction(): Promise<void> {
       processed_status: "error",
       processed_message: error instanceof Error ? error.message : "Cancellation failed",
     });
+    redirect(`${returnPath}?error=cancel-failed`);
   }
 
   revalidatePath("/subscription");
-  if (state.shopSlug) {
-    revalidatePath(buildShopRoute(state.shopSlug, "subscription"));
-  }
+  revalidatePath(returnPath);
+  redirect(`${returnPath}?updated=1`);
 }
 
 export async function resumeCurrentShopSubscriptionRenewalAction(): Promise<void> {

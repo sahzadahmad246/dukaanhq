@@ -165,6 +165,9 @@ export async function createPaidSubscriptionIntentAction(formData: FormData) {
       },
       return_url: `${appUrl()}/api/dodo/subscription-return?intent=${intent.id}`,
       cancel_url: `${appUrl()}/subscribe/start?plan=${planCode}&billing=${billingInterval}`,
+      feature_flags: {
+        allow_discount_code: true,
+      },
       metadata: {
         dukaanhq_intent_id: intent.id,
         dukaanhq_owner_user_id: user.id,

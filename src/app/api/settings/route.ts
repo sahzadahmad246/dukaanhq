@@ -99,7 +99,7 @@ export async function PATCH(request: Request) {
     .from("shop_members")
     .select("shop_id, role")
     .eq("user_id", user.id)
-    .in("role", ["owner", "admin"])
+    .in("role", ["owner", "staff"])
     .maybeSingle();
 
   if (!membership) {

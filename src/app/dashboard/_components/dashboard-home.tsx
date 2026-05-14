@@ -210,7 +210,7 @@ export function DashboardHome({
   useEffect(() => {
     const oneHour = 60 * 60 * 1000;
 
-    if (shopStampUrl) {
+    if (shopStampUrl || !allowDigitalInvoiceAssets) {
       setShowStampDrawer(false);
       return;
     }
@@ -222,7 +222,7 @@ export function DashboardHome({
     }, oneHour);
 
     return () => window.clearInterval(reminderId);
-  }, [shopStampUrl]);
+  }, [shopStampUrl, allowDigitalInvoiceAssets]);
 
   function dismissStampDrawer() {
     setShowStampDrawer(false);

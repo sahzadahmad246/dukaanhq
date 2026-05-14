@@ -44,7 +44,7 @@ export function WorkspaceShell({
   children,
 }: {
   title: string;
-  activeNav: NavKey;
+  activeNav?: NavKey | null;
   shopName: string;
   shopSlug: string | null;
   shopAddress: string;

@@ -418,6 +418,51 @@ export async function superadminLockSubscriptionAction(formData: FormData) {
   redirect("/admin/saas/subscriptions?saved=1");
 }
 
+export async function superadminUnlockSubscriptionAction(formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  await requireSuperadmin(supabase);
+
+  const shopId = String(formData.get("shop_id") ?? "").trim();
+  if (!shopId) {
+    redirect("/admin/saas/subscriptions?error=Missing%20shop%20id");
+  }
+
+  const admin = getAdminSupabase();
+  const { data: entitlement } = await admin
+    .from("shop_entitlements")
+    .select("trial_ends_at, subscription_valid_until, access_expires_at")
+    .eq("shop_id", shopId)
+    .maybeSingle<{
+      trial_ends_at: string | null;
+      subscription_valid_until: string | null;
+      access_expires_at: string | null;
+    }>();
+
+  const nowMs = Date.now();
+  const trialEndsMs = entitlement?.trial_ends_at ? new Date(entitlement.trial_ends_at).getTime() : 0;
+  const validUntil = entitlement?.subscription_valid_until ?? entitlement?.access_expires_at ?? null;
+  const nextStatus = trialEndsMs > nowMs ? "trialing" : "active";
+
+  const { error } = await admin
+    .from("shop_entitlements")
+    .update({
+      billing_status: nextStatus,
+      subscription_valid_until: nextStatus === "active" ? validUntil : entitlement?.subscription_valid_until ?? null,
+      access_expires_at: validUntil,
+      grace_ends_at: null,
+      locked_reason: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("shop_id", shopId);
+
+  if (error) {
+    redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/admin/saas/subscriptions");
+  redirect("/admin/saas/subscriptions?saved=1");
+}
+
 const SuperadminUpdateShopSchema = z.object({
   shop_id: z.string().uuid(),
   name: z.string().trim().min(1, "Shop name is required."),

@@ -38,7 +38,7 @@ export default async function ProfilePage({
   return (
     <WorkspaceShell
       title="Profile"
-      activeNav="staff"
+      activeNav={null}
       shopName={shop?.name ?? "Shop"}
       shopSlug={shop?.slug ?? null}
       shopAddress={[shop?.address_line_1, shop?.city, shop?.state].filter(Boolean).join(", ")}
