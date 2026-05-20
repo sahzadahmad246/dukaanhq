@@ -204,12 +204,13 @@ export async function resumeCurrentShopSubscriptionRenewalAction(): Promise<void
   const state = await getUserAppState(supabase);
 
   if (!state.user || !state.membership || state.membership.role !== "owner") {
-    return;
+    redirect("/auth/login");
   }
 
   const admin = createSupabaseAdminClient();
   if (!admin) {
-    return;
+    const returnPath = state.shopSlug ? buildShopRoute(state.shopSlug, "subscription") : "/subscription";
+    redirect(`${returnPath}?error=server-config`);
   }
 
   const shopId = state.membership.shop_id;
@@ -283,12 +284,13 @@ export async function changeCurrentShopSubscriptionPlanAction(formData: FormData
   const state = await getUserAppState(supabase);
 
   if (!state.user || !state.membership || state.membership.role !== "owner") {
-    return;
+    redirect("/auth/login");
   }
 
   const admin = createSupabaseAdminClient();
   if (!admin) {
-    return;
+    const returnPath = state.shopSlug ? buildShopRoute(state.shopSlug, "subscription") : "/subscription";
+    redirect(`${returnPath}?error=server-config`);
   }
 
   const planCodeValue = String(formData.get("plan_code") ?? "");
@@ -355,6 +357,12 @@ export async function changeCurrentShopSubscriptionPlanAction(formData: FormData
       quantity: 1,
       proration_billing_mode: "do_not_bill",
       effective_at: "next_billing_date",
+      on_payment_failure: "prevent_change",
+      metadata: {
+        dukaanhq_shop_id: shopId,
+        dukaanhq_target_plan_code: targetPlan.code,
+        dukaanhq_target_price_id: targetPrice.id,
+      },
     });
 
     await admin.from("subscription_events").insert({

@@ -79,6 +79,8 @@ export type DodoChangePlanPayload = {
   quantity?: number;
   proration_billing_mode?: "prorated_immediately" | "difference_immediately" | "full_immediately" | "do_not_bill";
   effective_at?: "immediately" | "next_billing_date";
+  on_payment_failure?: "prevent_change" | "apply_change";
+  metadata?: Record<string, string>;
 };
 
 function getDodoConfig() {

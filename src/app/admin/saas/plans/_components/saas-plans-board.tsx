@@ -81,6 +81,13 @@ function effectivePrice(price: PlanPriceRow | null) {
   return price.regular_price_paise;
 }
 
+function discountSavings(price: PlanPriceRow | null) {
+  const effective = effectivePrice(price);
+  if (!price || effective === null || !price.discount_enabled || price.discounted_price_paise === null) return null;
+  const savings = price.regular_price_paise - effective;
+  return savings > 0 ? savings : null;
+}
+
 function rupees(price: PlanPriceRow | null) {
   return price ? price.regular_price_paise / 100 : 0;
 }
@@ -331,6 +338,7 @@ function PlanCard({
   const selectedEffective = effectivePrice(selectedPrice);
   const enabledEntitlements = entitlementLabels.filter(([key]) => plan.entitlements?.[key]);
   const discount = discountText(selectedPrice);
+  const savings = discountSavings(selectedPrice);
   const yearlySavings = interval === "year" ? yearlySavingsText(plan) : null;
 
   return (
@@ -360,6 +368,11 @@ function PlanCard({
         </div>
 
         <div className="mt-7">
+          {discount && savings ? (
+            <div className="mb-3 inline-flex items-center rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">
+              {discount}
+            </div>
+          ) : null}
           <div className="flex min-h-[76px] flex-wrap items-end gap-x-2 gap-y-1">
             <p className="text-4xl font-bold tracking-normal text-stone-950">{selectedEffective !== null ? money(selectedEffective) : "Not set"}</p>
             <div className="pb-1 text-xs leading-4 text-stone-600">
@@ -368,10 +381,10 @@ function PlanCard({
             </div>
           </div>
           <div className="mt-1 min-h-6 text-sm text-stone-500">
-            {discount && selectedPrice ? (
+            {discount && selectedPrice && savings ? (
               <p>
                 <span className="line-through">{money(selectedPrice.regular_price_paise)}</span>
-                <span className="ml-2 text-emerald-700">{discount}</span>
+                <span className="ml-2 font-semibold text-emerald-700">Customers save {money(savings)}</span>
               </p>
             ) : yearlySavings ? (
               <p className="text-blue-700">{yearlySavings} compared with monthly billing</p>

@@ -76,6 +76,13 @@ function effectivePrice(price: PublicPlanPrice | null) {
   return price.regular_price_paise;
 }
 
+function discountSavings(price: PublicPlanPrice | null) {
+  const effective = effectivePrice(price);
+  if (!price || effective === null || !price.discount_enabled || price.discounted_price_paise === null) return null;
+  const savings = price.regular_price_paise - effective;
+  return savings > 0 ? savings : null;
+}
+
 function discountText(price: PublicPlanPrice | null) {
   if (!price?.discount_enabled || price.discounted_price_paise === null) return null;
   const isValid = !price.discount_ends_at || new Date(price.discount_ends_at).getTime() >= Date.now();
@@ -157,6 +164,7 @@ function PlanCard({
   const price = priceFor(plan, interval);
   const effective = effectivePrice(price);
   const discount = discountText(price);
+  const savings = discountSavings(price);
   const yearlySavings = interval === "year" ? yearlySavingsText(plan) : null;
   const trialDays = price?.provider_trial_days ?? 0;
   const isCurrentPlan = currentPlanCode === plan.code && (!currentBillingInterval || currentBillingInterval === interval);
@@ -190,6 +198,11 @@ function PlanCard({
         <p className="mt-1 text-sm leading-6 text-stone-600">{plan.tagline}</p>
 
         <div className="mt-7">
+          {discount && savings ? (
+            <div className="mb-3 inline-flex items-center rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">
+              {discount}
+            </div>
+          ) : null}
           <div className="flex min-h-[76px] flex-wrap items-end gap-x-2 gap-y-1">
             <p className="text-4xl font-bold tracking-normal text-stone-950">{effective !== null ? money(effective) : "Contact us"}</p>
             <div className="pb-1 text-xs leading-4 text-stone-600">
@@ -198,10 +211,10 @@ function PlanCard({
             </div>
           </div>
           <div className="mt-1 min-h-6 text-sm text-stone-500">
-            {discount && price ? (
+            {discount && price && savings ? (
               <p>
                 <span className="line-through">{money(price.regular_price_paise)}</span>
-                <span className="ml-2 text-emerald-700">{discount}</span>
+                <span className="ml-2 font-semibold text-emerald-700">You save {money(savings)}</span>
               </p>
             ) : yearlySavings ? (
               <p className="text-blue-700">{yearlySavings} compared with monthly billing</p>

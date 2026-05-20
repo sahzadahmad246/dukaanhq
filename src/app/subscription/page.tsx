@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
+import { ChangePlanConfirmButton } from "@/app/subscription/_components/change-plan-confirm-button";
 import {
   changeCurrentShopSubscriptionPlanAction,
   openDodoCustomerPortalAction,
@@ -75,6 +76,15 @@ function compactDate(value: string | null | undefined) {
     month: "short",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function errorMessage(error?: string) {
+  if (error === "plan-change-failed") return "Could not schedule the plan change. Check that the Dodo product is active and belongs to the same billing setup.";
+  if (error === "plan-not-configured") return "This plan is missing a Dodo product ID for the selected billing cycle.";
+  if (error === "no-active-payment") return "No active Dodo subscription was found for this shop.";
+  if (error === "invalid-plan") return "The selected plan is invalid.";
+  if (error === "portal-failed") return "Could not open the Dodo billing portal.";
+  return "Could not update subscription. Please check the selected plan and payment setup.";
 }
 
 export default async function SubscriptionManagePage({
@@ -260,7 +270,7 @@ export default async function SubscriptionManagePage({
         ) : null}
         {query.error ? (
           <div className="rounded-3xl border border-red-200 bg-red-50 px-4 py-4 text-sm font-semibold text-red-950">
-            Could not update subscription. Please check the selected plan and payment setup.
+            {errorMessage(query.error)}
           </div>
         ) : null}
 
@@ -414,9 +424,13 @@ export default async function SubscriptionManagePage({
                       <form action={changeCurrentShopSubscriptionPlanAction} className="shrink-0">
                         <input type="hidden" name="plan_code" value={plan.code} />
                         <input type="hidden" name="billing_interval" value={billingInterval} />
-                        <button type="submit" disabled={!periodPrice?.provider_product_id} className="inline-flex h-10 items-center justify-center rounded-xl bg-stone-950 px-3 text-xs font-bold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500">
-                          {periodPrice?.provider_product_id ? actionLabel : "Not configured"}
-                        </button>
+                        <ChangePlanConfirmButton
+                          actionLabel={periodPrice?.provider_product_id ? actionLabel : "Not configured"}
+                          planName={plan.display_name}
+                          billingLabel={billingInterval === "year" ? "yearly" : "monthly"}
+                          effectiveDate={compactDate(cancelEffectiveAt)}
+                          disabled={!periodPrice?.provider_product_id}
+                        />
                       </form>
                     )}
                   </div>
