@@ -59,6 +59,26 @@ function getPeriodEnd(data: Record<string, unknown>, start: Date, interval: stri
   return value ? new Date(value) : addBillingPeriod(start, interval);
 }
 
+function getSubscriptionStatusForEvent(eventType: string, status: string) {
+  if (eventType === "subscription.on_hold" || eventType === "subscription.failed" || status === "on_hold" || status === "failed") {
+    return "past_due";
+  }
+
+  if (eventType === "subscription.cancelled" || status === "cancelled") {
+    return "cancelled";
+  }
+
+  if (eventType === "subscription.expired" || status === "expired") {
+    return "expired";
+  }
+
+  if (status === "active" || eventType === "subscription.active" || eventType === "subscription.renewed" || eventType === "subscription.plan_changed") {
+    return "active";
+  }
+
+  return null;
+}
+
 async function resolveIntent(
   admin: SupabaseClient,
   data: Record<string, unknown>,
@@ -190,8 +210,13 @@ export async function applyDodoWebhookToEntitlement(
   const now = new Date();
   const nowIso = now.toISOString();
   const periodStart = getPeriodStart(data, now);
-  const activeEvent = eventType === "subscription.active" || eventType === "subscription.renewed" || status === "active";
-  const holdOrFailedEvent = eventType === "subscription.on_hold" || eventType === "subscription.failed" || eventType === "payment.failed" || status === "on_hold" || status === "failed";
+  const isPaymentSucceededEvent = eventType === "payment.succeeded";
+  const isPaymentFailedEvent = eventType === "payment.failed";
+  const providerSubscriptionStatus = getSubscriptionStatusForEvent(eventType, status);
+  const activeEvent = providerSubscriptionStatus === "active";
+  const holdOrFailedEvent = providerSubscriptionStatus === "past_due" || isPaymentFailedEvent;
+  const terminalEvent = providerSubscriptionStatus === "cancelled" || providerSubscriptionStatus === "expired";
+  const cancelAtPeriodEnd = data.cancel_at_next_billing_date === true;
   const { data: productPrice } = productId
     ? await admin
         .from("saas_plan_prices")
@@ -205,25 +230,38 @@ export async function applyDodoWebhookToEntitlement(
   const effectiveBillingInterval = productPrice?.interval ?? intent.billing_interval;
   const periodEnd = getPeriodEnd(data, periodStart, effectiveBillingInterval);
 
-  await admin.from("subscription_intents").update({
-    status: activeEvent ? "payment_approved" : holdOrFailedEvent ? "cancelled" : "payment_pending",
+  const intentUpdate: Record<string, unknown> = {
     provider: "dodo",
     provider_subscription_id: subscriptionId,
     provider_customer_id: customerId,
     provider_status: status,
-    current_period_start: activeEvent ? periodStart.toISOString() : undefined,
-    current_period_end: activeEvent ? periodEnd.toISOString() : undefined,
-    next_payment_at: activeEvent ? periodEnd.toISOString() : undefined,
-    last_payment_at: eventType === "payment.succeeded" ? nowIso : undefined,
-    last_payment_status: eventType === "payment.succeeded" ? "SUCCESS" : eventType === "payment.failed" ? "FAILED" : undefined,
-    expires_at: activeEvent ? periodEnd.toISOString() : nowIso,
     updated_at: nowIso,
-  }).eq("id", intent.id);
+  };
+
+  if (activeEvent) {
+    intentUpdate.status = "payment_approved";
+    intentUpdate.current_period_start = periodStart.toISOString();
+    intentUpdate.current_period_end = periodEnd.toISOString();
+    intentUpdate.next_payment_at = periodEnd.toISOString();
+    intentUpdate.expires_at = periodEnd.toISOString();
+  } else if (terminalEvent || holdOrFailedEvent) {
+    intentUpdate.status = "cancelled";
+    intentUpdate.expires_at = nowIso;
+  }
+
+  if (isPaymentSucceededEvent) {
+    intentUpdate.last_payment_at = nowIso;
+    intentUpdate.last_payment_status = "SUCCESS";
+  } else if (isPaymentFailedEvent) {
+    intentUpdate.last_payment_status = "FAILED";
+  }
+
+  await admin.from("subscription_intents").update(intentUpdate).eq("id", intent.id);
 
   if (!shopId) {
     if (eventId) {
       await admin.from("subscription_events").update({
-        processed_status: activeEvent ? "approved" : "pending",
+        processed_status: activeEvent ? "approved" : terminalEvent || holdOrFailedEvent ? "cancelled" : "pending",
         processed_message: "pre_onboarding_intent_updated",
       }).eq("id", eventId);
     }
@@ -246,9 +284,9 @@ export async function applyDodoWebhookToEntitlement(
       provider_customer_id: customerId,
       provider_status: status,
       next_payment_at: periodEnd.toISOString(),
-      last_payment_at: eventType === "payment.succeeded" ? nowIso : periodStart.toISOString(),
-      last_payment_status: eventType === "payment.failed" ? "FAILED" : "SUCCESS",
-      cancel_at_period_end: data.cancel_at_next_billing_date === true,
+      last_payment_at: isPaymentSucceededEvent ? nowIso : periodStart.toISOString(),
+      last_payment_status: isPaymentFailedEvent ? "FAILED" : "SUCCESS",
+      cancel_at_period_end: cancelAtPeriodEnd,
       last_webhook_event_at: nowIso,
       updated_at: nowIso,
     };
@@ -274,7 +312,7 @@ export async function applyDodoWebhookToEntitlement(
         provider: "dodo",
         provider_subscription_id: subscriptionId,
         provider_customer_id: customerId,
-        cancel_at_period_end: data.cancel_at_next_billing_date === true,
+        cancel_at_period_end: cancelAtPeriodEnd,
         locked_reason: null,
         updated_at: nowIso,
       },
@@ -294,16 +332,34 @@ export async function applyDodoWebhookToEntitlement(
     return { ok: true, shopId, intentId: intent.id, message: "shop_entitlement_active" };
   }
 
-  if (holdOrFailedEvent && shopId) {
+  if ((terminalEvent || holdOrFailedEvent) && shopId) {
+    const nextSubscriptionStatus = terminalEvent
+      ? providerSubscriptionStatus
+      : "past_due";
+    const nextLockReason = terminalEvent ? eventType : isPaymentFailedEvent ? "payment.failed" : eventType;
+
     await admin.from("shop_entitlements").update({
       billing_status: "locked",
-      locked_reason: eventType,
+      cancel_at_period_end: false,
+      locked_reason: nextLockReason,
       updated_at: nowIso,
     }).eq("shop_id", shopId);
 
     await admin.from("shop_subscriptions").update({
-      status: "past_due",
-      last_payment_status: "FAILED",
+      status: nextSubscriptionStatus,
+      provider_status: status,
+      cancel_at_period_end: false,
+      cancelled_at: terminalEvent ? nowIso : undefined,
+      last_payment_status: isPaymentFailedEvent || holdOrFailedEvent ? "FAILED" : undefined,
+      last_webhook_event_at: nowIso,
+      updated_at: nowIso,
+    }).eq("shop_id", shopId);
+  }
+
+  if (isPaymentSucceededEvent && shopId) {
+    await admin.from("shop_subscriptions").update({
+      last_payment_at: nowIso,
+      last_payment_status: "SUCCESS",
       last_webhook_event_at: nowIso,
       updated_at: nowIso,
     }).eq("shop_id", shopId);
@@ -311,10 +367,15 @@ export async function applyDodoWebhookToEntitlement(
 
   if (eventId) {
     await admin.from("subscription_events").update({
-      processed_status: holdOrFailedEvent ? "locked" : "ignored",
+      processed_status: terminalEvent || holdOrFailedEvent ? "locked" : isPaymentSucceededEvent ? "paid" : "ignored",
       processed_message: status,
     }).eq("id", eventId);
   }
 
-  return { ok: true, shopId, intentId: intent.id, message: holdOrFailedEvent ? "subscription_locked" : "event_recorded" };
+  return {
+    ok: true,
+    shopId,
+    intentId: intent.id,
+    message: terminalEvent || holdOrFailedEvent ? "subscription_locked" : isPaymentSucceededEvent ? "payment_recorded" : "event_recorded",
+  };
 }
