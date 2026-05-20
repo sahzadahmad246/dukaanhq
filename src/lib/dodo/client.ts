@@ -178,11 +178,9 @@ export async function cancelDodoSubscriptionAtPeriodEnd(subscriptionId: string):
     method: "PATCH",
     headers: dodoHeaders(),
     body: JSON.stringify({
-      billing: {
-        cancel_at_next_billing_date: true,
-        cancel_reason: "cancelled_by_customer",
-        cancellation_comment: "Customer requested cancellation from DukaanHQ.",
-      },
+      cancel_at_next_billing_date: true,
+      cancel_reason: "cancelled_by_customer",
+      cancellation_comment: "Customer requested cancellation from DukaanHQ.",
     }),
     cache: "no-store",
   });
@@ -196,9 +194,7 @@ export async function resumeDodoSubscriptionRenewal(subscriptionId: string): Pro
     method: "PATCH",
     headers: dodoHeaders(),
     body: JSON.stringify({
-      billing: {
-        cancel_at_next_billing_date: false,
-      },
+      cancel_at_next_billing_date: false,
     }),
     cache: "no-store",
   });
