@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Boxes, FileText, ShieldCheck, Sparkles } from "lucide-react";
 
 import { MarketingHeader } from "@/app/_components/marketing-header";
 import { signInWithGoogle } from "@/app/auth/actions";
@@ -57,91 +58,91 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="relative min-h-screen w-full max-w-[645px] mx-auto overflow-x-hidden bg-[#080e1a] pt-[72px] text-white">
-      <div className="absolute inset-x-0 top-0 -z-10 h-[34rem] bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(245,197,66,0.12),_transparent_30%),linear-gradient(180deg,_#0a1020_0%,_#080e1a_65%,_#060c17_100%)]" />
+    <main className="relative mx-auto min-h-screen w-full max-w-[645px] overflow-x-hidden bg-[#f7f8fb] pt-[72px] text-stone-950">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-[radial-gradient(circle_at_20%_10%,_rgba(245,197,66,0.22),_transparent_28%),radial-gradient(circle_at_85%_14%,_rgba(96,165,250,0.18),_transparent_30%)]" />
 
       <MarketingHeader
         containerClassName="max-w-[645px]"
         actionHref="/"
         actionLabel="Back"
         actionVariant="ghost"
+        theme="light"
       />
 
       <div
-        className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[645px] flex-col px-5 py-8"
+        className="relative mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[645px] flex-col px-5 py-8"
         style={{
-          backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)`,
+          backgroundImage: `radial-gradient(circle, rgba(120,113,108,0.10) 1px, transparent 1px)`,
           backgroundSize: "24px 24px",
         }}
       >
-        <section className="w-full max-w-md">
+        <section className="w-full">
           <div className="space-y-3">
-            <h1 className="text-3xl font-black tracking-tight text-white">
+            <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 shadow-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-stone-500">Secure login</span>
+            </div>
+            <h1 className="text-3xl font-black tracking-tight text-stone-950">
               Continue with Google
             </h1>
-            <p className="text-sm leading-6 text-white/68">
+            <p className="max-w-sm text-sm leading-6 text-stone-600">
               {inviteToken ? "Use the invited Google email to accept staff access." : "Sign in to enter DukaanHQ."}
             </p>
             {loginError ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm font-medium text-amber-800">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
                 {loginError}
               </div>
             ) : null}
           </div>
         </section>
 
-        <section className="mt-10 flex-1">
-          <div>
+        <section className="mt-8 flex-1">
+          <div className="relative overflow-hidden rounded-[2rem] border border-stone-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+            <div className="pointer-events-none absolute -right-14 -top-16 h-36 w-36 rounded-full bg-[#f5c542]/30 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-12 left-4 h-32 w-32 rounded-full bg-sky-300/25 blur-3xl" />
+            <div className="relative">
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-stone-400">DukaanHQ</p>
+                  <p className="mt-1 text-lg font-black text-stone-950">Retail workspace</p>
+                </div>
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-stone-950 text-white">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+              </div>
+              <div className="grid gap-3">
             {[
               {
-                step: "01",
-                title: "Login",
-                detail: "Use your Google account to enter DukaanHQ.",
-                active: true,
+                icon: FileText,
+                title: "Fast billing",
+                detail: "Create invoices and PDFs from one clean counter flow.",
               },
               {
-                step: "02",
-                title: "Onboard",
-                detail: "Create your shop and set up the basics.",
-                active: false,
+                icon: Boxes,
+                title: "Live inventory",
+                detail: "Track stock, low-stock products, and refill actions.",
               },
               {
-                step: "03",
-                title: "Start using DukaanHQ",
-                detail: "Open the dashboard and run billing, inventory, and more.",
-                active: false,
+                icon: ShieldCheck,
+                title: "Owner access",
+                detail: "Google sign-in keeps your shop workspace protected.",
               },
-            ].map((item, index, items) => (
+            ].map((item) => (
               <div
-                key={item.step}
-                className={index < items.length - 1 ? "relative flex gap-4 pb-6" : "relative flex gap-4"}
+                key={item.title}
+                className="flex items-center gap-3 rounded-2xl border border-stone-100 bg-stone-50 px-3 py-3"
               >
-                <div className="relative flex w-10 shrink-0 justify-center">
-                  <div
-                    className={[
-                      "relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-xs font-black",
-                      item.active
-                        ? "bg-[#f5c542] text-[#080e1a]"
-                        : "border border-white/12 bg-white/5 text-white/72",
-                    ].join(" ")}
-                  >
-                    {item.step}
-                  </div>
-                  {index < items.length - 1 ? (
-                    <div className="absolute left-1/2 top-10 h-[calc(100%-1rem)] w-px -translate-x-1/2 bg-white/10" />
-                  ) : null}
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-stone-700 shadow-sm">
+                  <item.icon className="h-5 w-5" />
                 </div>
-
-                <div className="pt-1 pb-1">
-                  <p className={item.active ? "text-base font-bold text-white" : "text-base font-bold text-white/82"}>
-                    {item.title}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-white/60">
-                    {item.detail}
-                  </p>
+                <div>
+                  <p className="text-sm font-bold text-stone-950">{item.title}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-stone-500">{item.detail}</p>
                 </div>
               </div>
             ))}
+              </div>
+            </div>
           </div>
         </section>
 
@@ -151,11 +152,14 @@ export default async function LoginPage({
           {selectedPlan ? <input type="hidden" name="billing" value={selectedBilling} /> : null}
           <button
             type="submit"
-            className="flex h-13 w-full items-center justify-center gap-3 rounded-full bg-[#f5c542] text-sm font-black text-[#080e1a] transition hover:bg-[#f0bb2a]"
+            className="flex h-13 w-full items-center justify-center gap-3 rounded-full bg-stone-950 text-sm font-black text-white shadow-[0_16px_35px_rgba(15,23,42,0.22)] transition hover:bg-stone-800"
           >
             <GoogleIcon />
             Continue with Google
           </button>
+          <p className="mt-3 text-center text-xs leading-5 text-stone-500">
+            We only use Google to verify your account and open the right shop workspace.
+          </p>
         </form>
       </div>
     </main>

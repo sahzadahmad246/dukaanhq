@@ -44,6 +44,12 @@ type SharedCardProps = {
   stockThreshold?: number;
 };
 
+function isLowStockProduct(product: InventoryProduct, fallbackThreshold: number) {
+  const threshold = Number(product.low_stock_threshold ?? fallbackThreshold);
+  const lowStockThreshold = Number.isFinite(threshold) ? threshold : fallbackThreshold;
+  return Number(product.total_quantity ?? 0) <= lowStockThreshold;
+}
+
 export function ProductList({
   products,
   categories,
@@ -68,17 +74,25 @@ export function ProductList({
   searchQuery: string;
   onActiveTabChange: (value: string) => void;
 } & SharedCardProps) {
+  const lowStockProducts = useMemo(
+    () => products.filter((product) => isLowStockProduct(product, stockThreshold)),
+    [products, stockThreshold]
+  );
   
   const tabs = useMemo(() => {
     return [
       { id: "ALL", label: "All Products" },
+      ...(lowStockProducts.length > 0 || activeTab === "LOW_STOCK"
+        ? [{ id: "LOW_STOCK", label: `Low Stock${lowStockProducts.length > 0 ? ` (${lowStockProducts.length})` : ""}` }]
+        : []),
       ...categories.map(c => ({ id: `CATEGORY_${c.id}`, label: c.name })),
       ...brands.map(b => ({ id: `BRAND_${b.id}`, label: b.name })),
     ];
-  }, [categories, brands]);
+  }, [activeTab, brands, categories, lowStockProducts.length]);
 
   const tabFilteredProducts = useMemo(() => {
     if (activeTab === "ALL") return products;
+    if (activeTab === "LOW_STOCK") return lowStockProducts;
     if (activeTab.startsWith("CATEGORY_")) {
       const catId = activeTab.replace("CATEGORY_", "");
       return products.filter(p => p.category_id === catId);
@@ -88,7 +102,7 @@ export function ProductList({
       return products.filter(p => p.brand_id === brandId);
     }
     return products;
-  }, [activeTab, products]);
+  }, [activeTab, lowStockProducts, products]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -151,6 +165,10 @@ export function ProductList({
             </div>
           )}
         </section>
+      ) : tabFilteredProducts.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-stone-200 bg-white px-4 py-10 text-center text-sm text-stone-400">
+          No low stock products found.
+        </div>
       ) : (
         <div className="space-y-6">
           {categorySections.map((section) => (
@@ -213,6 +231,8 @@ export function ProductCard({
   isLast?: boolean;
 } & SharedCardProps) {
   const hasMultipleVariants = (product.variants?.length ?? 0) > 1;
+  const productStockThreshold = Number(product.low_stock_threshold ?? stockThreshold);
+  const effectiveStockThreshold = Number.isFinite(productStockThreshold) ? productStockThreshold : stockThreshold;
   const alerts = useMemo(() => {
     const nextAlerts: Array<{ id: string; kind: "out" | "low"; message: string; actionLabel: string }> = [];
 
@@ -223,7 +243,7 @@ export function ProductCard({
         message: "Out of stock — unavailable for sale",
         actionLabel: "Add Stock",
       });
-    } else if (product.total_quantity <= stockThreshold) {
+    } else if (product.total_quantity <= effectiveStockThreshold) {
       nextAlerts.push({
         id: "total-low",
         kind: "low",
@@ -244,7 +264,7 @@ export function ProductCard({
             message: `${label} is out of stock`,
             actionLabel: "Add Stock",
           });
-        } else if (variantQuantity <= stockThreshold) {
+        } else if (variantQuantity <= effectiveStockThreshold) {
           nextAlerts.push({
             id: `variant-low-${variant.id}`,
             kind: "low",
@@ -256,7 +276,7 @@ export function ProductCard({
     }
 
     return nextAlerts;
-  }, [hasMultipleVariants, product.name, product.total_quantity, product.variants, stockThreshold]);
+  }, [effectiveStockThreshold, hasMultipleVariants, product.name, product.total_quantity, product.variants]);
 
   const [activeAlertIndex, setActiveAlertIndex] = useState(0);
   const alertSignature = `${product.id}:${alerts.map((alert) => alert.id).join("|") || "none"}`;
@@ -275,7 +295,7 @@ export function ProductCard({
   const hasOutAlert = alerts.some((alert) => alert.kind === "out");
   const hasLowAlert = alerts.some((alert) => alert.kind === "low");
   const isOutOfStock = product.total_quantity === 0;
-  const isLowStock = !isOutOfStock && product.total_quantity <= stockThreshold;
+  const isLowStock = !isOutOfStock && product.total_quantity <= effectiveStockThreshold;
   
   const variantsWithPrice = product.variants?.filter((v) => v.selling_price_override !== null && v.selling_price_override !== undefined) || [];
   const minPrice = variantsWithPrice.length > 0

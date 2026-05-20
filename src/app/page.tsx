@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { Boxes, FileText, ShoppingBag } from "lucide-react";
 
 import { HomePrimaryCta } from "@/app/_components/home-primary-cta";
 import { MarketingHeader } from "@/app/_components/marketing-header";
+import { PublicPricingBoard, type PublicPlan } from "@/app/pricing/_components/public-pricing-board";
 import { getUserAppState } from "@/lib/auth/user-flow";
 import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -17,38 +19,6 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
-}
-
-type HomePlan = {
-  id: string;
-  code: "starter" | "growth" | "pro";
-  display_name: string;
-  tagline: string;
-  features: string[] | null;
-  support_level: "standard" | "priority";
-  saas_plan_prices: Array<{
-    interval: "month" | "year";
-    regular_price_paise: number;
-    discounted_price_paise: number | null;
-    discount_enabled: boolean;
-    provider_trial_days: number | null;
-  }> | null;
-};
-
-function formatInr(paise: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(paise / 100);
-}
-
-function planPrice(plan: HomePlan, interval: "month" | "year") {
-  const price = plan.saas_plan_prices?.find((item) => item.interval === interval);
-  if (!price) return null;
-  return price.discount_enabled && price.discounted_price_paise !== null
-    ? price.discounted_price_paise
-    : price.regular_price_paise;
 }
 
 export default async function Home() {
@@ -73,12 +43,12 @@ export default async function Home() {
         .maybeSingle<{ name: string; slug: string }>()
     : { data: null };
 
-  const { data: planRows } = await fetchActiveSaasPlans<HomePlan>(
+  const { data: planRows } = await fetchActiveSaasPlans<PublicPlan>(
     supabase,
-    "id, code, display_name, tagline, features, support_level, saas_plan_prices(interval, regular_price_paise, discounted_price_paise, discount_enabled, provider_trial_days)",
+    "id, code, display_name, tagline, description, features, limits, entitlements, support_level, saas_plan_prices(interval, regular_price_paise, discounted_price_paise, discount_enabled, discount_type, discount_value, discount_ends_at, provider_trial_days)",
   );
 
-  const plans = (planRows ?? []) as HomePlan[];
+  const plans = (planRows ?? []) as PublicPlan[];
 
   const displayName = profile?.full_name ?? user?.user_metadata.full_name ?? user?.email ?? "there";
   const userEmail = profile?.email ?? user?.email ?? "";
@@ -86,7 +56,7 @@ export default async function Home() {
   const shopName = shop?.name ?? "your shop";
   const primaryAction = (() => {
     if (!user) {
-      return { href: "/pricing", label: "View Plans" };
+      return { href: "/pricing", label: "Start free trial" };
     }
 
     if (isSuperAdmin) {
@@ -123,6 +93,18 @@ export default async function Home() {
 
   return (
     <main className="relative mx-auto min-h-screen w-full max-w-[645px] overflow-x-hidden bg-[#f7f3e8] pt-[72px] text-stone-900">
+      <style>{`
+        @keyframes home-drift {
+          0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+          50% { transform: translate3d(12px, -14px, 0) scale(1.04); }
+        }
+        @keyframes home-rise {
+          from { opacity: 0; transform: translateY(18px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .home-drift { animation: home-drift 7s ease-in-out infinite; }
+        .home-rise { animation: home-rise 0.7s ease both; }
+      `}</style>
       <MarketingHeader
         containerClassName="max-w-[645px]"
         userInitials={user ? initials || "DH" : null}
@@ -141,10 +123,10 @@ export default async function Home() {
           backgroundSize: "22px 22px",
         }}
       >
-        <div className="pointer-events-none absolute left-0 top-0 h-56 w-56 rounded-full bg-[#f5c542]/35 blur-[90px]" />
-        <div className="pointer-events-none absolute right-[-3rem] top-24 h-56 w-56 rounded-full bg-[#93c5fd]/35 blur-[95px]" />
+        <div className="home-drift pointer-events-none absolute left-0 top-0 h-56 w-56 rounded-full bg-[#f5c542]/35 blur-[90px]" />
+        <div className="home-drift pointer-events-none absolute right-[-3rem] top-24 h-56 w-56 rounded-full bg-[#93c5fd]/35 blur-[95px]" style={{ animationDelay: "1.5s" }} />
 
-        <div className="relative">
+        <div className="home-rise relative">
           <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#f5c542]/35 bg-[#fff4c9] px-3 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[#4ade80]" />
             <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#a16207]">
@@ -210,12 +192,6 @@ export default async function Home() {
                 {secondaryLabel}
               </Link>
             )}
-            <Link
-              href="/pricing"
-              className="flex h-12 items-center justify-center rounded-2xl border border-stone-200 bg-white/70 text-[13px] font-semibold text-stone-700 transition hover:border-stone-300 hover:bg-white hover:text-stone-950"
-            >
-              See pricing
-            </Link>
           </div>
         </div>
       </section>
@@ -236,72 +212,8 @@ export default async function Home() {
       </section>
 
       {plans.length > 0 ? (
-        <section id="pricing" className="border-y border-stone-200 bg-[#fffdf7] px-5 py-12">
-          <div className="mb-7">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-[#a16207]">Pricing</p>
-            <h2 className="text-[26px] font-black leading-tight tracking-tight text-stone-950">
-              Pick the plan before setup.
-            </h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-stone-600">
-              Choose monthly or yearly, then sign in to activate your shop subscription.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-4">
-            {plans.map((plan) => {
-              const monthly = planPrice(plan, "month");
-              const yearly = planPrice(plan, "year");
-              const monthlyTrialDays = plan.saas_plan_prices?.find((item) => item.interval === "month")?.provider_trial_days ?? 0;
-              const yearlyTrialDays = plan.saas_plan_prices?.find((item) => item.interval === "year")?.provider_trial_days ?? 0;
-              return (
-                <article key={plan.id} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[18px] font-black text-stone-950">{plan.display_name}</p>
-                      <p className="mt-1 text-[13px] leading-relaxed text-stone-600">{plan.tagline}</p>
-                    </div>
-                    <span className="rounded-full bg-[#fff4c9] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#a16207]">
-                      {plan.support_level === "priority" ? "Priority" : "Standard"}
-                    </span>
-                  </div>
-
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    <Link
-                      href={`/subscribe/start?plan=${plan.code}&billing=month`}
-                      className="rounded-2xl border border-stone-200 bg-stone-50 p-3 transition hover:border-stone-300 hover:bg-white"
-                    >
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Monthly</p>
-                      <p className="mt-1 text-[20px] font-black text-stone-950">{monthly !== null ? formatInr(monthly) : "N/A"}</p>
-                      {monthlyTrialDays > 0 ? <p className="mt-1 text-[11px] font-bold text-emerald-700">{monthlyTrialDays}-day trial</p> : null}
-                    </Link>
-                    <Link
-                      href={`/subscribe/start?plan=${plan.code}&billing=year`}
-                      className="rounded-2xl border border-stone-200 bg-stone-50 p-3 transition hover:border-stone-300 hover:bg-white"
-                    >
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Yearly</p>
-                      <p className="mt-1 text-[20px] font-black text-stone-950">{yearly !== null ? formatInr(yearly) : "N/A"}</p>
-                      {yearlyTrialDays > 0 ? <p className="mt-1 text-[11px] font-bold text-emerald-700">{yearlyTrialDays}-day trial</p> : null}
-                    </Link>
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-1.5">
-                    {(plan.features ?? []).slice(0, 4).map((feature) => (
-                      <p key={feature} className="text-[12px] leading-relaxed text-stone-600">
-                        {feature}
-                      </p>
-                    ))}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          <Link
-            href="/pricing"
-            className="mt-5 flex h-12 items-center justify-center rounded-2xl bg-stone-950 text-[13px] font-black text-white transition hover:bg-stone-800"
-          >
-            Compare all plans
-          </Link>
+        <section id="pricing" className="home-rise border-y border-stone-200 bg-[#f1eadb] px-5 py-12">
+          <PublicPricingBoard plans={plans} showComparison={false} stackedCards carouselCards />
         </section>
       ) : null}
 
@@ -312,7 +224,7 @@ export default async function Home() {
           backgroundSize: "44px 44px",
         }}
       >
-        <div className="relative">
+        <div className="home-rise relative">
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-[#2563eb]">Inside the product</p>
           <h2 className="mb-8 text-[26px] font-black leading-tight tracking-tight text-stone-950">
             Everything your shop runs on.
@@ -322,7 +234,7 @@ export default async function Home() {
             {[
               {
                 tag: "Billing",
-                icon: "⚡",
+                icon: FileText,
                 title: "Bills out in seconds",
                 desc: "Create invoices at the counter, save customer records, and print without friction.",
                 accent: "#f5c542",
@@ -331,7 +243,7 @@ export default async function Home() {
               },
               {
                 tag: "Inventory",
-                icon: "📦",
+                icon: Boxes,
                 title: "One view for all stock",
                 desc: "Manage mobiles, accessories, and serialized items — quantity or serial, all unified.",
                 accent: "#4ade80",
@@ -340,7 +252,7 @@ export default async function Home() {
               },
               {
                 tag: "Ecommerce",
-                icon: "🛍️",
+                icon: ShoppingBag,
                 title: "Your storefront, ready",
                 desc: "Set up once and go online when you're ready. Built to grow with your business.",
                 accent: "#60a5fa",
@@ -358,7 +270,7 @@ export default async function Home() {
                     className="h-11 w-11 shrink-0 rounded-xl flex items-center justify-center text-xl"
                     style={{ backgroundColor: f.bg, border: `1px solid ${f.accent}22` }}
                   >
-                    {f.icon}
+                    <f.icon className="h-5 w-5" style={{ color: f.accent }} />
                   </div>
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: f.accent }}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Boxes, Check, Lock, ReceiptText, Sparkles, Users } from "lucide-react";
 
@@ -154,12 +154,14 @@ function PlanCard({
   currentPlanCode,
   currentBillingInterval,
   subscriptionHref,
+  stacked = false,
 }: {
   plan: PublicPlan;
   interval: BillingInterval;
   currentPlanCode?: PlanCode | null;
   currentBillingInterval?: BillingInterval | null;
   subscriptionHref?: string | null;
+  stacked?: boolean;
 }) {
   const price = priceFor(plan, interval);
   const effective = effectivePrice(price);
@@ -188,7 +190,7 @@ function PlanCard({
         : "Choose plan";
 
   return (
-    <article className="flex min-h-[520px] flex-col rounded-lg border border-stone-200 bg-white text-stone-950 shadow-sm">
+    <article className={["flex flex-col rounded-lg border border-stone-200 bg-white text-stone-950 shadow-sm", stacked ? "min-h-0" : "min-h-[520px]"].join(" ")}>
       <div className="flex flex-1 flex-col p-6">
         <span className={`inline-flex w-fit rounded-md border px-2 py-1 text-xs font-bold uppercase tracking-wide ${planTone[plan.code]}`}>
           {plan.display_name}
@@ -280,13 +282,32 @@ export function PublicPricingBoard({
   currentPlanCode,
   currentBillingInterval,
   subscriptionHref,
+  showComparison = true,
+  stackedCards = false,
+  carouselCards = false,
 }: {
   plans: PublicPlan[];
   currentPlanCode?: PlanCode | null;
   currentBillingInterval?: BillingInterval | null;
   subscriptionHref?: string | null;
+  showComparison?: boolean;
+  stackedCards?: boolean;
+  carouselCards?: boolean;
 }) {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
+  const [activePlanIndex, setActivePlanIndex] = useState(0);
+
+  useEffect(() => {
+    if (!carouselCards || plans.length <= 1) return;
+
+    const timer = window.setInterval(() => {
+      setActivePlanIndex((current) => (current + 1) % plans.length);
+    }, 4200);
+
+    return () => window.clearInterval(timer);
+  }, [carouselCards, plans.length]);
+
+  const safeActivePlanIndex = Math.min(activePlanIndex, Math.max(plans.length - 1, 0));
 
   return (
     <div className="space-y-12">
@@ -320,24 +341,66 @@ export function PublicPricingBoard({
           </div>
         </div>
 
-        <div className="mt-9 grid gap-5 xl:grid-cols-3">
-          {plans.map((plan) => (
-            <PlanCard
-              key={plan.id}
-              plan={plan}
-              interval={billingInterval}
-              currentPlanCode={currentPlanCode}
-              currentBillingInterval={currentBillingInterval}
-              subscriptionHref={subscriptionHref}
-            />
-          ))}
-        </div>
+        {carouselCards ? (
+          <div className="-mx-5 mt-9 overflow-hidden px-5">
+            <div
+              className="flex gap-4 transition-transform duration-500 ease-out"
+              style={{ transform: `translateX(calc(${-safeActivePlanIndex * 86}% - ${safeActivePlanIndex * 16}px))` }}
+            >
+              {plans.map((plan, index) => (
+                <div
+                  key={plan.id}
+                  onClick={() => setActivePlanIndex(index)}
+                  className="w-[86%] shrink-0 text-left transition-transform duration-300"
+                  style={{ transform: index === safeActivePlanIndex ? "scale(1)" : "scale(0.94)", opacity: index === safeActivePlanIndex ? 1 : 0.72 }}
+                >
+                  <PlanCard
+                    plan={plan}
+                    interval={billingInterval}
+                    currentPlanCode={currentPlanCode}
+                    currentBillingInterval={currentBillingInterval}
+                    subscriptionHref={subscriptionHref}
+                    stacked
+                  />
+                </div>
+              ))}
+            </div>
+            {plans.length > 1 ? (
+              <div className="mt-5 flex justify-center gap-1.5">
+                {plans.map((plan, index) => (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    aria-label={`Show ${plan.display_name}`}
+                    onClick={() => setActivePlanIndex(index)}
+                    className={["h-1.5 rounded-full transition-all", index === safeActivePlanIndex ? "w-5 bg-stone-950" : "w-1.5 bg-stone-300"].join(" ")}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className={["mt-9 grid gap-5", stackedCards ? "" : "xl:grid-cols-3"].join(" ")}>
+            {plans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                interval={billingInterval}
+                currentPlanCode={currentPlanCode}
+                currentBillingInterval={currentBillingInterval}
+                subscriptionHref={subscriptionHref}
+                stacked={stackedCards}
+              />
+            ))}
+          </div>
+        )}
 
         <p className="mt-7 text-center text-xs leading-5 text-stone-500">
           Prices include applicable taxes. Trials require payment setup and billing starts after the trial ends.
         </p>
       </section>
 
+      {showComparison ? (
       <section className="rounded-lg border border-stone-200 bg-white shadow-sm">
         <div className="border-b border-stone-200 px-5 py-5">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Compare</p>
@@ -373,6 +436,7 @@ export function PublicPricingBoard({
           </table>
         </div>
       </section>
+      ) : null}
     </div>
   );
 }

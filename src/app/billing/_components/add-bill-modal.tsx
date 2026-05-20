@@ -37,6 +37,7 @@ import { toast } from "sonner";
 type StepId = "customer" | "products" | "delivery" | "preview";
 
 type DeliveryMode = "download" | "auto_send" | "both";
+type BasicPdfSignatureMode = "placeholders" | "electronic";
 
 type ProductSummary = Product & {
   total_quantity: number;
@@ -192,6 +193,7 @@ type StoredBillDraft = {
   customer: CustomerDraft;
   paymentDraft: PaymentDraft;
   deliveryMode: DeliveryMode;
+  basicPdfSignatureMode: BasicPdfSignatureMode;
   customerSignatureDataUrl: string | null;
   notes: string;
   lines: BillingLineDraft[];
@@ -240,6 +242,7 @@ function readStoredBillDraft() {
         emi_day_of_month: typeof parsed.paymentDraft.emi_day_of_month === "string" ? parsed.paymentDraft.emi_day_of_month : "",
       },
       deliveryMode,
+      basicPdfSignatureMode: parsed.basicPdfSignatureMode === "electronic" ? "electronic" : "placeholders",
       customerSignatureDataUrl: typeof parsed.customerSignatureDataUrl === "string" ? parsed.customerSignatureDataUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : "",
       lines: parsed.lines.map((line) => normalizeDraftLine(line)),
@@ -1098,6 +1101,7 @@ export function AddBillModal({
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   const [savedDraft, setSavedDraft] = useState<StoredBillDraft | null>(null);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("download");
+  const [basicPdfSignatureMode, setBasicPdfSignatureMode] = useState<BasicPdfSignatureMode>("placeholders");
   const [customerSignatureDataUrl, setCustomerSignatureDataUrl] = useState<string | null>(null);
   const steps: StepId[] = ["customer", "products", "delivery", "preview"];
   const stepIndex = steps.indexOf(currentStep);
@@ -1160,6 +1164,7 @@ export function AddBillModal({
             ? "auto_send"
             : "download",
         );
+        setBasicPdfSignatureMode("placeholders");
         setCustomerSignatureDataUrl(allowDigitalInvoiceAssets ? invoiceToEdit.customer_signature_url || null : null);
         setNotes(invoiceToEdit.notes || "");
         setLines(
@@ -1189,6 +1194,7 @@ export function AddBillModal({
         setPaymentDraft(createEmptyPaymentDraft());
         setPendingPaymentDraft(createEmptyPaymentDraft());
         setDeliveryMode(allowDigitalInvoiceAssets && allowWhatsappInvoiceSending ? existingDraft?.deliveryMode ?? "download" : "download");
+        setBasicPdfSignatureMode(existingDraft?.basicPdfSignatureMode ?? "placeholders");
         setCustomerSignatureDataUrl(allowDigitalInvoiceAssets ? existingDraft?.customerSignatureDataUrl ?? null : null);
         setNotes("");
         setLines([]);
@@ -1232,13 +1238,14 @@ export function AddBillModal({
       customer,
       paymentDraft,
       deliveryMode,
+      basicPdfSignatureMode,
       customerSignatureDataUrl,
       notes,
       lines,
     };
 
     window.localStorage.setItem(BILL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
-  }, [currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceToEdit, lines, notes, open, paymentDraft]);
+  }, [basicPdfSignatureMode, currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceToEdit, lines, notes, open, paymentDraft]);
 
   if (!open) return null;
 
@@ -1347,6 +1354,7 @@ export function AddBillModal({
     setPaymentDraft(savedDraft.paymentDraft);
     setPendingPaymentDraft(savedDraft.paymentDraft);
     setDeliveryMode(savedDraft.deliveryMode);
+    setBasicPdfSignatureMode(savedDraft.basicPdfSignatureMode);
     setCustomerSignatureDataUrl(savedDraft.customerSignatureDataUrl);
     setNotes(savedDraft.notes);
     setLines(savedDraft.lines.map((line) => normalizeDraftLine(line)));
@@ -1722,6 +1730,7 @@ export function AddBillModal({
                 ...invoiceData,
                 customer_signature_url: null,
                 shop_stamp_url: null,
+                hide_signature_placeholders: basicPdfSignatureMode === "electronic",
               });
             }
           } catch (pdfError) {
@@ -1989,6 +1998,8 @@ export function AddBillModal({
                 shopStampUrl={shopStampUrl ?? null}
                 customerSignatureDataUrl={customerSignatureDataUrl}
                 onSignatureChange={setCustomerSignatureDataUrl}
+                basicPdfSignatureMode={basicPdfSignatureMode}
+                onBasicPdfSignatureModeChange={setBasicPdfSignatureMode}
                 settingsHref={settingsHref}
                 allowDigitalInvoiceAssets={allowDigitalInvoiceAssets}
                 allowWhatsappInvoiceSending={allowWhatsappInvoiceSending}
@@ -2025,13 +2036,20 @@ export function AddBillModal({
                 <div className="space-y-1.5">
                   <p className="text-sm font-semibold text-stone-900 capitalize">{deliveryMode.replace("_", " ")}</p>
                   {deliveryMode === "download" ? (
-                    <p className="text-xs font-medium text-stone-500">A clean PDF will be downloaded for print.</p>
+                    <p className="text-xs font-medium text-stone-500">
+                      {basicPdfSignatureMode === "electronic"
+                        ? "A clean PDF will be downloaded with an electronic invoice note."
+                        : "A clean PDF will be downloaded with stamp and signature placeholders for print."}
+                    </p>
                   ) : null}
                   {deliveryMode === "auto_send" ? (
                     <p className="text-xs font-medium text-stone-500">A send-ready PDF with customer signature and shop stamp will be prepared.</p>
                   ) : null}
                   {deliveryMode === "both" ? (
-                    <p className="text-xs font-medium text-stone-500">We&apos;ll prepare a send-ready PDF and also download a clean print-ready copy.</p>
+                    <p className="text-xs font-medium text-stone-500">
+                      We&apos;ll prepare a send-ready PDF and also download a clean copy
+                      {basicPdfSignatureMode === "electronic" ? " with an electronic invoice note." : " with print placeholders."}
+                    </p>
                   ) : null}
                   {customerSignatureDataUrl ? <p className="text-xs font-medium text-emerald-600">Customer signature attached.</p> : null}
                 </div>

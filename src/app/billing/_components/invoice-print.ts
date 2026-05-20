@@ -36,6 +36,7 @@ export type PrintableInvoice = {
   shop_stamp_url?: string | null;
   customer_signature_url?: string | null;
   send_ready_pdf_url?: string | null;
+  hide_signature_placeholders?: boolean;
   invoice_items?: Array<{
     product_id?: string | null;
     product_name_snapshot: string;
@@ -288,6 +289,7 @@ type InvoiceDocData = {
   notes: string | null;
   emiDayOfMonth: number | null;
   firstEmiDate: string | null;
+  hideSignaturePlaceholders: boolean;
 };
 
 function appendPostalCodeToAddress(address?: string | null, postalCode?: string | null) {
@@ -449,6 +451,7 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
     notes: invoice.notes && invoice.notes.trim() ? sanitizeForPdf(invoice.notes) : null,
     emiDayOfMonth: invoice.payment_details?.emi_day_of_month ?? null,
     firstEmiDate: invoice.payment_details?.first_emi_date ?? null,
+    hideSignaturePlaceholders: invoice.hide_signature_placeholders === true,
   };
 }
 
@@ -927,7 +930,7 @@ export async function buildInvoicePdfBytes(invoice: PrintableInvoice) {
   const footerLineHeight = px(13 * 1.55);
   const footerLines = wrapTextWithLineBreaks(doc.footerText, contentWidth, fontRegular, footerFontSize);
   const footerBlockDepth = px(14) + footerFontSize + Math.max(0, footerLines.length - 1) * footerLineHeight + px(8);
-  const signatureBlockDepth = px(10) + px(60) + px(10) + px(12) + px(8);
+  const signatureBlockDepth = doc.hideSignaturePlaceholders ? px(64) : px(10) + px(60) + px(10) + px(12) + px(8);
   const summaryBlockHeight = doc.summaryRows.length * summaryRowHeight;
 
   const signatureImageWidth = px(170);
@@ -1030,9 +1033,37 @@ export async function buildInvoicePdfBytes(invoice: PrintableInvoice) {
   const leftSignatureX = contentX + signaturePaddingX;
   const rightSignatureX = contentRight - signaturePaddingX - signatureLineWidth;
 
-  const signaturesTop = Math.min(awY, summaryTop) - px(20) - finalStampHeight - px(10);
+  const signaturesTop = doc.hideSignaturePlaceholders
+    ? Math.min(awY, summaryTop) - px(34)
+    : Math.min(awY, summaryTop) - px(20) - finalStampHeight - px(10);
   const footerTop = signaturesTop - px(50);
 
+  if (doc.hideSignaturePlaceholders) {
+    const note = "This is an electronically generated invoice. Signature and stamp are not required.";
+    const noteLines = wrapText(note, contentWidth - px(32), fontBold, px(14));
+    const noteHeight = px(16) + noteLines.length * px(18);
+    page.drawRectangle({
+      x: contentX,
+      y: signaturesTop - noteHeight / 2,
+      width: contentWidth,
+      height: noteHeight,
+      borderColor: mutedBorderColor,
+      borderWidth: 0.6,
+      color: rgb(0.98, 0.985, 0.99),
+    });
+
+    let noteY = signaturesTop + noteHeight / 2 - px(22);
+    for (const line of noteLines) {
+      page.drawText(line, {
+        x: contentX + contentWidth / 2 - fontBold.widthOfTextAtSize(line, px(14)) / 2,
+        y: noteY,
+        size: px(14),
+        font: fontBold,
+        color: headingColor,
+      });
+      noteY -= px(18);
+    }
+  } else {
   if (customerSignatureImage) {
     page.drawImage(customerSignatureImage, {
       x: leftSignatureX,
@@ -1087,6 +1118,7 @@ export async function buildInvoicePdfBytes(invoice: PrintableInvoice) {
     font: fontBold,
     color: subtextColor,
   });
+  }
 
   page.drawLine({
     start: { x: contentX, y: footerTop },

@@ -10,7 +10,7 @@ export const revalidate = 0;
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ shop?: string }>;
+  searchParams: Promise<{ shop?: string; filter?: string }>;
 }) {
   const query = await searchParams;
   const { user, profile, shop, membership, products, categories, brands } = await loadInventoryData();
@@ -41,7 +41,12 @@ export default async function InventoryPage({
       userAvatarUrl={profile?.avatar_url ?? user.user_metadata.avatar_url ?? user.user_metadata.picture ?? null}
     >
       <section className="grid gap-6">
-        <InventoryManager products={products} categories={categories} brands={brands} />
+        <InventoryManager
+          products={products}
+          categories={categories}
+          brands={brands}
+          initialFilter={query.filter === "low-stock" ? "LOW_STOCK" : "ALL"}
+        />
       </section>
     </WorkspaceShell>
   );

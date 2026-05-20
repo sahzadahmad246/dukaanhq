@@ -59,14 +59,8 @@ function planRank(code: "starter" | "growth" | "pro") {
   return code === "starter" ? 1 : code === "growth" ? 2 : 3;
 }
 
-function maskReference(id: string | null | undefined) {
-  if (!id) {
-    return "—";
-  }
-  if (id.length <= 10) {
-    return `••••${id.slice(-4)}`;
-  }
-  return `${id.slice(0, 4)}…${id.slice(-4)}`;
+function referenceText(id: string | null | undefined) {
+  return id || "—";
 }
 
 function compactDate(value: string | null | undefined) {
@@ -258,7 +252,7 @@ export default async function SubscriptionManagePage({
         null
       }
       >
-      <section className="grid gap-4">
+      <section className="grid gap-4 bg-[#f6f7f9] pb-6">
         {query.updated === "1" ? (
           <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-950">
             {query.scheduled === "1"
@@ -274,35 +268,49 @@ export default async function SubscriptionManagePage({
           </div>
         ) : null}
 
-        <div className="rounded-[1.75rem] border border-stone-200 bg-white p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className={["flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", hasAccess ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"].join(" ")}>
-              {hasAccess ? <ShieldCheck className="h-5 w-5" /> : <CircleAlert className="h-5 w-5" />}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Subscription</p>
-                <span className={["rounded-full px-2.5 py-1 text-[11px] font-bold", hasAccess ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"].join(" ")}>
-                  {statusLabel}
-                </span>
+        <div className="overflow-hidden rounded-[1.4rem] border border-stone-200 bg-white shadow-sm">
+          <div className="border-b border-stone-200 bg-stone-50 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className={["flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl", hasAccess ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"].join(" ")}>
+                {hasAccess ? <ShieldCheck className="h-6 w-6" /> : <CircleAlert className="h-6 w-6" />}
               </div>
-              <h1 className="mt-1 text-2xl font-bold tracking-normal text-stone-950">{currentPlan?.display_name ?? "No plan linked"}</h1>
-              <p className="mt-1 text-sm leading-6 text-stone-600">
-                {hasAccess
-                  ? currentPlan?.tagline ?? "Your shop can use active subscription features."
-                  : blockReason === "trial_ended"
-                    ? "Trial ended. Subscribe to restore access."
-                    : blockReason === "subscription_ended"
-                      ? "Paid period ended. Renew to restore access."
-                      : "Subscribe to use DukaanHQ for this shop."}
-              </p>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Subscription</p>
+                  <span className={["rounded-full px-2.5 py-1 text-[11px] font-bold", hasAccess ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"].join(" ")}>
+                    {statusLabel}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-          {!hasAccess ? (
-            <Link href={shop?.slug ? buildShopRoute(shop.slug, "subscribe") : "/subscribe"} className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-stone-950 px-4 text-sm font-bold text-white">
-              Go to subscribe
-            </Link>
-          ) : null}
+          <div className="p-4">
+            <h1 className="text-2xl font-black tracking-normal text-stone-950">{currentPlan?.display_name ?? "No plan linked"}</h1>
+            <p className="mt-1 text-sm leading-6 text-stone-600">
+              {hasAccess
+                ? currentPlan?.tagline ?? "Your shop can use active subscription features."
+                : blockReason === "trial_ended"
+                  ? "Trial ended. Subscribe to restore access."
+                  : blockReason === "subscription_ended"
+                    ? "Paid period ended. Renew to restore access."
+                    : "Subscribe to use DukaanHQ for this shop."}
+            </p>
+            <div className="grid gap-2 text-sm">
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-stone-50 px-3 py-2.5">
+                <span className="font-medium text-stone-500">Current price</span>
+                <span className="font-black text-stone-950">{planPriceText(currentPrice)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-stone-50 px-3 py-2.5">
+                <span className="font-medium text-stone-500">{cancelAtPeriodEnd ? "Benefits until" : "Next payment"}</span>
+                <span className="font-black text-stone-950">{compactDate(cancelAtPeriodEnd ? cancelEffectiveAt : nextPaymentAt)}</span>
+              </div>
+            </div>
+            {!hasAccess ? (
+              <Link href={shop?.slug ? buildShopRoute(shop.slug, "subscribe") : "/subscribe"} className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-stone-950 px-4 text-sm font-bold text-white">
+                Go to subscribe
+              </Link>
+            ) : null}
+          </div>
         </div>
 
         {cancelAtPeriodEnd ? (
@@ -329,8 +337,9 @@ export default async function SubscriptionManagePage({
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-[1.75rem] border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3">
+          <div className="overflow-hidden rounded-[1.4rem] border border-stone-200 bg-white shadow-sm">
+            <div className="border-b border-stone-200 bg-stone-50 px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700"><Layers3 className="h-5 w-5" /></div>
               <div>
@@ -338,11 +347,15 @@ export default async function SubscriptionManagePage({
                 <p className="mt-1 text-base font-bold text-stone-950">{currentPlan?.display_name ?? "No plan linked"}</p>
               </div>
             </div>
+            </div>
+            <div className="p-4">
             <p className="mt-4 text-lg font-black text-stone-950">{planPriceText(currentPrice)}</p>
             <p className="mt-1 text-xs font-medium text-stone-500">{billingInterval === "year" ? "Yearly billing" : "Monthly billing"} · Prices include taxes.</p>
+            </div>
           </div>
 
-          <div className="rounded-[1.75rem] border border-stone-200 bg-white p-4 shadow-sm">
+          <div className="overflow-hidden rounded-[1.4rem] border border-stone-200 bg-white shadow-sm">
+            <div className="border-b border-stone-200 bg-stone-50 px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700"><CalendarClock className="h-5 w-5" /></div>
               <div>
@@ -350,6 +363,8 @@ export default async function SubscriptionManagePage({
                 <p className="mt-1 text-base font-bold text-stone-950">{cancelAtPeriodEnd ? `Ends ${compactDate(cancelEffectiveAt)}` : `Next payment ${compactDate(nextPaymentAt)}`}</p>
               </div>
             </div>
+            </div>
+            <div className="p-4">
             <div className="mt-4 grid gap-2 text-sm">
               {trialStartedAt || trialEndsAt ? (
                 <>
@@ -367,6 +382,7 @@ export default async function SubscriptionManagePage({
                 <span className="text-stone-500">{cancelAtPeriodEnd ? "Benefits until" : "Access valid until"}</span>
                 <span className="font-semibold text-stone-900">{formatDateTime(accessUntil)}</span>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -386,7 +402,8 @@ export default async function SubscriptionManagePage({
           </div>
         ) : null}
 
-        <div className="rounded-[1.75rem] border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="overflow-hidden rounded-[1.4rem] border border-stone-200 bg-white shadow-sm">
+          <div className="border-b border-stone-200 bg-stone-50 px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700"><RefreshCw className="h-5 w-5" /></div>
             <div>
@@ -394,6 +411,8 @@ export default async function SubscriptionManagePage({
               <p className="mt-1 text-sm font-medium text-stone-600">Changes apply on the next billing date for your {billingInterval === "year" ? "yearly" : "monthly"} cycle.</p>
             </div>
           </div>
+          </div>
+          <div className="p-4">
           {scheduledPlanName ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-950">
               Scheduled: {scheduledPlanName} ({scheduledBillingInterval === "year" ? "yearly" : "monthly"}) from {formatDateTime(scheduledEffectiveDate)}.
@@ -438,10 +457,11 @@ export default async function SubscriptionManagePage({
               );
             })}
           </div>
+          </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-[1.75rem] border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3">
+          <div className="rounded-[1.4rem] border border-stone-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700"><CircleCheck className="h-5 w-5" /></div>
               <div>
@@ -450,18 +470,18 @@ export default async function SubscriptionManagePage({
               </div>
             </div>
             <dl className="mt-4 grid gap-2 text-sm">
-              <div className="flex justify-between gap-3 rounded-2xl bg-stone-50 px-3 py-2">
-                <dt className="text-stone-500">Subscription</dt>
-                <dd className="font-mono text-xs text-stone-800">{maskReference(dodoSubscriptionId)}</dd>
+              <div className="grid gap-1 rounded-2xl bg-stone-50 px-3 py-2 sm:grid-cols-[120px_1fr] sm:items-start">
+                <dt className="shrink-0 text-stone-500">Subscription</dt>
+                <dd className="min-w-0 break-all font-mono text-xs leading-5 text-stone-800">{referenceText(dodoSubscriptionId)}</dd>
               </div>
-              <div className="flex justify-between gap-3 rounded-2xl bg-stone-50 px-3 py-2">
-                <dt className="text-stone-500">Customer</dt>
-                <dd className="font-mono text-xs text-stone-800">{maskReference(currentSubscription?.provider_customer_id ?? ent?.provider_customer_id)}</dd>
+              <div className="grid gap-1 rounded-2xl bg-stone-50 px-3 py-2 sm:grid-cols-[120px_1fr] sm:items-start">
+                <dt className="shrink-0 text-stone-500">Customer</dt>
+                <dd className="min-w-0 break-all font-mono text-xs leading-5 text-stone-800">{referenceText(currentSubscription?.provider_customer_id ?? ent?.provider_customer_id)}</dd>
               </div>
             </dl>
           </div>
 
-          <div className="rounded-[1.75rem] border border-stone-200 bg-white p-4 shadow-sm">
+          <div className="rounded-[1.4rem] border border-stone-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700"><Sparkles className="h-5 w-5" /></div>
               <div>

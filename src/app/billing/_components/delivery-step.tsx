@@ -3,10 +3,11 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Download, Send, Layers, Pencil, AlertTriangle } from "lucide-react";
+import { Download, Send, Layers, Pencil, AlertTriangle, Info, X } from "lucide-react";
 import { SignaturePadModal } from "./signature-pad-modal";
 
 type DeliveryMode = "download" | "auto_send" | "both";
+type BasicPdfSignatureMode = "placeholders" | "electronic";
 
 const DELIVERY_OPTIONS: Array<{
   id: DeliveryMode;
@@ -44,6 +45,8 @@ export function DeliveryStep({
   shopStampUrl,
   customerSignatureDataUrl,
   onSignatureChange,
+  basicPdfSignatureMode,
+  onBasicPdfSignatureModeChange,
   settingsHref = "/settings#stamp",
   allowDigitalInvoiceAssets = true,
   allowWhatsappInvoiceSending = true,
@@ -53,13 +56,17 @@ export function DeliveryStep({
   shopStampUrl: string | null;
   customerSignatureDataUrl: string | null;
   onSignatureChange: (dataUrl: string | null) => void;
+  basicPdfSignatureMode: BasicPdfSignatureMode;
+  onBasicPdfSignatureModeChange: (mode: BasicPdfSignatureMode) => void;
   settingsHref?: string;
   allowDigitalInvoiceAssets?: boolean;
   allowWhatsappInvoiceSending?: boolean;
 }) {
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [showDownloadInfo, setShowDownloadInfo] = useState(false);
 
   const needsSignature = deliveryMode === "auto_send" || deliveryMode === "both";
+  const showDownloadToggle = deliveryMode === "download" || deliveryMode === "both";
 
   function handleModeChange(mode: DeliveryMode) {
     onDeliveryModeChange(mode);
@@ -94,7 +101,7 @@ export function DeliveryStep({
                 onClick={() => !disabled && handleModeChange(option.id)}
                 disabled={disabled}
                 className={[
-                  "w-full flex items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left transition-all",
+                  "w-full rounded-2xl border-2 px-4 py-4 text-left transition-all",
                   active
                     ? "border-stone-900 bg-stone-50 shadow-sm"
                     : disabled
@@ -102,28 +109,93 @@ export function DeliveryStep({
                       : "border-stone-200 bg-white hover:border-stone-300",
                 ].join(" ")}
               >
-                <div
-                  className={[
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-                    active ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500",
-                  ].join(" ")}
-                >
-                  <Icon className="h-4 w-4" />
+                <div className="flex items-center gap-4">
+                  <div
+                    className={[
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                      active ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500",
+                    ].join(" ")}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className={["text-sm font-bold", active ? "text-stone-900" : "text-stone-700"].join(" ")}>
+                        {option.label}
+                      </p>
+                    </div>
+                    <p className="text-xs font-medium text-stone-500 mt-0.5">{option.description}</p>
+                  </div>
+                  <div
+                    className={[
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
+                      active ? "border-stone-900 bg-stone-900" : "border-stone-300",
+                    ].join(" ")}
+                  >
+                    {active && <div className="h-2 w-2 rounded-full bg-white" />}
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className={["text-sm font-bold", active ? "text-stone-900" : "text-stone-700"].join(" ")}>
-                    {option.label}
-                  </p>
-                  <p className="text-xs font-medium text-stone-500 mt-0.5">{option.description}</p>
-                </div>
-                <div
-                  className={[
-                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
-                    active ? "border-stone-900 bg-stone-900" : "border-stone-300",
-                  ].join(" ")}
-                >
-                  {active && <div className="h-2 w-2 rounded-full bg-white" />}
-                </div>
+
+                {option.id === "download" && showDownloadToggle ? (
+                  <div
+                    className="mt-4 rounded-xl border border-stone-200 bg-white px-3 py-3"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Signature area</p>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setShowDownloadInfo(true);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setShowDownloadInfo(true);
+                              }
+                            }}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-stone-400 transition hover:bg-stone-200 hover:text-stone-900"
+                            aria-label="How signature area toggle works"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs font-semibold text-stone-800">
+                          {basicPdfSignatureMode === "electronic" ? "Electronic invoice note" : "Print placeholders"}
+                        </p>
+                      </div>
+                      <span
+                        role="switch"
+                        tabIndex={0}
+                        onClick={() => onBasicPdfSignatureModeChange(basicPdfSignatureMode === "placeholders" ? "electronic" : "placeholders")}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onBasicPdfSignatureModeChange(basicPdfSignatureMode === "placeholders" ? "electronic" : "placeholders");
+                          }
+                        }}
+                        className={[
+                          "relative h-7 w-12 shrink-0 rounded-full transition",
+                          basicPdfSignatureMode === "electronic" ? "bg-stone-900" : "bg-stone-300",
+                        ].join(" ")}
+                        aria-label="Toggle electronic invoice note"
+                        aria-checked={basicPdfSignatureMode === "electronic"}
+                      >
+                        <span
+                          className={[
+                            "absolute top-1 h-5 w-5 rounded-full bg-white transition",
+                            basicPdfSignatureMode === "electronic" ? "left-6" : "left-1",
+                          ].join(" ")}
+                        />
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
               </button>
             );
           })}
@@ -219,6 +291,41 @@ export function DeliveryStep({
         onClose={() => setIsSignatureModalOpen(false)}
         onSave={(dataUrl) => onSignatureChange(dataUrl)}
       />
+
+      {showDownloadInfo ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-stone-950/50 px-3 pb-3 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-[1.75rem] bg-white shadow-2xl">
+            <div className="flex items-start gap-3 border-b border-stone-100 px-5 py-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-stone-100 text-stone-800">
+                <Info className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-bold text-stone-950">Download PDF options</p>
+                <p className="mt-1 text-sm leading-6 text-stone-600">
+                  If this toggle is on, signature and stamp placeholders will be hidden. If it is off, those placeholders will show in the PDF for printing.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDownloadInfo(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-900"
+                aria-label="Close download PDF info"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowDownloadInfo(false)}
+                className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-stone-950 px-4 text-sm font-bold text-white transition hover:bg-stone-800"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

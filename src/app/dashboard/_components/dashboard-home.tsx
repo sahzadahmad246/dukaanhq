@@ -130,6 +130,110 @@ const CARD_ACCENTS = [
   { top: "#ec4899", tint: "#fdf2f8", textAccent: "#be185d", dotBg: "#fce7f3" },
 ];
 
+type DashboardNoticeCard = {
+  id: string;
+  tone: SubscriptionNotice["tone"];
+  title: string;
+  message: string;
+  href?: string;
+  actionLabel?: string;
+  icon: typeof AlertTriangle;
+};
+
+const NOTICE_TONES: Record<SubscriptionNotice["tone"], { background: string; border: string; color: string; button: string; iconBg: string }> = {
+  danger: { background: "#fef2f2", border: "#fecaca", color: "#991b1b", button: "#dc2626", iconBg: "#fee2e2" },
+  warning: { background: "#fffbeb", border: "#fde68a", color: "#92400e", button: "#92400e", iconBg: "#fef3c7" },
+  success: { background: "#f0fdf4", border: "#bbf7d0", color: "#166534", button: "#15803d", iconBg: "#dcfce7" },
+  info: { background: "#eff6ff", border: "#bfdbfe", color: "#1e40af", button: "#2563eb", iconBg: "#dbeafe" },
+};
+
+function DashboardNoticeCarousel({
+  notices,
+  activeIndex,
+  onSelect,
+}: {
+  notices: DashboardNoticeCard[];
+  activeIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  const activeNotice = notices[activeIndex] ?? notices[0];
+  const tone = NOTICE_TONES[activeNotice.tone];
+  const Icon = activeNotice.icon;
+
+  return (
+    <div style={{ margin: "0 0 14px" }}>
+      <div
+        style={{
+          alignItems: "center",
+          background: tone.background,
+          border: `1.5px solid ${tone.border}`,
+          borderRadius: 18,
+          color: tone.color,
+          display: "flex",
+          gap: 10,
+          padding: "12px 12px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        }}
+      >
+        <div
+          style={{
+            alignItems: "center",
+            background: tone.iconBg,
+            borderRadius: 14,
+            display: "flex",
+            flexShrink: 0,
+            height: 36,
+            justifyContent: "center",
+            width: 36,
+          }}
+        >
+          <Icon style={{ width: 17, height: 17 }} />
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ fontSize: 13, fontWeight: 900, lineHeight: 1.2, margin: 0 }}>{activeNotice.title}</p>
+          <p style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.45, margin: "3px 0 0", opacity: 0.86 }}>
+            {activeNotice.message}
+          </p>
+        </div>
+        {activeNotice.href && activeNotice.actionLabel ? (
+          <Link href={activeNotice.href} className="dash-notice-action" style={{ background: tone.button }}>
+            {activeNotice.actionLabel}
+            <ArrowRight style={{ width: 13, height: 13 }} />
+          </Link>
+        ) : null}
+      </div>
+
+      {notices.length > 1 ? (
+        <div style={{
+          background: "transparent",
+          display: "flex",
+          justifyContent: "center",
+          gap: 5,
+          marginTop: 8,
+        }}>
+          {notices.map((notice, index) => (
+            <button
+              key={notice.id}
+              type="button"
+              aria-label={`Show ${notice.title}`}
+              onClick={() => onSelect(index)}
+              style={{
+                background: index === activeIndex ? "#18181b" : "#d4d4d8",
+                border: 0,
+                borderRadius: 999,
+                height: 6,
+                padding: 0,
+                transition: "width 0.18s ease, background 0.18s ease",
+                width: index === activeIndex ? 18 : 6,
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function DashboardHome({
   ownerName,
   shopLogoUrl,
@@ -183,6 +287,7 @@ export function DashboardHome({
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [sendingWhatsappInvoiceId, setSendingWhatsappInvoiceId] = useState<string | null>(null);
   const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<Set<string>>(new Set());
+  const [dashboardNoticeIndex, setDashboardNoticeIndex] = useState(0);
 
   const recentProductCards = useMemo(
     () => recentProducts.map((recentProduct) => products.find((product) => product.id === recentProduct.id)).filter(Boolean) as ProductSummary[],
@@ -198,6 +303,52 @@ export function DashboardHome({
   const allowDigitalInvoiceAssets = planEntitlements
     ? planEntitlements.customer_signature === true && planEntitlements.shop_stamp === true
     : true;
+  const dashboardNotices = useMemo<DashboardNoticeCard[]>(() => {
+    const notices: DashboardNoticeCard[] = [];
+
+    if (stats.lowStockProducts > 0) {
+      notices.push({
+        id: "low-stock",
+        tone: "warning",
+        title: "Low stock alert",
+        message: `${stats.lowStockProducts} product${stats.lowStockProducts !== 1 ? "s" : ""} running low on stock.`,
+        href: shopSlug ? `/${shopSlug}/inventory?filter=low-stock` : "/inventory?filter=low-stock",
+        actionLabel: "Add stock",
+        icon: Package,
+      });
+    }
+
+    if (subscriptionNotice) {
+      notices.push({
+        id: "subscription",
+        tone: subscriptionNotice.tone,
+        title: subscriptionNotice.title,
+        message: subscriptionNotice.message,
+        href: subscriptionNotice.href,
+        actionLabel: subscriptionNotice.href ? "Manage" : subscriptionNotice.actionLabel,
+        icon: CalendarDays,
+      });
+    }
+
+    return notices;
+  }, [shopSlug, stats.lowStockProducts, subscriptionNotice]);
+
+  useEffect(() => {
+    setDashboardNoticeIndex((current) => {
+      if (dashboardNotices.length === 0) return 0;
+      return Math.min(current, dashboardNotices.length - 1);
+    });
+  }, [dashboardNotices.length]);
+
+  useEffect(() => {
+    if (dashboardNotices.length <= 1) return;
+
+    const timer = window.setInterval(() => {
+      setDashboardNoticeIndex((current) => (current + 1) % dashboardNotices.length);
+    }, 4200);
+
+    return () => window.clearInterval(timer);
+  }, [dashboardNotices.length]);
 
   useEffect(() => {
     if (!loadError) return;
@@ -491,28 +642,32 @@ export function DashboardHome({
           margin-bottom: 14px;
           border: 1.5px solid;
         }
+        .dash-notice-action {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+          min-height: 32px;
+          border-radius: 999px;
+          padding: 0 12px;
+          font-size: 12px;
+          font-weight: 900;
+          color: #ffffff;
+          text-decoration: none;
+          white-space: nowrap;
+          box-shadow: 0 8px 18px rgba(15,23,42,0.12);
+        }
       `}</style>
 
-      {/* Low stock alert — persistent, non-dismissible, flush edge-to-edge */}
-      {stats.lowStockProducts > 0 && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "10px 16px",
-            background: "#fef3c7",
-            borderBottom: "1.5px solid #fcd34d",
-            color: "#92400e",
-            fontSize: 13,
-            fontWeight: 700,
-            margin: "-8px -12px 0",
-          }}
-        >
-          <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
-          <span>{stats.lowStockProducts} product{stats.lowStockProducts !== 1 ? "s" : ""} running low on stock</span>
+      {dashboardNotices.length > 0 ? (
+        <div className="dash-root px-2 pb-1">
+          <DashboardNoticeCarousel
+            notices={dashboardNotices}
+            activeIndex={dashboardNoticeIndex}
+            onSelect={setDashboardNoticeIndex}
+          />
         </div>
-      )}
+      ) : null}
 
       <div className="dash-root -mx-3 px-2">
         {/* Greeting — same row */}
@@ -543,55 +698,6 @@ export function DashboardHome({
             <span>{loadError}</span>
           </div>
         ) : null}
-
-        {subscriptionNotice ? (
-          <div
-            className="dash-subscription-alert"
-            style={{
-              background:
-                subscriptionNotice.tone === "danger"
-                  ? "#fef2f2"
-                  : subscriptionNotice.tone === "warning"
-                    ? "#fffbeb"
-                    : subscriptionNotice.tone === "success"
-                      ? "#f0fdf4"
-                      : "#eff6ff",
-              borderColor:
-                subscriptionNotice.tone === "danger"
-                  ? "#fecaca"
-                  : subscriptionNotice.tone === "warning"
-                    ? "#fde68a"
-                    : subscriptionNotice.tone === "success"
-                      ? "#bbf7d0"
-                      : "#bfdbfe",
-              color:
-                subscriptionNotice.tone === "danger"
-                  ? "#991b1b"
-                  : subscriptionNotice.tone === "warning"
-                    ? "#92400e"
-                    : subscriptionNotice.tone === "success"
-                      ? "#166534"
-                      : "#1e40af",
-            }}
-          >
-            <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2 }} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ fontSize: 13, fontWeight: 900, margin: 0 }}>{subscriptionNotice.title}</p>
-              <p style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.5, margin: "3px 0 0", opacity: 0.86 }}>
-                {subscriptionNotice.message}
-              </p>
-              {subscriptionNotice.href && subscriptionNotice.actionLabel ? (
-                <Link
-                  href={subscriptionNotice.href}
-                  style={{ display: "inline-flex", marginTop: 8, fontSize: 12, fontWeight: 900, textDecoration: "underline" }}
-                >
-                  {subscriptionNotice.actionLabel}
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
 
         {/* Stats Grid — 2 columns */}
         <div className="grid grid-cols-2 gap-2 mb-5">

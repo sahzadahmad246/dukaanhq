@@ -20,6 +20,7 @@ export function InventoryManager({
   products,
   categories,
   brands,
+  initialFilter = "ALL",
 }: {
   products: (Product & {
     total_quantity: number;
@@ -32,6 +33,7 @@ export function InventoryManager({
   })[];
   categories: Category[];
   brands: Brand[];
+  initialFilter?: string;
 }) {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function InventoryManager({
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<string>("ALL");
+  const [activeTab, setActiveTab] = useState<string>(initialFilter);
   const [showHeader, setShowHeader] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDeleting, startDeleteTransition] = useTransition();
