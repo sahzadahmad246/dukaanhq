@@ -45,6 +45,10 @@ export type DodoCheckoutSessionStatusResponse = {
     | null;
 };
 
+export type DodoCustomerPortalSessionResponse = {
+  link: string;
+};
+
 export type DodoSubscriptionResponse = Record<string, unknown> & {
   subscription_id?: string;
   customer?: {
@@ -170,6 +174,35 @@ export async function retrieveDodoCheckoutSession(
   });
 
   return parseDodoResponse(response) as Promise<DodoCheckoutSessionStatusResponse>;
+}
+
+export async function createDodoCustomerPortalSession(input: {
+  customerId: string;
+  returnUrl?: string | null;
+  sendEmail?: boolean;
+}): Promise<DodoCustomerPortalSessionResponse> {
+  const config = getDodoConfig();
+  const params = new URLSearchParams();
+
+  if (input.returnUrl) {
+    params.set("return_url", input.returnUrl);
+  }
+
+  if (input.sendEmail !== undefined) {
+    params.set("send_email", String(input.sendEmail));
+  }
+
+  const query = params.toString();
+  const response = await fetchDodo(
+    `${config.baseUrl}/customers/${encodeURIComponent(input.customerId)}/customer-portal/session${query ? `?${query}` : ""}`,
+    {
+      method: "POST",
+      headers: dodoHeaders(),
+      cache: "no-store",
+    },
+  );
+
+  return parseDodoResponse(response) as Promise<DodoCustomerPortalSessionResponse>;
 }
 
 export async function cancelDodoSubscriptionAtPeriodEnd(subscriptionId: string): Promise<DodoSubscriptionResponse> {

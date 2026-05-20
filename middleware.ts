@@ -34,6 +34,11 @@ const RESERVED_ROOT_SEGMENTS = new Set([
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  if (pathname === "/api/webhooks/dodo") {
+    return NextResponse.next();
+  }
+
   const segments = pathname.split("/").filter(Boolean);
 
   if (segments.length >= 2 && !RESERVED_ROOT_SEGMENTS.has(segments[0]) && SHOP_APP_SEGMENTS.has(segments[1])) {

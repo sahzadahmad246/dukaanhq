@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import {
   cancelDodoSubscriptionAtPeriodEnd,
   changeDodoSubscriptionPlan,
+  createDodoCustomerPortalSession,
   retrieveDodoSubscription,
   resumeDodoSubscriptionRenewal,
 } from "@/lib/dodo/client";
@@ -16,6 +17,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type BillingInterval = "month" | "year";
 type PlanCode = "starter" | "growth" | "pro";
+
+function appOrigin() {
+  return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
+}
 
 function isPlanCode(value: string): value is PlanCode {
   return value === "starter" || value === "growth" || value === "pro";
@@ -125,6 +130,73 @@ export async function cancelCurrentShopSubscriptionAction(): Promise<void> {
   revalidatePath("/subscription");
   revalidatePath(returnPath);
   redirect(`${returnPath}?updated=1`);
+}
+
+export async function openDodoCustomerPortalAction(): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const state = await getUserAppState(supabase);
+  const returnPath = state.shopSlug ? buildShopRoute(state.shopSlug, "subscription") : "/subscription";
+
+  if (!state.user || !state.membership || state.membership.role !== "owner") {
+    redirect(`${returnPath}?error=owner-required`);
+  }
+
+  const admin = createSupabaseAdminClient();
+  if (!admin) {
+    redirect(`${returnPath}?error=server-config`);
+  }
+
+  const { data: subscription } = await admin
+    .from("shop_subscriptions")
+    .select("provider, provider_customer_id")
+    .eq("shop_id", state.membership.shop_id)
+    .maybeSingle<{
+      provider: string | null;
+      provider_customer_id: string | null;
+    }>();
+
+  const providerCustomerId = subscription?.provider === "dodo"
+    ? subscription.provider_customer_id
+    : state.shopEntitlement?.provider === "dodo"
+      ? state.shopEntitlement.provider_customer_id
+      : null;
+
+  if (!providerCustomerId) {
+    redirect(`${returnPath}?error=no-billing-customer`);
+  }
+
+  let portalUrl: string | null = null;
+
+  try {
+    const session = await createDodoCustomerPortalSession({
+      customerId: providerCustomerId,
+      returnUrl: `${appOrigin()}${returnPath}`,
+      sendEmail: false,
+    });
+
+    if (!session.link) {
+      throw new Error("Dodo did not return a customer portal link.");
+    }
+
+    portalUrl = session.link;
+  } catch (error) {
+    console.error("Dodo customer portal session failed", error);
+    await admin.from("subscription_events").insert({
+      shop_id: state.membership.shop_id,
+      provider: "dodo",
+      event_type: "OWNER_CUSTOMER_PORTAL_FAILED",
+      payload: { provider_customer_id: providerCustomerId },
+      processed_status: "error",
+      processed_message: error instanceof Error ? error.message : "Customer portal failed",
+    });
+    redirect(`${returnPath}?error=portal-failed`);
+  }
+
+  if (!portalUrl) {
+    redirect(`${returnPath}?error=portal-failed`);
+  }
+
+  redirect(portalUrl);
 }
 
 export async function resumeCurrentShopSubscriptionRenewalAction(): Promise<void> {

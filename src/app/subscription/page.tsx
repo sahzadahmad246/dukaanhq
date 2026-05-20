@@ -6,19 +6,17 @@ import {
   CircleAlert,
   CircleCheck,
   CreditCard,
+  ExternalLink,
   Layers3,
   RefreshCw,
-  RotateCcw,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
 
 import { WorkspaceShell } from "@/app/_components/workspace-shell";
-import { CancelRenewalConfirmButton } from "@/app/subscription/_components/cancel-renewal-confirm-button";
 import {
-  cancelCurrentShopSubscriptionAction,
   changeCurrentShopSubscriptionPlanAction,
-  resumeCurrentShopSubscriptionRenewalAction,
+  openDodoCustomerPortalAction,
 } from "@/app/subscription/actions";
 import { PaidSubscriptionPhoneModal } from "@/app/subscribe/start/paid-subscription-phone-modal";
 import { getSignedInLandingPath, getUserAppState } from "@/lib/auth/user-flow";
@@ -310,11 +308,11 @@ export default async function SubscriptionManagePage({
                 </p>
               </div>
             </div>
-            {currentSubscription?.provider === "dodo" && currentSubscription.provider_subscription_id ? (
-              <form action={resumeCurrentShopSubscriptionRenewalAction} className="mt-4">
+            {currentSubscription?.provider === "dodo" && currentSubscription.provider_customer_id ? (
+              <form action={openDodoCustomerPortalAction} className="mt-4">
                 <button type="submit" className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-amber-950 px-4 text-sm font-bold text-white transition hover:bg-amber-900">
-                  <RotateCcw className="h-4 w-4" />
-                  Resume future renewals
+                  <ExternalLink className="h-4 w-4" />
+                  Manage in Dodo
                 </button>
               </form>
             ) : null}
@@ -457,9 +455,12 @@ export default async function SubscriptionManagePage({
                 <p className="mt-1 text-sm font-medium text-stone-600">{hasDodoSubscription ? "Managed securely by your payment provider." : "No active payment subscription yet."}</p>
               </div>
             </div>
-            {!cancelAtPeriodEnd && currentSubscription?.provider === "dodo" && currentSubscription.provider_subscription_id ? (
-              <form action={cancelCurrentShopSubscriptionAction} className="mt-4">
-                <CancelRenewalConfirmButton benefitsUntil={compactDate(cancelEffectiveAt)} />
+            {currentSubscription?.provider === "dodo" && currentSubscription.provider_customer_id ? (
+              <form action={openDodoCustomerPortalAction} className="mt-4">
+                <button type="submit" className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-stone-950 px-4 text-sm font-bold text-white transition hover:bg-stone-800">
+                  <ExternalLink className="h-4 w-4" />
+                  Manage billing
+                </button>
               </form>
             ) : null}
           </div>
