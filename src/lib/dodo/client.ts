@@ -24,6 +24,27 @@ export type DodoCheckoutSessionResponse = {
   checkout_url: string | null;
 };
 
+export type DodoCheckoutSessionStatusResponse = {
+  created_at?: string;
+  id?: string;
+  customer_email?: string | null;
+  customer_name?: string | null;
+  payment_id?: string | null;
+  payment_status?:
+    | "succeeded"
+    | "failed"
+    | "cancelled"
+    | "processing"
+    | "requires_customer_action"
+    | "requires_merchant_action"
+    | "requires_payment_method"
+    | "requires_confirmation"
+    | "requires_capture"
+    | "partially_captured"
+    | "partially_captured_and_capturable"
+    | null;
+};
+
 export type DodoSubscriptionResponse = Record<string, unknown> & {
   subscription_id?: string;
   customer?: {
@@ -136,6 +157,19 @@ export async function createDodoCheckoutSession(
   });
 
   return parseDodoResponse(response) as Promise<DodoCheckoutSessionResponse>;
+}
+
+export async function retrieveDodoCheckoutSession(
+  checkoutSessionId: string,
+): Promise<DodoCheckoutSessionStatusResponse> {
+  const config = getDodoConfig();
+  const response = await fetchDodo(`${config.baseUrl}/checkouts/${encodeURIComponent(checkoutSessionId)}`, {
+    method: "GET",
+    headers: dodoHeaders(),
+    cache: "no-store",
+  });
+
+  return parseDodoResponse(response) as Promise<DodoCheckoutSessionStatusResponse>;
 }
 
 export async function cancelDodoSubscriptionAtPeriodEnd(subscriptionId: string): Promise<DodoSubscriptionResponse> {
