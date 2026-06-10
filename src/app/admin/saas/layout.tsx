@@ -16,5 +16,19 @@ export default async function SaasAdminLayout({ children }: { children: React.Re
     redirect("/");
   }
 
-  return <SaasAdminShell>{children}</SaasAdminShell>;
+  const userName = state.profile?.full_name || state.user.email?.split("@")[0] || "Admin";
+  const userEmail = state.profile?.email || state.user.email || "";
+  const userRole = state.profile?.role || "superadmin";
+  const userAvatarUrl = state.profile?.avatar_url ?? null;
+
+  return (
+    <SaasAdminShell
+      userName={userName}
+      userEmail={userEmail}
+      userRole={userRole}
+      userAvatarUrl={userAvatarUrl}
+    >
+      {children}
+    </SaasAdminShell>
+  );
 }

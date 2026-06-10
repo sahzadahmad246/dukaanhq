@@ -283,13 +283,11 @@ export async function loadDashboardData() {
 
   stats.totalProducts = inventory.products.length;
 
-  // In-stock serialized items
-  const { count: inStockCount } = await supabase
-    .from("inventory_items")
-    .select("id", { count: "exact", head: true })
-    .eq("shop_id", shopId)
-    .eq("status", "IN_STOCK");
-  stats.inStockItems = inStockCount ?? 0;
+  // Total in-stock items (quantity-based stock + serialized IN_STOCK items)
+  stats.inStockItems = (inventory.products ?? []).reduce(
+    (sum: number, p: any) => sum + (p.total_quantity || 0),
+    0
+  );
 
   // Customers count
   const { count: customerCount } = await supabase

@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { FileText, Mail, Package, Phone, User, Users } from "lucide-react";
 
+import { SaasAdminHeader } from "@/app/admin/saas/_components/saas-admin-shell";
+import { ShopHeaderMore } from "./_components/shop-header-more";
 import {
   setShopStatusAction,
   superadminUpdateShopInfoAction,
@@ -114,176 +117,101 @@ export default async function SaasAdminShopDetailsPage({
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <Link href="/admin/saas/shops" className="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">
-            ← Back to shops
-          </Link>
-          <h1 className="mt-3 text-2xl font-bold text-stone-950">{shop.name}</h1>
-          <p className="mt-1 text-sm text-stone-600">
-            <span className="font-semibold text-stone-800">{shop.slug}</span> · {shop.city}, {shop.state}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/admin/saas" className="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">
-            SaaS admin
-          </Link>
-          <Link href="/" className="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">
-            Home
-          </Link>
-        </div>
-      </div>
+      <SaasAdminHeader
+        title={shop.name}
+        backHref="/admin/saas/shops"
+        rightContent={<ShopHeaderMore shop={shop} shopSettings={shopSettings} />}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm lg:col-span-2">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-stone-950">Overview</h2>
-              <p className="mt-1 text-sm text-stone-600">
-                Status: <span className="font-semibold text-stone-800">{shop.status}</span>
-              </p>
-              <p className="mt-2 text-sm text-stone-700">
-                Contact: <span className="font-medium">{shop.phone}</span> · <span className="font-medium">{shop.email}</span>
-              </p>
+              <span className="text-sm text-stone-500">· {shop.status}</span>
             </div>
             <form action={setShopStatusAction}>
               <input type="hidden" name="shop_id" value={shop.id} />
               <input type="hidden" name="status" value={nextSuspendStatus} />
               <button
                 type="submit"
-                className={
-                  "rounded-2xl px-4 py-2 text-sm font-semibold shadow-sm transition " +
-                  (nextSuspendStatus === "suspended"
-                    ? "border border-red-200 bg-red-50 text-red-900 hover:bg-red-100"
-                    : "border border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100")
-                }
+                className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 transition"
               >
                 {nextSuspendLabel}
               </button>
             </form>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">Products</div>
-              <div className="mt-1 text-2xl font-bold text-stone-950">{productsCount ?? 0}</div>
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-stone-600">
+            <span className="flex items-center gap-1.5">
+              <Phone className="h-4 w-4 text-stone-400" />
+              {shop.phone}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Mail className="h-4 w-4 text-stone-400" />
+              {shop.email}
+            </span>
+          </div>
+
+          <div className="my-4 h-px bg-stone-100" />
+
+          <div className="flex items-center justify-between text-center">
+            <div className="flex-1">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-stone-500">
+                <Package className="h-4 w-4" /> Products
+              </div>
+              <div className="mt-1 text-2xl font-semibold text-stone-950">{productsCount ?? 0}</div>
             </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">Invoices</div>
-              <div className="mt-1 text-2xl font-bold text-stone-950">{invoicesCount ?? 0}</div>
+            <div className="h-8 w-px bg-stone-200" />
+            <div className="flex-1">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-stone-500">
+                <FileText className="h-4 w-4" /> Invoices
+              </div>
+              <div className="mt-1 text-2xl font-semibold text-stone-950">{invoicesCount ?? 0}</div>
             </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">Staff</div>
-              <div className="mt-1 text-2xl font-bold text-stone-950">
-                {staffCount} <span className="text-sm font-semibold text-stone-600">(+{ownerCount} owners)</span>
+            <div className="h-8 w-px bg-stone-200" />
+            <div className="flex-1">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-stone-500">
+                <Users className="h-4 w-4" /> Staff
+              </div>
+              <div className="mt-1 text-2xl font-semibold text-stone-950">
+                {staffCount} <span className="text-xs text-stone-500">(+{ownerCount})</span>
               </div>
             </div>
           </div>
         </section>
 
         <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-stone-950">Members</h2>
-          <p className="mt-1 text-sm text-stone-600">Owners and staff (first 100).</p>
-          <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5 text-stone-500" />
+            <h2 className="text-lg font-semibold text-stone-950">Members</h2>
+            <span className="text-sm text-stone-500">({(members ?? []).filter((m) => m.role !== "customer").length})</span>
+          </div>
+
+          <div>
             {(members ?? ([] as MemberRow[]))
               .filter((m) => m.role !== "customer")
-              .map((m) => (
-                <div key={m.id} className="rounded-xl border border-stone-200 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
+              .map((m, index, arr) => (
+                <div key={m.id} className="py-3 flex items-center justify-between gap-3 border-b border-stone-100 last:border-b-0">
+                  <div className="min-w-0 flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-stone-100 flex items-center justify-center shrink-0">
+                      <User className="h-4 w-4 text-stone-500" />
+                    </div>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-stone-900">{m.full_name ?? m.email ?? "—"}</div>
+                      <div className="truncate text-sm font-medium text-stone-950">{m.full_name ?? m.email ?? "—"}</div>
                       <div className="truncate text-xs text-stone-500">{m.email ?? m.mobile_number ?? "—"}</div>
                     </div>
-                    <div className="shrink-0 text-right text-xs">
-                      <div className="font-semibold text-stone-800">{m.role}</div>
-                      <div className={m.status === "SUSPENDED" ? "text-red-700" : "text-stone-600"}>{m.status}</div>
-                    </div>
+                  </div>
+                  <div className="shrink-0 text-right text-sm">
+                    <div className="font-medium text-stone-800 capitalize">{m.role}</div>
+                    <div className={`text-xs ${m.status === "SUSPENDED" ? "text-red-600" : "text-stone-500"}`}>{m.status}</div>
                   </div>
                 </div>
               ))}
-            {members && members.length === 0 ? <p className="text-sm text-stone-600">No members found.</p> : null}
+            {members && members.length === 0 ? <p className="text-sm text-stone-600 py-2">No members found.</p> : null}
           </div>
         </section>
       </div>
-
-      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-stone-950">Edit shop info (safe)</h2>
-        <p className="mt-1 text-sm text-stone-600">Update basic shop profile + invoice prefix/footer. No billing/inventory changes.</p>
-
-        <form action={superadminUpdateShopInfoAction} className="mt-4 grid gap-4">
-          <input type="hidden" name="shop_id" value={shop.id} />
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">Shop name</label>
-              <input name="name" defaultValue={shop.name} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" required />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">Logo URL</label>
-              <input name="logo_url" defaultValue={shop.logo_url ?? ""} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" />
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">Phone</label>
-              <input name="phone" defaultValue={shop.phone} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" required />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">Email</label>
-              <input name="email" type="email" defaultValue={shop.email} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" required />
-            </div>
-          </div>
-
-          <div className="grid gap-1">
-            <label className="text-sm font-medium text-stone-800">Address line 1</label>
-            <input name="address_line_1" defaultValue={shop.address_line_1} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" required />
-          </div>
-          <div className="grid gap-1">
-            <label className="text-sm font-medium text-stone-800">Address line 2</label>
-            <input name="address_line_2" defaultValue={shop.address_line_2 ?? ""} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" />
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">City</label>
-              <input name="city" defaultValue={shop.city} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" required />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">State</label>
-              <input name="state" defaultValue={shop.state} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" required />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">Postal code</label>
-              <input name="postal_code" defaultValue={shop.postal_code} className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" required />
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">Invoice prefix</label>
-              <input
-                name="invoice_prefix"
-                defaultValue={shopSettings?.invoice_prefix ?? ""}
-                className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm"
-                required
-              />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-sm font-medium text-stone-800">Invoice footer</label>
-              <InvoiceFooterLinesEditor
-                name="invoice_footer"
-                value={shopSettings?.invoice_footer ?? ""}
-                buttonLabel="Edit invoice footer lines"
-              />
-            </div>
-          </div>
-
-          <button type="submit" className="rounded-2xl bg-stone-950 py-3 text-sm font-semibold text-white hover:bg-stone-800">
-            Save shop info
-          </button>
-        </form>
-      </section>
 
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-stone-950">Recent invoices</h2>

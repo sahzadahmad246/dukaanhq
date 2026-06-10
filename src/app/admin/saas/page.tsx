@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { ArrowRight, Building2, FileText, Package, Tags, Users } from "lucide-react";
+import { ArrowRight, Building2, FileText, Package, Users } from "lucide-react";
 
-import { mergePlatformSettings } from "@/lib/subscription/access";
+import { cn } from "@/lib/utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type ShopRow = { id: string; name: string; slug: string; status: string; created_at: string };
@@ -12,19 +12,6 @@ type EntRow = {
   subscription_valid_until: string | null;
 };
 
-function StatusBadge({ value }: { value: string }) {
-  const classes =
-    value === "active"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : value === "trialing"
-        ? "border-sky-200 bg-sky-50 text-sky-800"
-        : value === "suspended" || value === "locked"
-          ? "border-rose-200 bg-rose-50 text-rose-800"
-          : "border-stone-200 bg-stone-50 text-stone-700";
-
-  return <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${classes}`}>{value}</span>;
-}
-
 export default async function SaasAdminPage({
   searchParams,
 }: {
@@ -32,9 +19,6 @@ export default async function SaasAdminPage({
 }) {
   const supabase = await createSupabaseServerClient();
   await searchParams;
-
-  const { data: settingsRow } = await supabase.from("saas_platform_settings").select("*").eq("id", 1).maybeSingle();
-  const settings = mergePlatformSettings(settingsRow ?? null);
 
   const [{ data: shops }, { count: totalShops }, { count: totalInvoices }, { count: totalProducts }, { count: totalMembers }] =
     await Promise.all([
@@ -50,161 +34,157 @@ export default async function SaasAdminPage({
     .select("shop_id, billing_status, trial_ends_at, subscription_valid_until");
   const entByShop = new Map((ents ?? []).map((e: EntRow) => [e.shop_id, e]));
 
-  const billingCounts = (ents ?? []).reduce(
-    (acc, ent: EntRow) => {
-      if (ent.billing_status === "trialing") acc.trialing += 1;
-      if (ent.billing_status === "active") acc.active += 1;
-      if (ent.billing_status === "locked") acc.locked += 1;
-      return acc;
-    },
-    { trialing: 0, active: 0, locked: 0 },
-  );
-
-  const price = new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: settings.plan_currency,
-    maximumFractionDigits: 0,
-  }).format(settings.plan_price_paise / 100);
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Super admin</p>
-          <h1 className="mt-2 text-3xl font-bold text-stone-950">SaaS home</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
-            Manage shops, subscriptions, trial access, and the plans that power DukaanHQ.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/admin/saas/shops"
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
-          >
-            <Building2 className="h-4 w-4" aria-hidden="true" />
-            Shops
-          </Link>
-          <Link
-            href="/admin/saas/plans"
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-stone-950 px-4 text-sm font-semibold text-white hover:bg-stone-800"
-          >
-            <Tags className="h-4 w-4" aria-hidden="true" />
-            Plans
-          </Link>
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {/* Modern 2-column stat cards (match shop dashboard visual language) */}
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {[
-          { label: "Total shops", value: totalShops ?? 0, icon: Building2 },
-          { label: "Team members", value: totalMembers ?? 0, icon: Users },
-          { label: "Products", value: totalProducts ?? 0, icon: Package },
-          { label: "Invoices", value: totalInvoices ?? 0, icon: FileText },
-        ].map((item) => {
+          { label: "Total shops", value: totalShops ?? 0, icon: Building2, bg: "#f0fdf4", border: "#bbf7d0", color: "#166534", blob: "#22c55e" },
+          { label: "Team members", value: totalMembers ?? 0, icon: Users, bg: "#f5f3ff", border: "#ddd6fe", color: "#6b21a8", blob: "#a855f7" },
+          { label: "Products", value: totalProducts ?? 0, icon: Package, bg: "#eff6ff", border: "#bfdbfe", color: "#1e40af", blob: "#3b82f6" },
+          { label: "Invoices", value: totalInvoices ?? 0, icon: FileText, bg: "#fff7ed", border: "#fed7aa", color: "#9a3412", blob: "#f97316" },
+        ].map((item, index) => {
           const Icon = item.icon;
           return (
-            <div key={item.label} className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-stone-500">{item.label}</p>
-                <Icon className="h-5 w-5 text-stone-400" aria-hidden="true" />
+            <div
+              key={index}
+              className="relative overflow-hidden rounded-2xl border p-4"
+              style={{ background: item.bg, borderColor: item.border }}
+            >
+              <div
+                className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-[0.08em]"
+                style={{ color: item.color }}
+              >
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                {item.label}
               </div>
-              <p className="mt-4 text-3xl font-bold text-stone-950">{item.value}</p>
+              <div className="mt-2 text-3xl font-extrabold tracking-[-0.04em] text-stone-950">{item.value}</div>
+              <div
+                className="absolute -bottom-2.5 -right-2.5 h-10 w-10 rounded-full"
+                style={{ background: item.blob, opacity: 0.22 }}
+              />
             </div>
           );
         })}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        <section className="rounded-lg border border-stone-200 bg-white shadow-sm xl:col-span-2">
-          <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-5 py-4">
-            <div>
-              <h2 className="text-base font-bold text-stone-950">Recent shops</h2>
-              <p className="mt-1 text-sm text-stone-500">Latest tenants and their billing state.</p>
-            </div>
-            <Link href="/admin/saas/shops" className="inline-flex items-center gap-1 text-sm font-semibold text-stone-700 hover:text-stone-950">
-              View all <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
+      {/* Recent shops — 1 col on mobile, 2 cols on desktop.
+          Each shop has top info (name/slug + ends date) + three beautiful mini cards below (value on top, label on bottom).
+          Horizontal lines separate rows of shops, vertical line separates the two columns.
+          Lines are single (no duplicates) thanks to the grid + strategic borders + outer container. */}
+      <section className="rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-stone-500" aria-hidden="true" />
+            <h2 className="text-base font-bold text-stone-950">Recent shops</h2>
           </div>
+          <Link href="/admin/saas/shops" className="inline-flex items-center gap-1 text-sm font-semibold text-stone-700 hover:text-stone-950">
+            View all <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-stone-200 bg-stone-50 text-xs font-semibold uppercase tracking-wide text-stone-500">
-                  <th className="px-5 py-3">Shop</th>
-                  <th className="px-5 py-3">Shop status</th>
-                  <th className="px-5 py-3">Billing</th>
-                  <th className="px-5 py-3">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(shops ?? ([] as ShopRow[])).map((shop) => {
-                  const ent = entByShop.get(shop.id);
-                  return (
-                    <tr key={shop.id} className="border-b border-stone-100 last:border-0">
-                      <td className="px-5 py-3">
-                        <Link href={`/admin/saas/shops/${shop.id}`} className="font-semibold text-stone-950 hover:underline">
-                          {shop.name}
-                        </Link>
-                        <div className="text-xs text-stone-500">{shop.slug}</div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <StatusBadge value={shop.status ?? "unknown"} />
-                      </td>
-                      <td className="px-5 py-3">
-                        <StatusBadge value={ent?.billing_status ?? "none"} />
-                      </td>
-                      <td className="px-5 py-3 text-stone-600">{new Date(shop.created_at).toLocaleDateString("en-IN")}</td>
-                    </tr>
-                  );
-                })}
-                {shops && shops.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-5 py-10 text-center text-sm text-stone-600">
-                      No shops are visible. Apply <code className="font-mono">db/032_superadmin_rls_read_access.sql</code> if shops exist.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        {(shops ?? []).length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2">
+            {(shops as ShopRow[]).map((shop, index, arr) => {
+              const ent = entByShop.get(shop.id) as EntRow | undefined;
+              const isLast = index === arr.length - 1;
+              const isRightColumn = (index + 1) % 2 === 0;
 
-        <section className="space-y-5">
-          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-bold text-stone-950">Current default offer</h2>
-            <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
-              <p className="text-sm font-semibold text-stone-500">{settings.plan_display_name}</p>
-              <p className="mt-2 text-3xl font-bold text-stone-950">{price}</p>
-              <p className="mt-1 text-sm text-stone-600">per month before tax</p>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg bg-sky-50 p-3">
-                <p className="text-xl font-bold text-sky-900">{billingCounts.trialing}</p>
-                <p className="text-xs font-semibold text-sky-700">Trial</p>
-              </div>
-              <div className="rounded-lg bg-emerald-50 p-3">
-                <p className="text-xl font-bold text-emerald-900">{billingCounts.active}</p>
-                <p className="text-xs font-semibold text-emerald-700">Active</p>
-              </div>
-              <div className="rounded-lg bg-rose-50 p-3">
-                <p className="text-xl font-bold text-rose-900">{billingCounts.locked}</p>
-                <p className="text-xs font-semibold text-rose-700">Locked</p>
-              </div>
-            </div>
-          </div>
+              // Helper for 3-letter lowercase month (jan, feb, etc.)
+              const formatShortDate = (dateStr: string) => {
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return "—";
+                const day = d.getDate();
+                const mon = d.toLocaleString("en-IN", { month: "short" }).toLowerCase().slice(0, 3);
+                const yr = d.getFullYear();
+                return `${day} ${mon} ${yr}`;
+              };
 
-          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-bold text-stone-950">Trial model</h2>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
-              Trial is still a platform-level setting for now. Plans now hold pricing and entitlements, and the next subscription pass can
-              connect shops to the selected plan.
-            </p>
-            <Link href="/admin/saas/plans" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-stone-950 hover:underline">
-              Manage plans <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
+              const joined = formatShortDate(shop.created_at);
+
+              let endsDate = "—";
+              if (ent?.trial_ends_at) {
+                endsDate = formatShortDate(ent.trial_ends_at);
+              } else if (ent?.subscription_valid_until) {
+                endsDate = formatShortDate(ent.subscription_valid_until);
+              }
+
+              const billingStatus = ent?.billing_status ?? "none";
+
+              return (
+                <Link
+                  key={shop.id}
+                  href={`/admin/saas/shops/${shop.id}`}
+                  className={cn(
+                    "block p-4 hover:bg-stone-50 active:bg-stone-100 transition-colors",
+                    "border-b border-r border-stone-200",
+                    "last:border-b-0",
+                    isRightColumn && "lg:border-r-0",
+                    "lg:[&:nth-last-child(-n+2)]:border-b-0"
+                  )}
+                >
+                  {/* Top: name + slug (left) | membership ends date + arrow (right) */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-stone-950 truncate">{shop.name}</div>
+                      <div className="text-xs font-mono text-stone-500">{shop.slug}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-stone-700 flex-shrink-0 text-right">
+                      {endsDate}
+                      <ArrowRight className="h-4 w-4 text-stone-400" />
+                    </div>
+                  </div>
+
+                  {/* Lower part: three narrower cards spread evenly across the width.
+                      Equal space on sides + between cards (using flex-1 spacers).
+                      Each card has reduced fixed width.
+                      Different bg for value (top) vs label (bottom) + separator line between them. */}
+                  <div className="mt-3 flex items-center">
+                    <div className="flex-1" />
+                    {/* Joined mini card — wider because date is longer (e.g. "12 jan 2026") */}
+                    <div className="w-[92px] overflow-hidden rounded-lg border border-stone-200 text-center">
+                      <div className="bg-white py-1.5">
+                        <div className="text-sm font-semibold text-stone-950 tabular-nums">{joined}</div>
+                      </div>
+                      <div className="h-px bg-stone-200" />
+                      <div className="bg-stone-100 py-1">
+                        <div className="text-[9px] font-medium uppercase tracking-[0.6px] text-stone-400">Joined at</div>
+                      </div>
+                    </div>
+                    <div className="flex-1" />
+                    {/* Status mini card — neutral, narrower */}
+                    <div className="w-[72px] overflow-hidden rounded-lg border border-stone-200 text-center">
+                      <div className="bg-white py-1.5">
+                        <div className="text-sm font-semibold text-stone-700">{shop.status ?? "unknown"}</div>
+                      </div>
+                      <div className="h-px bg-stone-200" />
+                      <div className="bg-stone-100 py-1">
+                        <div className="text-[9px] font-medium uppercase tracking-[0.6px] text-stone-400">Status</div>
+                      </div>
+                    </div>
+                    <div className="flex-1" />
+                    {/* Billing mini card — neutral, narrower */}
+                    <div className="w-[72px] overflow-hidden rounded-lg border border-stone-200 text-center">
+                      <div className="bg-white py-1.5">
+                        <div className="text-sm font-semibold text-stone-700">{billingStatus}</div>
+                      </div>
+                      <div className="h-px bg-stone-200" />
+                      <div className="bg-stone-100 py-1">
+                        <div className="text-[9px] font-medium uppercase tracking-[0.6px] text-stone-400">Billing</div>
+                      </div>
+                    </div>
+                    <div className="flex-1" />
+                  </div>
+                </Link>
+              );
+            })}
           </div>
-        </section>
-      </div>
+        ) : (
+          <div className="px-5 py-8 text-center text-sm text-stone-600 border-t border-stone-200">
+            No shops are visible. Apply <code className="font-mono">db/032_superadmin_rls_read_access.sql</code> if shops exist.
+          </div>
+        )}
+      </section>
     </div>
   );
 }
