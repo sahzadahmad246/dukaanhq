@@ -54,6 +54,30 @@ const GENERIC_STORAGE_PRESETS = [
   "2TB",
 ];
 
+export const STORAGE_PRESET_NA = "NA";
+export const STORAGE_MANUAL_ENTRY_LABEL = "Add manually";
+
+const BASIC_PHONE_STORAGE_PRESETS = [
+  "4MB",
+  "8MB",
+  "16MB",
+  "32MB",
+  "64MB",
+  "128MB",
+  "256MB",
+  "512MB",
+  STORAGE_PRESET_NA,
+  STORAGE_MANUAL_ENTRY_LABEL,
+];
+
+function withMobileStorageUtilityOptions(presets: string[]) {
+  return [...presets, STORAGE_PRESET_NA, STORAGE_MANUAL_ENTRY_LABEL];
+}
+
+export function isBasicPhoneCategory(categoryName?: string | null) {
+  return (categoryName ?? "").trim().toLowerCase() === "basic phone";
+}
+
 export function buildVariantLabel(variant: VariantLike) {
   const storage = (variant.storage_label ?? "").trim();
   const color = (variant.color ?? "").trim();
@@ -77,14 +101,22 @@ export function buildVariantLabel(variant: VariantLike) {
 export function getStoragePresetOptions({
   productKind,
   brandName,
+  categoryName,
 }: {
   productKind: ProductKind | null;
   brandName?: string | null;
+  categoryName?: string | null;
 }) {
   const normalizedBrand = (brandName ?? "").trim().toLowerCase();
 
   if (productKind === "MOBILE") {
-    return normalizedBrand === "apple" ? APPLE_STORAGE_PRESETS : SMARTPHONE_STORAGE_PRESETS;
+    if (isBasicPhoneCategory(categoryName)) {
+      return BASIC_PHONE_STORAGE_PRESETS;
+    }
+
+    return withMobileStorageUtilityOptions(
+      normalizedBrand === "apple" ? APPLE_STORAGE_PRESETS : SMARTPHONE_STORAGE_PRESETS
+    );
   }
 
   return GENERIC_STORAGE_PRESETS;

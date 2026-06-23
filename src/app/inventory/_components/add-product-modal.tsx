@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { buildVariantLabel, getStoragePresetOptions } from "@/lib/inventory-labels";
+import { buildVariantLabel, getStoragePresetOptions, isBasicPhoneCategory } from "@/lib/inventory-labels";
 import { cn } from "@/lib/utils";
 import { ActionResponse, createProductAction, updateProductAction } from "../actions";
 import { BarcodeScanner } from "./barcode-scanner";
@@ -177,6 +177,7 @@ const PRESET_BRAND_NAMES = [
 
 const PRESET_CATEGORY_NAMES = [
   "Mobile Phones",
+  "Basic Phone",
   "Feature Phones",
   "Smartphones",
   "Chargers",
@@ -762,13 +763,19 @@ export function AddProductModal({
     brandMode === "existing"
       ? getBrandNameFromSelection(selectedBrandId, brands)
       : newBrandName;
+  const selectedCategoryName =
+    categoryMode === "existing"
+      ? getCategoryNameFromSelection(selectedCategoryId, categories)
+      : newCategoryName;
+  const isBasicPhone = isBasicPhoneCategory(selectedCategoryName);
   const storagePresets = useMemo(
     () =>
       getStoragePresetOptions({
         productKind: selectedProfile,
         brandName: selectedBrandName,
+        categoryName: selectedCategoryName,
       }),
-    [selectedBrandName, selectedProfile]
+    [selectedBrandName, selectedCategoryName, selectedProfile]
   );
   const mobileTemplateOptions = useMemo(
     () =>
@@ -1535,7 +1542,12 @@ export function AddProductModal({
     }
 
     if (selectedProfile !== "QUANTITY_BASED" && !variant.storage.trim()) {
-      nextErrors.storage = selectedProfile === "MOBILE" ? "Storage / RAM is required." : "Size / Storage is required.";
+      nextErrors.storage =
+        selectedProfile === "MOBILE"
+          ? isBasicPhone
+            ? "Storage is required."
+            : "Storage / RAM is required."
+          : "Size / Storage is required.";
     }
 
     if (selectedProfile === "MOBILE" || selectedProfile === "QUANTITY_BASED") {
@@ -2257,7 +2269,13 @@ export function AddProductModal({
                   </Field>
                   {selectedProfile !== "QUANTITY_BASED" ? (
                     <Field
-                      label={selectedProfile === "MOBILE" ? "Storage / RAM" : "Size / Storage"}
+                      label={
+                        selectedProfile === "MOBILE"
+                          ? isBasicPhone
+                            ? "Storage"
+                            : "Storage / RAM"
+                          : "Size / Storage"
+                      }
                       required
                       error={variantModalErrors.storage}
                     >
@@ -2265,7 +2283,13 @@ export function AddProductModal({
                         value={variant.storage}
                         onChange={(nextValue) => setVariantDraftField("storage", nextValue)}
                         presets={storagePresets}
-                        placeholder={selectedProfile === "MOBILE" ? "Select or type storage" : "Select or type size"}
+                        placeholder={
+                          selectedProfile === "MOBILE"
+                            ? isBasicPhone
+                              ? "Select or type storage (MB)"
+                              : "Select or type storage"
+                            : "Select or type size"
+                        }
                       />
                     </Field>
                   ) : null}

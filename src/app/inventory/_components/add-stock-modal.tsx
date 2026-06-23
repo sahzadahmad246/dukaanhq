@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { buildVariantLabel, getStoragePresetOptions } from "@/lib/inventory-labels";
+import { buildVariantLabel, getStoragePresetOptions, isBasicPhoneCategory } from "@/lib/inventory-labels";
 import { addInventoryStockAction } from "../actions";
 import { fetchProductDetails, productDetailsQueryKey } from "../queries";
 import { BarcodeScanner } from "./barcode-scanner";
@@ -106,13 +106,15 @@ export function AddStockModal({
 
   const isQuantityBased = product?.tracking_type === "QUANTITY_BASED";
   const isMobile = product?.product_kind === "MOBILE";
+  const isBasicPhone = isBasicPhoneCategory(product?.category?.name);
   const storagePresets = useMemo(
     () =>
       getStoragePresetOptions({
         productKind: product?.product_kind ?? null,
         brandName: product?.brand?.name,
+        categoryName: product?.category?.name,
       }),
-    [product?.brand?.name, product?.product_kind]
+    [product?.brand?.name, product?.category?.name, product?.product_kind]
   );
   const resolvedVariantId = selectedVariantId || product?.variants?.[0]?.id || "";
   const variantStockMap = useMemo(() => {
@@ -252,14 +254,20 @@ export function AddStockModal({
                   </div>
                   <div>
                     <Label className="text-xs uppercase tracking-[0.12em] text-stone-500">
-                      {product.product_kind === "MOBILE" ? "Storage / RAM" : "Storage / Spec"}
+                      {product.product_kind === "MOBILE" ? (isBasicPhone ? "Storage" : "Storage / RAM") : "Storage / Spec"}
                     </Label>
                     <div className="mt-2">
                       <StoragePresetPicker
                       value={storageLabel}
                         onChange={setStorageLabel}
                         presets={storagePresets}
-                        placeholder={product.product_kind === "MOBILE" ? "Select or type storage" : "Select or type size / storage"}
+                        placeholder={
+                          product.product_kind === "MOBILE"
+                            ? isBasicPhone
+                              ? "Select or type storage (MB)"
+                              : "Select or type storage"
+                            : "Select or type size / storage"
+                        }
                       />
                     </div>
                   </div>

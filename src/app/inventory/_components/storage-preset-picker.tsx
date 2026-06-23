@@ -4,6 +4,7 @@ import { ChevronsUpDown, Check } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
+import { STORAGE_MANUAL_ENTRY_LABEL } from "@/lib/inventory-labels";
 import { cn } from "@/lib/utils";
 
 export function StoragePresetPicker({
@@ -20,6 +21,7 @@ export function StoragePresetPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setQuery(value);
@@ -46,6 +48,7 @@ export function StoragePresetPicker({
     <div ref={rootRef} className="relative">
       <div className="relative">
         <Input
+          ref={inputRef}
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
@@ -71,19 +74,29 @@ export function StoragePresetPicker({
           <div className="max-h-64 overflow-y-auto p-2">
             {filteredPresets.length > 0 ? (
               filteredPresets.map((preset) => {
-                const active = preset === value;
+                const isManualEntry = preset === STORAGE_MANUAL_ENTRY_LABEL;
+                const active = !isManualEntry && preset === value;
                 return (
                   <button
                     key={preset}
                     type="button"
                     onClick={() => {
+                      if (isManualEntry) {
+                        onChange("");
+                        setQuery("");
+                        setOpen(false);
+                        inputRef.current?.focus();
+                        return;
+                      }
+
                       onChange(preset);
                       setQuery(preset);
                       setOpen(false);
                     }}
                     className={cn(
                       "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition",
-                      active ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-50"
+                      active ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-50",
+                      isManualEntry ? "border-t border-stone-100 text-stone-500" : null
                     )}
                   >
                     <span>{preset}</span>

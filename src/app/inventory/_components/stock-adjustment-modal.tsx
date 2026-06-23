@@ -138,8 +138,9 @@ export function StockAdjustmentModal({
       getStoragePresetOptions({
         productKind: product?.product_kind ?? null,
         brandName: product?.brand?.name,
+        categoryName: product?.category?.name,
       }),
-    [product?.brand?.name, product?.product_kind]
+    [product?.brand?.name, product?.category?.name, product?.product_kind]
   );
 
   const availableAdjustmentOptions = isSerialized
