@@ -1,6 +1,7 @@
 "use client";
 
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { formatVariantLabelForDisplay } from "@/lib/inventory-labels";
 
 export type PrintableInvoice = {
   invoice_number: string;
@@ -379,13 +380,14 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   const items = (invoice.invoice_items ?? []).map((item, index) => {
     const isFreeGift = isFreeQuickInvoiceItem(item);
     const originalLineTotal = Number(item.quantity) * Number(item.unit_price);
+    const variantMeta = formatVariantLabelForDisplay(item.variant_name_snapshot);
 
     return {
       index: index + 1,
       name: sanitizeForPdf(item.product_name_snapshot),
       meta: [
         isFreeGift ? "FREE ITEM" : null,
-        item.variant_name_snapshot ? sanitizeForPdf(item.variant_name_snapshot) : null,
+        variantMeta ? sanitizeForPdf(variantMeta) : null,
         ...(item.identifier_snapshot
           ? sanitizeForPdf(item.identifier_snapshot)
               .replace(/(?:\s*,\s*|\s*\/\s*|\s*•\s*|\s+)(imei\s*2)/i, "\n$1")

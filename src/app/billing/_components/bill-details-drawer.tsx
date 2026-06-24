@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { Download, Loader2, MoreVertical, Pencil, PhoneCall, Receipt, Send, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
+import { formatVariantLabelForDisplay } from "@/lib/inventory-labels";
 import { downloadExternalPdf, type PrintableInvoice } from "./invoice-print";
 
 type InvoiceDetails = PrintableInvoice & {
@@ -331,9 +332,17 @@ export function BillDetailsDrawer({
                               </span>
                             ) : null}
                           </div>
-                          {buildLineMeta([item.brand_name_snapshot, item.variant_name_snapshot, item.identifier_snapshot]) ? (
+                          {buildLineMeta([
+                            item.brand_name_snapshot,
+                            formatVariantLabelForDisplay(item.variant_name_snapshot),
+                            item.identifier_snapshot,
+                          ]) ? (
                             <div className="mt-1 text-xs text-stone-500">
-                              {buildLineMeta([item.brand_name_snapshot, item.variant_name_snapshot, item.identifier_snapshot])}
+                              {buildLineMeta([
+                                item.brand_name_snapshot,
+                                formatVariantLabelForDisplay(item.variant_name_snapshot),
+                                item.identifier_snapshot,
+                              ])}
                             </div>
                           ) : null}
                         </div>

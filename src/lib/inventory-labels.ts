@@ -57,6 +57,22 @@ const GENERIC_STORAGE_PRESETS = [
 export const STORAGE_PRESET_NA = "NA";
 export const STORAGE_MANUAL_ENTRY_LABEL = "Add manually";
 
+export function isNotApplicableStorageLabel(value?: string | null) {
+  return (value ?? "").trim().toUpperCase() === STORAGE_PRESET_NA;
+}
+
+export function formatVariantLabelForDisplay(label?: string | null) {
+  if (!label?.trim()) return null;
+
+  const parts = label
+    .split(" / ")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !isNotApplicableStorageLabel(part));
+
+  return parts.length > 0 ? parts.join(" / ") : null;
+}
+
 const BASIC_PHONE_STORAGE_PRESETS = [
   "4MB",
   "8MB",
@@ -83,7 +99,10 @@ export function buildVariantLabel(variant: VariantLike) {
   const color = (variant.color ?? "").trim();
   const normalizedName = (variant.name ?? "").trim();
 
-  const parts = [storage, color].filter(Boolean);
+  const parts = [
+    !isNotApplicableStorageLabel(storage) ? storage : null,
+    color,
+  ].filter(Boolean) as string[];
   const nameLooksDefault = normalizedName.toLowerCase() === "default";
   const nameAlreadyRepresented =
     !normalizedName ||

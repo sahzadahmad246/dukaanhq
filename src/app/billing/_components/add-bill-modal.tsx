@@ -19,7 +19,7 @@ const COUNTRY_CODES = [
   { code: "+65", label: "🇸🇬 (+65)" },
   { code: "+60", label: "🇲🇾 (+60)" },
 ];
-import { buildVariantLabel } from "@/lib/inventory-labels";
+import { buildVariantLabel, formatVariantLabelForDisplay } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
 import { createInvoiceAction, updateInvoiceAction } from "../actions";
@@ -852,7 +852,7 @@ function LineEditor({
                           {isActive && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
                         </div>
                         <span className={`text-[13px] font-bold leading-none ${isDisabled ? "text-stone-400" : isActive ? "text-stone-900" : "text-stone-700"}`}>
-                          {[variant.color, variant.storage_label, variant.name].filter(Boolean).join(" - ") || "Default Option"}
+                          {buildVariantLabel(variant)?.replace(/ \/ /g, " - ") ?? "Default Option"}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
@@ -2072,14 +2072,18 @@ export function AddBillModal({
 
               <PreviewCard title="Items" actionLabel="Edit" onAction={() => setCurrentStep("products")}>
                 <div>
-                  {preparedLines.map((line, index) => (
+                  {preparedLines.map((line, index) => {
+                    const variantLabel = formatVariantLabelForDisplay(line.variant_name_snapshot);
+                    return (
                     <div key={`${line.product_id}-${index}`}>
                       {index > 0 ? <div className="mx-1 h-px bg-stone-100" /> : null}
                       <div className="py-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-bold text-stone-900 leading-snug">{line.product_name_snapshot}</p>
-                            {line.variant_name_snapshot ? <p className="mt-1 text-[13px] font-semibold text-stone-500">{line.variant_name_snapshot}</p> : null}
+                            {variantLabel ? (
+                              <p className="mt-1 text-[13px] font-semibold text-stone-500">{variantLabel}</p>
+                            ) : null}
                             {buildPreviewIdentifierLines(line.identifier_snapshot).length > 0 ? (
                               <div className="mt-1.5 space-y-0.5">
                                 {buildPreviewIdentifierLines(line.identifier_snapshot).map((identifier) => (
@@ -2099,7 +2103,8 @@ export function AddBillModal({
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </PreviewCard>
 
