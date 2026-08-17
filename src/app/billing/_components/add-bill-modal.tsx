@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Gift, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
+import { Calendar, Check, ChevronLeft, ChevronRight, Gift, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
@@ -196,6 +196,7 @@ type StoredBillDraft = {
   basicPdfSignatureMode: BasicPdfSignatureMode;
   customerSignatureDataUrl: string | null;
   notes: string;
+  invoiceDateTime: string;
   lines: BillingLineDraft[];
 };
 
@@ -245,6 +246,7 @@ function readStoredBillDraft() {
       basicPdfSignatureMode: parsed.basicPdfSignatureMode === "electronic" ? "electronic" : "placeholders",
       customerSignatureDataUrl: typeof parsed.customerSignatureDataUrl === "string" ? parsed.customerSignatureDataUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : "",
+      invoiceDateTime: typeof parsed.invoiceDateTime === "string" ? parsed.invoiceDateTime : "",
       lines: parsed.lines.map((line) => normalizeDraftLine(line)),
     } satisfies StoredBillDraft;
   } catch {
@@ -261,11 +263,48 @@ function money(value: number) {
   return `Rs ${Number(value || 0).toFixed(2)}`;
 }
 
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function toDatetimeLocalValue(date: Date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+}
+
+function parseDatetimeLocalValue(value: string) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function splitDatetimeLocalValue(value: string) {
+  const [datePart = "", timePart = ""] = value.split("T");
+  return { datePart, timePart };
+}
+
+function combineDatetimeLocalValue(datePart: string, timePart: string) {
+  return `${datePart}T${timePart || "00:00"}`;
+}
+
+function formatInvoiceDatePreview(value: string) {
+  const parsed = parseDatetimeLocalValue(value);
+  if (!parsed) return "Not set";
+  return parsed.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function getStepHint(currentStep: StepId, itemCount: number) {
   if (currentStep === "customer") return "Fill customer details to continue.";
   if (currentStep === "products") return itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"} ready. Review products and payment before preview.` : "Add products and payment details to continue.";
   if (currentStep === "delivery") return "Choose how the invoice should be delivered and capture a customer signature if needed.";
-  return "Preview the bill carefully before saving and downloading.";
+  return "Preview the bill carefully before saving. Change the date if this sale happened earlier.";
 }
 
 function bytesToBase64(bytes: Uint8Array) {
@@ -1087,6 +1126,8 @@ export function AddBillModal({
   const [pendingPaymentDraft, setPendingPaymentDraft] = useState<PaymentDraft>(createEmptyPaymentDraft());
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
+  const [invoiceDateTime, setInvoiceDateTime] = useState(() => toDatetimeLocalValue(new Date()));
+  const [invoiceDateTouched, setInvoiceDateTouched] = useState(false);
   const [lines, setLines] = useState<BillingLineDraft[]>([]);
   const [clientError, setClientError] = useState("");
   const [state, setState] = useState<ActionResponse>({ status: "success", message: "" });
@@ -1167,6 +1208,8 @@ export function AddBillModal({
         setBasicPdfSignatureMode("placeholders");
         setCustomerSignatureDataUrl(allowDigitalInvoiceAssets ? invoiceToEdit.customer_signature_url || null : null);
         setNotes(invoiceToEdit.notes || "");
+        setInvoiceDateTime(toDatetimeLocalValue(new Date(invoiceToEdit.invoice_date)));
+        setInvoiceDateTouched(true);
         setLines(
           (invoiceToEdit.invoice_items || []).map((item) => {
             const imeiParts = (item.identifier_snapshot || "").split(" • ").map(p => p.split(": ")[1] || p.trim());
@@ -1197,6 +1240,8 @@ export function AddBillModal({
         setBasicPdfSignatureMode(existingDraft?.basicPdfSignatureMode ?? "placeholders");
         setCustomerSignatureDataUrl(allowDigitalInvoiceAssets ? existingDraft?.customerSignatureDataUrl ?? null : null);
         setNotes("");
+        setInvoiceDateTime(toDatetimeLocalValue(new Date()));
+        setInvoiceDateTouched(false);
         setLines([]);
         setCurrentStep("customer");
         setSavedDraft(existingDraft);
@@ -1241,11 +1286,17 @@ export function AddBillModal({
       basicPdfSignatureMode,
       customerSignatureDataUrl,
       notes,
+      invoiceDateTime,
       lines,
     };
 
     window.localStorage.setItem(BILL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
-  }, [basicPdfSignatureMode, currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceToEdit, lines, notes, open, paymentDraft]);
+  }, [basicPdfSignatureMode, currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceDateTime, invoiceToEdit, lines, notes, open, paymentDraft]);
+
+  useEffect(() => {
+    if (!open || currentStep !== "preview" || invoiceDateTouched || invoiceToEdit) return;
+    setInvoiceDateTime(toDatetimeLocalValue(new Date()));
+  }, [currentStep, invoiceDateTouched, invoiceToEdit, open]);
 
   if (!open) return null;
 
@@ -1317,6 +1368,10 @@ export function AddBillModal({
     { subtotal: 0, discount: 0, tax: 0, total: 0 }
   );
 
+  const nowDatetimeLocal = toDatetimeLocalValue(new Date());
+  const { datePart: todayDate, timePart: nowTime } = splitDatetimeLocalValue(nowDatetimeLocal);
+  const { datePart: invoiceDatePart, timePart: invoiceTimePart } = splitDatetimeLocalValue(invoiceDateTime);
+
   function openNewProductDialog() {
     setDraftLine(createLine());
     setEditingLineId(null);
@@ -1357,6 +1412,14 @@ export function AddBillModal({
     setBasicPdfSignatureMode(savedDraft.basicPdfSignatureMode);
     setCustomerSignatureDataUrl(savedDraft.customerSignatureDataUrl);
     setNotes(savedDraft.notes);
+    const restoredInvoiceDate = parseDatetimeLocalValue(savedDraft.invoiceDateTime);
+    if (restoredInvoiceDate && restoredInvoiceDate.getTime() <= Date.now() + 60_000) {
+      setInvoiceDateTime(toDatetimeLocalValue(restoredInvoiceDate));
+      setInvoiceDateTouched(true);
+    } else {
+      setInvoiceDateTime(toDatetimeLocalValue(new Date()));
+      setInvoiceDateTouched(false);
+    }
     setLines(savedDraft.lines.map((line) => normalizeDraftLine(line)));
     setCurrentStep(savedDraft.currentStep);
     setShowRestorePrompt(false);
@@ -1601,6 +1664,18 @@ export function AddBillModal({
       }
     }
 
+    if (step === "preview") {
+      const parsedInvoiceDate = parseDatetimeLocalValue(invoiceDateTime);
+      if (!parsedInvoiceDate) {
+        setClientError("Choose a valid bill date and time.");
+        return false;
+      }
+      if (parsedInvoiceDate.getTime() > Date.now() + 60_000) {
+        setClientError("Bill date cannot be in the future.");
+        return false;
+      }
+    }
+
     setClientError("");
     return true;
   }
@@ -1672,6 +1747,7 @@ export function AddBillModal({
           customer_signature_url: !allowDigitalInvoiceAssets || !allowWhatsappInvoiceSending || deliveryMode === "download" ? null : customerSignatureUrl,
           send_ready_pdf_url: null,
           notes,
+          invoice_date: parseDatetimeLocalValue(invoiceDateTime)?.toISOString() ?? new Date().toISOString(),
         };
 
         const formData = new FormData();
@@ -2010,6 +2086,64 @@ export function AddBillModal({
           {currentStep === "preview" ? (
             <section className="space-y-4 py-2">
               <StepTitle step={4} title="Preview" />
+              <PreviewCard
+                title="Bill Date"
+                actionLabel="Use now"
+                onAction={() => {
+                  setInvoiceDateTime(toDatetimeLocalValue(new Date()));
+                  setInvoiceDateTouched(true);
+                }}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-stone-400" />
+                    <p className="text-sm font-semibold text-stone-900">{formatInvoiceDatePreview(invoiceDateTime)}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Date">
+                      <Input
+                        type="date"
+                        value={invoiceDatePart}
+                        max={todayDate}
+                        className="rounded-xl border-stone-200 bg-stone-50"
+                        onChange={(event) => {
+                          const nextDate = event.target.value;
+                          if (!nextDate) return;
+                          const latestNow = toDatetimeLocalValue(new Date());
+                          const { datePart: latestToday, timePart: latestNowTime } = splitDatetimeLocalValue(latestNow);
+                          let nextTime = invoiceTimePart || latestNowTime;
+                          if (nextDate === latestToday && nextTime > latestNowTime) {
+                            nextTime = latestNowTime;
+                          }
+                          setInvoiceDateTime(combineDatetimeLocalValue(nextDate, nextTime));
+                          setInvoiceDateTouched(true);
+                        }}
+                      />
+                    </Field>
+                    <Field label="Time">
+                      <Input
+                        type="time"
+                        value={invoiceTimePart}
+                        max={invoiceDatePart === todayDate ? nowTime : undefined}
+                        className="rounded-xl border-stone-200 bg-stone-50"
+                        onChange={(event) => {
+                          const nextTime = event.target.value;
+                          if (!nextTime) return;
+                          const nextDate = invoiceDatePart || todayDate;
+                          const latestNow = toDatetimeLocalValue(new Date());
+                          const { datePart: latestToday, timePart: latestNowTime } = splitDatetimeLocalValue(latestNow);
+                          const clampedTime = nextDate === latestToday && nextTime > latestNowTime ? latestNowTime : nextTime;
+                          setInvoiceDateTime(combineDatetimeLocalValue(nextDate, clampedTime));
+                          setInvoiceDateTouched(true);
+                        }}
+                      />
+                    </Field>
+                  </div>
+                  <p className="text-xs font-medium text-stone-500">
+                    Defaults to the current date and time. You can change it to any past date and time.
+                  </p>
+                </div>
+              </PreviewCard>
               <PreviewCard title="Customer Details" actionLabel="Edit" onAction={() => setCurrentStep("customer")}>
                 <div>
                   <PreviewField label="Customer" value={customer.name} />

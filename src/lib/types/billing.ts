@@ -65,6 +65,7 @@ export const CreateInvoicePayloadSchema = z.object({
   customer_signature_url: z.string().url().optional().nullable(),
   send_ready_pdf_url: z.string().url().optional().nullable(),
   notes: z.string().optional().nullable(),
+  invoice_date: z.string().optional().nullable(),
 });
 export type CreateInvoicePayload = z.infer<typeof CreateInvoicePayloadSchema>;
 

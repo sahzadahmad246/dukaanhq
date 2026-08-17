@@ -47,6 +47,40 @@ function mapInvoiceError(raw: string): string {
   return `Something went wrong while creating the bill. Please try again. [${raw}]`;
 }
 
+const FUTURE_DATE_GRACE_MS = 2 * 60 * 1000;
+
+function resolveInvoiceDate(value: string | null | undefined) {
+  if (!value) {
+    return { ok: true as const, iso: new Date().toISOString() };
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return { ok: false as const, message: "Choose a valid bill date and time." };
+  }
+
+  if (parsed.getTime() > Date.now() + FUTURE_DATE_GRACE_MS) {
+    return { ok: false as const, message: "Bill date cannot be in the future." };
+  }
+
+  return { ok: true as const, iso: parsed.toISOString() };
+}
+
+async function applyInvoiceDate(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  shopId: string,
+  invoiceId: string,
+  invoiceDateIso: string
+) {
+  const { error } = await supabase
+    .from("invoices")
+    .update({ invoice_date: invoiceDateIso })
+    .eq("id", invoiceId)
+    .eq("shop_id", shopId);
+
+  return error;
+}
+
 export async function createInvoiceAction(
   _prevState: ActionResponse,
   formData: FormData
@@ -66,6 +100,11 @@ export async function createInvoiceAction(
   }
 
   const payload = payloadResult.data;
+  const invoiceDate = resolveInvoiceDate(payload.invoice_date);
+  if (!invoiceDate.ok) {
+    return { status: "error", message: invoiceDate.message };
+  }
+
   const supabase = await createSupabaseServerClient();
   const invoiceLimit = await checkPlanLimit(supabase, shop.id, "invoices_per_month");
   if (!invoiceLimit.ok) {
@@ -92,6 +131,8 @@ export async function createInvoiceAction(
     const friendly = mapInvoiceError(raw);
     return { status: "error", message: friendly };
   }
+
+  await applyInvoiceDate(supabase, shop.id, invoiceId, invoiceDate.iso);
 
   const { data: invoice } = await supabase
     .from("invoices")
@@ -170,6 +211,11 @@ export async function updateInvoiceAction(
   }
 
   const payload = payloadResult.data;
+  const invoiceDate = resolveInvoiceDate(payload.invoice_date);
+  if (!invoiceDate.ok) {
+    return { status: "error", message: invoiceDate.message };
+  }
+
   const supabase = await createSupabaseServerClient();
   const signatureAccess = await checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices");
   const stampAccess = await checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices");
@@ -188,6 +234,11 @@ export async function updateInvoiceAction(
 
   if (error || !updatedId) {
     return { status: "error", message: mapInvoiceError(error?.message || "Failed to edit invoice.") };
+  }
+
+  const dateError = await applyInvoiceDate(supabase, shop.id, updatedId, invoiceDate.iso);
+  if (dateError) {
+    return { status: "error", message: dateError.message || "Invoice updated, but the bill date could not be saved." };
   }
 
   const { data: invoice } = await supabase
