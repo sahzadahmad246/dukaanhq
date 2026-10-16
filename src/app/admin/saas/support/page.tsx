@@ -8,7 +8,7 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
   const db = await getAdminReadClient(), params = await searchParams;
   const page = pageNumber(params.page), queue = params.queue === "all" ? "all" : "attention";
   let eventQuery = db.from("subscription_events").select("id, event_type, processed_status, processed_message, shop_id, created_at", { count: "exact" }).order("created_at", { ascending: false }).order("id").range((page - 1) * 25, page * 25 - 1);
-  if (queue === "attention") eventQuery = eventQuery.in("processed_status", ["received", "failed", "error", "locked"]);
+  if (queue === "attention") eventQuery = eventQuery.in("processed_status", ["received", "failed", "error", "locked", "pricing_mismatch"]);
   const [events, overdue, intents, lockedCount, failedCount] = await Promise.all([
     eventQuery,
     db.from("shop_subscriptions").select("id, shop_id, status, last_payment_status, next_payment_at, shops(name, email)").or("status.eq.past_due,last_payment_status.eq.FAILED").order("updated_at", { ascending: false }).limit(25),

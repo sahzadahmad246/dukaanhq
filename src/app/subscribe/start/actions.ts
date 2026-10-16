@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import type { ExpectedDodoPrice } from "@/lib/dodo/price-validation";
 import { createDodoCheckoutSession } from "@/lib/dodo/client";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -109,11 +110,11 @@ export async function createPaidSubscriptionIntentAction(formData: FormData) {
 
   const { data: price, error: priceError } = await admin
     .from("saas_plan_prices")
-    .select("id, regular_price_paise, discounted_price_paise, discount_enabled, provider_product_id")
+    .select("id, currency, interval, interval_count, regular_price_paise, discounted_price_paise, discount_enabled, discount_ends_at, provider_product_id, is_active")
     .eq("plan_id", plan.id)
     .eq("interval", billingInterval)
     .eq("interval_count", 1)
-    .maybeSingle<{ id: string; regular_price_paise: number; discounted_price_paise: number | null; discount_enabled: boolean; provider_product_id: string | null }>();
+    .maybeSingle<ExpectedDodoPrice & { id: string }>();
 
   if (priceError || !price) {
     redirect(`/subscribe/start?plan=${planCode}&billing=${billingInterval}&error=${encodeURIComponent(priceError?.message ?? "price_missing")}`);
@@ -175,7 +176,7 @@ export async function createPaidSubscriptionIntentAction(formData: FormData) {
         dukaanhq_price_id: price.id,
         dukaanhq_mode: membership?.shop_id ? "shop_plan_change" : "pre_onboarding",
       },
-    });
+    }, price);
 
     if (!session.checkout_url) {
       throw new Error("Secure checkout URL was not returned.");

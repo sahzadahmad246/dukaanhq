@@ -1,3 +1,6 @@
+import "server-only";
+import { validateDodoProductPrice, type DodoProductPrice, type ExpectedDodoPrice } from "./price-validation";
+
 type DodoEnvironment = "test_mode" | "live_mode";
 const DODO_REQUEST_TIMEOUT_MS = 20_000;
 
@@ -85,7 +88,14 @@ export type DodoChangePlanPayload = {
 
 function getDodoConfig() {
   const apiKey = process.env.DODO_PAYMENTS_API_KEY?.trim();
-  const environment = (process.env.DODO_PAYMENTS_ENVIRONMENT ?? "test_mode").trim() as DodoEnvironment;
+  const selectedEnvironment = process.env.DODO_PAYMENTS_ENVIRONMENT?.trim();
+  if (process.env.NODE_ENV === "production" && !selectedEnvironment) {
+    throw new Error("Payment environment is not configured. Set DODO_PAYMENTS_ENVIRONMENT explicitly to live_mode or test_mode.");
+  }
+  if (selectedEnvironment && selectedEnvironment !== "test_mode" && selectedEnvironment !== "live_mode") {
+    throw new Error("Invalid Dodo Payments environment. Choose live_mode or test_mode.");
+  }
+  const environment: DodoEnvironment = selectedEnvironment === "live_mode" ? "live_mode" : "test_mode";
   const baseUrl =
     process.env.DODO_PAYMENTS_API_BASE_URL?.replace(/\/$/, "") ??
     (environment === "live_mode" ? "https://live.dodopayments.com" : "https://test.dodopayments.com");
@@ -153,7 +163,12 @@ async function parseDodoResponse(response: Response) {
 
 export async function createDodoCheckoutSession(
   payload: DodoCheckoutSessionPayload,
+  expectedPrice: ExpectedDodoPrice,
 ): Promise<DodoCheckoutSessionResponse> {
+  if (payload.product_cart.length !== 1 || payload.product_cart[0].product_id !== expectedPrice.provider_product_id || payload.product_cart[0].quantity !== 1) {
+    throw new Error("Checkout cart does not match the selected workspace plan.");
+  }
+  await assertDodoPriceMatches(expectedPrice);
   const config = getDodoConfig();
   const response = await fetchDodo(`${config.baseUrl}/checkouts`, {
     method: "POST",
@@ -266,7 +281,12 @@ export async function listDodoPaymentsForSubscription(subscriptionId: string): P
 export async function changeDodoSubscriptionPlan(
   subscriptionId: string,
   payload: DodoChangePlanPayload,
+  expectedPrice: ExpectedDodoPrice,
 ): Promise<DodoSubscriptionResponse> {
+  if (payload.product_id !== expectedPrice.provider_product_id || (payload.quantity ?? 1) !== 1) {
+    throw new Error("Plan change does not match the selected workspace plan.");
+  }
+  await assertDodoPriceMatches(expectedPrice);
   const config = getDodoConfig();
   const response = await fetchDodo(`${config.baseUrl}/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan`, {
     method: "POST",
@@ -276,4 +296,21 @@ export async function changeDodoSubscriptionPlan(
   });
 
   return parseDodoResponse(response) as Promise<DodoSubscriptionResponse>;
+}
+
+export async function retrieveDodoProduct(productId: string): Promise<DodoProductPrice> {
+  const config = getDodoConfig();
+  const response = await fetchDodo(`${config.baseUrl}/products/${encodeURIComponent(productId)}`, {
+    method: "GET", headers: dodoHeaders(), cache: "no-store",
+  });
+  if (response.status === 404) throw new Error("Dodo product was not found in the configured payment environment. Check the product ID and test/live credentials.");
+  return parseDodoResponse(response) as Promise<DodoProductPrice>;
+}
+
+export async function assertDodoPriceMatches(expected: ExpectedDodoPrice) {
+  if (!expected.provider_product_id) throw new Error("Payment product is not configured for this plan.");
+  const product = await retrieveDodoProduct(expected.provider_product_id);
+  const issue = validateDodoProductPrice(expected, product);
+  if (issue) throw new Error(`Checkout unavailable: ${issue} Ask the platform owner to correct the Dodo product pricing.`);
+  return product;
 }

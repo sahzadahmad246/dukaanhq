@@ -1,5 +1,7 @@
 "use server";
 
+import { assertDodoPriceMatches, changeDodoSubscriptionPlan, retrieveDodoSubscription } from "@/lib/dodo/client";
+import { effectivePlanAmount, type ExpectedDodoPrice } from "@/lib/dodo/price-validation";
 import { requireSaasAdmin } from "@/lib/admin/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -215,25 +217,6 @@ export async function updateSaasPlanAction(formData: FormData) {
   }
   const entitlements = Object.fromEntries(Object.keys(fixedPlanEntitlements[code]).map(key => [key, formData.get(`entitlement_${key}`) === "on"]));
   const features = String(formData.get("features") ?? "").split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(0, 30);
-  const { error: planUpdateError } = await supabase
-    .from("saas_plans")
-    .update({
-      display_name: parsed.data.display_name,
-      tagline: parsed.data.tagline,
-      description: parsed.data.description || null,
-      support_level: parsed.data.support_level,
-      is_active: parsed.data.is_active,
-      limits,
-      entitlements,
-      features: features.length ? features : defaultPlanFeatures[code],
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", parsed.data.plan_id);
-
-  if (planUpdateError) {
-    redirect(`/admin/saas/plans?error=${encodeURIComponent(planUpdateError.message)}`);
-  }
-
   const monthlyRegular = rupeesToPaise(parsed.data.monthly_price_rupees);
   const yearlyRegular = rupeesToPaise(parsed.data.yearly_price_rupees);
   const priceRows = [
@@ -282,6 +265,33 @@ export async function updateSaasPlanAction(formData: FormData) {
       updated_at: new Date().toISOString(),
     },
   ];
+
+  try {
+    await Promise.all(priceRows.filter(row => row.is_active && row.provider_product_id).map(row =>
+      assertDodoPriceMatches({ ...row, interval: row.interval as "month" | "year" }),
+    ));
+  } catch (error) {
+    redirect(`/admin/saas/plans?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not verify Dodo pricing.")}`);
+  }
+
+  const { error: planUpdateError } = await supabase
+    .from("saas_plans")
+    .update({
+      display_name: parsed.data.display_name,
+      tagline: parsed.data.tagline,
+      description: parsed.data.description || null,
+      support_level: parsed.data.support_level,
+      is_active: parsed.data.is_active,
+      limits,
+      entitlements,
+      features: features.length ? features : defaultPlanFeatures[code],
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data.plan_id);
+
+  if (planUpdateError) {
+    redirect(`/admin/saas/plans?error=${encodeURIComponent(planUpdateError.message)}`);
+  }
 
   const { error: priceError } = await supabase.from("saas_plan_prices").upsert(priceRows, {
     onConflict: "plan_id,interval,interval_count",
@@ -551,4 +561,45 @@ export async function setAdminShopPlanAction(formData: FormData) {
   if (error || !data) redirect(`/admin/saas/shops/${shop_id}?tab=access&error=${encodeURIComponent(error?.message ?? "Create shop access before assigning a plan")}`);
   revalidatePath("/admin/saas", "layout");
   redirect(`/admin/saas/shops/${shop_id}?tab=access&saved=1`);
+}
+
+export async function scheduleAdminPriceCorrectionAction(formData: FormData) {
+  await requireSaasAdmin();
+  const parsed = z.object({ shop_id: z.string().uuid(), price_id: z.string().uuid() }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect("/admin/saas/subscriptions/health?error=Invalid%20subscription%20request");
+  const admin = getAdminSupabase(), { shop_id, price_id } = parsed.data;
+  const [subscriptionResult, priceResult] = await Promise.all([
+    admin.from("shop_subscriptions").select("id, plan_id, price_id, provider, provider_subscription_id").eq("shop_id", shop_id).maybeSingle(),
+    admin.from("saas_plan_prices").select("id, plan_id, provider_product_id, currency, interval, interval_count, regular_price_paise, discounted_price_paise, discount_enabled, discount_ends_at, is_active").eq("id", price_id).maybeSingle<ExpectedDodoPrice & { id: string; plan_id: string }>(),
+  ]);
+  const subscription = subscriptionResult.data, price = priceResult.data;
+  if (subscriptionResult.error || priceResult.error || !subscription || !price || !price.is_active || subscription.provider !== "dodo" || !subscription.provider_subscription_id || subscription.price_id !== price.id || subscription.plan_id !== price.plan_id) {
+    redirect("/admin/saas/subscriptions/health?error=Could%20not%20verify%20the%20shop%20and%20its%20current%20plan");
+  }
+  try {
+    const current = await retrieveDodoSubscription(subscription.provider_subscription_id);
+    if (current.status !== "active" || current.cancel_at_next_billing_date === true) throw new Error("Only an active subscription with renewal enabled can be corrected here. Review its provider status first.");
+    if (current.quantity !== 1 || (Array.isArray(current.addons) && current.addons.length > 0) || current.discount_id || (Array.isArray(current.discounts) && current.discounts.length > 0)) {
+      throw new Error("This subscription has a custom quantity, add-ons, or discounts. Review its agreed pricing in Dodo before changing it.");
+    }
+    const renewal = current.next_billing_date ? new Date(current.next_billing_date).getTime() : NaN;
+    if (!Number.isFinite(renewal) || renewal <= Date.now()) throw new Error("The provider has not returned a future renewal date. Review this subscription in Dodo.");
+    // The shared client verifies the target product before this POST. Never use
+    // an immediate proration or charge endpoint to correct a configuration error.
+    const response = await changeDodoSubscriptionPlan(subscription.provider_subscription_id, {
+      product_id: price.provider_product_id ?? "", quantity: 1,
+      proration_billing_mode: "do_not_bill", effective_at: "next_billing_date", on_payment_failure: "prevent_change",
+      metadata: { dukaanhq_shop_id: shop_id, dukaanhq_target_price_id: price.id, dukaanhq_reason: "admin_price_correction" },
+    }, price);
+    const { error: auditError } = await admin.from("subscription_events").insert({
+      shop_id, subscription_id: subscription.id, provider: "dodo", event_type: "ADMIN_SCHEDULED_PRICE_CORRECTION",
+      processed_status: "scheduled", processed_message: "Verified plan price correction scheduled for the next billing date; no immediate charge.",
+      payload: { response, price_id: price.id, target_amount_minor: effectivePlanAmount(price), target_currency: price.currency, effective_at: "next_billing_date", next_billing_date: current.next_billing_date },
+    });
+    if (auditError) throw new Error("Dodo accepted the schedule, but the local audit record could not be saved. Check the provider before retrying.");
+  } catch (error) {
+    redirect(`/admin/saas/subscriptions/health?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not schedule the price correction.")}`);
+  }
+  revalidatePath("/admin/saas", "layout");
+  redirect("/admin/saas/subscriptions/health?scheduled=1");
 }

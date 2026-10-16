@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Building2, CreditCard, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, Building2, CreditCard, TriangleAlert, BarChart3, Tags } from "lucide-react";
 import { getAdminReadClient } from "@/lib/admin/auth";
 import { checkAdminQuery } from "@/lib/admin/data";
 import { adminDate, adminNumber } from "@/lib/admin/format";
@@ -23,7 +23,20 @@ export default async function SaasAdminPage() {
   const recentShops = recent.data as unknown as { id: string; name: string; slug: string; city: string; status: string; created_at: string }[];
   const recentEvents = events.data as unknown as { id: string; event_type: string; processed_status: string; shop_id: string | null; created_at: string }[];
   return <div className="space-y-6">
+    <div className="lg:hidden">
+      <section className="relative overflow-hidden rounded-[1.75rem] bg-[#183f35] p-5 text-white shadow-[0_12px_30px_rgba(24,63,53,0.15)]">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-14 h-56 w-56 rounded-full border-[35px] border-[#47705a]/25" />
+        <div className="relative flex items-start justify-between gap-3"><div><p className="text-[9px] font-semibold uppercase tracking-[0.19em] text-[#b0c7ae]">Your admin workspace</p><h1 className="mt-3 text-[1.8rem] font-semibold leading-tight tracking-tight">Platform<br />overview.</h1></div><Link href="/admin/saas/reports" aria-label="Open platform reports" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[#d4f5c8]"><ArrowUpRight className="h-5 w-5" /></Link></div>
+        <p className="relative mt-3 max-w-56 text-xs leading-relaxed text-[#b2c5b7]">Your shops, billing and activity.<br />All in one place.</p>
+        <div className="relative mt-5 flex flex-wrap gap-2 border-t border-white/10 pt-4"><Link href="/admin/saas/subscriptions?status=active" className="inline-flex min-h-8 items-center gap-2 rounded-full bg-[#c9edbc] px-3 text-[10px] font-semibold text-[#24452e]"><span className="h-1.5 w-1.5 rounded-full bg-[#467245]" />{active.count ?? 0} active billing</Link><Link href="/admin/saas/subscriptions?status=trialing" className="inline-flex min-h-8 items-center gap-2 rounded-full border border-white/15 px-3 text-[10px] font-medium text-[#d7e5d9]">{trials.count ?? 0} on trial</Link></div>
+      </section>
+      <div className="mt-5 grid grid-cols-4 gap-3">{[
+        { title: "Shops", href: "/admin/saas/shops", icon: Building2 }, { title: "Billing", href: "/admin/saas/subscriptions", icon: CreditCard }, { title: "Reports", href: "/admin/saas/reports", icon: BarChart3 }, { title: "Plans", href: "/admin/saas/plans", icon: Tags },
+      ].map(item => <Link key={item.title} href={item.href} className="flex flex-col items-center gap-2"><span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white bg-white text-[#42634b] shadow-[0_3px_12px_rgba(33,62,44,0.04)]"><item.icon className="h-5 w-5" strokeWidth={1.5} /></span><span className="text-[10px] font-medium text-[#75867a]">{item.title}</span></Link>)}</div>
+    </div>
+    <div className="hidden lg:block">
     <AdminHeading eyebrow="DukaanHQ · Admin" title="Platform overview" description="A live view of your shops, workspace usage, and subscription health."><Link href="/admin/saas/reports" className={adminSecondary}>View reports <ArrowUpRight className="h-4 w-4" /></Link></AdminHeading>
+    </div>
     <MetricCards items={[
       { label: "Total shops", value: adminNumber(shops.count), hint: "All registered workspaces" },
       { label: "Products", value: adminNumber(products.count), hint: "Across all shop inventories" },

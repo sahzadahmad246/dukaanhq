@@ -27,8 +27,8 @@ export default async function SaasAdminShopsPage({ searchParams }: { searchParam
   const byShop = new Map((entitlements as Entitlement[] ?? []).map(row => [row.shop_id, row]));
   return <div className="space-y-6">
     <AdminHeading title="Shops" description="Find any tenant, review their plan, and open a complete workspace profile." />
-    <form className="grid gap-3 rounded-2xl border border-stone-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[1fr_160px_160px_auto_auto]">
-      <label className="relative sm:col-span-2 xl:col-span-1"><span className="sr-only">Search shops</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-stone-400" /><input name="q" defaultValue={q} placeholder="Shop, email, city or slug" className={`${adminInput} pl-9`} /></label>
+    <form className="grid grid-cols-2 gap-2.5 rounded-[1.4rem] border border-white bg-white p-3.5 shadow-[0_3px_16px_rgba(33,62,44,0.035)] sm:gap-3 lg:rounded-2xl lg:border-stone-200 lg:p-4 lg:shadow-none xl:grid-cols-[1fr_160px_160px_auto_auto]">
+      <label className="relative col-span-2 xl:col-span-1"><span className="sr-only">Search shops</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-stone-400" /><input name="q" defaultValue={q} placeholder="Shop, email, city or slug" className={`${adminInput} pl-9`} /></label>
       <label><span className="sr-only">Shop status</span><select name="status" defaultValue={status} className={adminInput}><option value="">All shop statuses</option><option value="active">Active shops</option><option value="suspended">Suspended</option><option value="inactive">Inactive</option></select></label>
       <label><span className="sr-only">Billing status</span><select name="billing" defaultValue={billing} className={adminInput}><option value="">All billing statuses</option><option value="active">Active billing</option><option value="trialing">Trialing</option><option value="locked">Locked</option></select></label>
       <button className={adminButton}>Search</button><Link href="/admin/saas/shops" className={adminSecondary}>Reset</Link>

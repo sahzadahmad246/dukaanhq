@@ -1,3 +1,4 @@
+import { validateRecordedSubscription, type ExpectedDodoPrice, type RecordedSubscriptionPrice } from "@/lib/dodo/price-validation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type DodoWebhookResult =
@@ -220,11 +221,14 @@ export async function applyDodoWebhookToEntitlement(
   const { data: productPrice } = productId
     ? await admin
         .from("saas_plan_prices")
-        .select("id, plan_id, interval")
+        .select("id, plan_id, interval, interval_count, currency, regular_price_paise, discounted_price_paise, discount_enabled, discount_ends_at, provider_product_id")
         .eq("provider", "dodo")
         .eq("provider_product_id", productId)
-        .maybeSingle<{ id: string; plan_id: string; interval: string }>()
+        .maybeSingle<ExpectedDodoPrice & { id: string; plan_id: string }>()
     : { data: null };
+  const pricingIssue = activeEvent && productPrice && typeof data.recurring_pre_tax_amount === "number"
+    ? validateRecordedSubscription(productPrice, data as RecordedSubscriptionPrice)
+    : null;
   const effectivePlanId = productPrice?.plan_id ?? intent.plan_id;
   const effectivePriceId = productPrice?.id ?? intent.price_id;
   const effectiveBillingInterval = productPrice?.interval ?? intent.billing_interval;
@@ -324,8 +328,8 @@ export async function applyDodoWebhookToEntitlement(
     if (eventId) {
       await admin.from("subscription_events").update({
         subscription_id: subscriptionResult.data?.id ?? null,
-        processed_status: "approved",
-        processed_message: "shop_entitlement_active",
+        processed_status: pricingIssue ? "pricing_mismatch" : "approved",
+        processed_message: pricingIssue ? `Billing review required: ${pricingIssue}` : "shop_entitlement_active",
       }).eq("id", eventId);
     }
 

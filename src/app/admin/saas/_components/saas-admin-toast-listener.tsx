@@ -18,6 +18,9 @@ export function SaasAdminToastListener() {
   useEffect(() => {
     const saved = searchParams.get("saved");
     const error = searchParams.get("error");
+    const scheduled = searchParams.get("scheduled");
+
+    if (scheduled) toast.success("Price correction scheduled for the next renewal. No immediate charge.");
 
     if (saved) {
       toast.success(savedMessage(pathname));
@@ -27,10 +30,11 @@ export function SaasAdminToastListener() {
       toast.error(error);
     }
 
-    if (saved || error) {
+    if (saved || error || scheduled) {
       const params = new URLSearchParams(searchParams.toString());
       params.delete("saved");
       params.delete("error");
+      params.delete("scheduled");
       const next = params.toString() ? `${pathname}?${params.toString()}` : pathname;
       window.history.replaceState(null, "", next);
     }

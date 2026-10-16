@@ -18,7 +18,7 @@ function load(file, mocks = {}) {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (name === 'server-only') return {};
     return requirePackage(name);
-  }, console, Date, FormData, URLSearchParams, setTimeout }, { filename });
+  }, console, Date, Error, FormData, URLSearchParams, setTimeout }, { filename });
   return exports;
 }
 const format = load('src/lib/admin/format.ts');
@@ -27,7 +27,7 @@ const shopId = 'd40a21b4-cc0d-4211-a96b-f50213de336b';
 const memberId = '6a665c5a-612a-4e70-9c78-56a95e6cb021';
 function form(values) { const data = new FormData(); Object.entries(values).forEach(([key, value]) => data.set(key, value)); return data; }
 function redirect(location) { throw new Error(`redirect:${location}`); }
-function actionModule({ blocked = false, existing = null } = {}) {
+function actionModule({ blocked = false, existing = null, dodoIssue = null } = {}) {
   const calls = [];
   const client = { from(table) {
     const query = {
@@ -41,6 +41,8 @@ function actionModule({ blocked = false, existing = null } = {}) {
     return query;
   } };
   const actions = load('src/app/admin/saas/actions.ts', {
+    '@/lib/dodo/price-validation': { effectivePlanAmount: price => price.regular_price_paise },
+    '@/lib/dodo/client': { assertDodoPriceMatches: async () => { if (dodoIssue) throw new Error(dodoIssue); } },
     '@/lib/admin/auth': { requireSaasAdmin: async () => { if (blocked) throw new Error('forbidden'); } },
     '@/lib/supabase/admin': { createSupabaseAdminClient: () => { calls.push({ elevated: true }); return client; } },
     'next/navigation': { redirect }, 'next/cache': { revalidatePath() {} },
@@ -72,7 +74,7 @@ test('report periods use India calendar days, including month boundaries', () =>
 
 test('every management action authenticates before creating an elevated client', async () => {
   const { actions, calls } = actionModule({ blocked: true });
-  for (const name of ['setShopStatusAction', 'superadminExtendSubscriptionAction', 'superadminLockSubscriptionAction', 'superadminUnlockSubscriptionAction', 'superadminUpdateShopInfoAction', 'setAdminStaffStatusAction', 'setAdminShopPlanAction', 'updateSaasSettingsAction', 'updateSaasPlanAction']) {
+  for (const name of ['setShopStatusAction', 'superadminExtendSubscriptionAction', 'superadminLockSubscriptionAction', 'superadminUnlockSubscriptionAction', 'superadminUpdateShopInfoAction', 'setAdminStaffStatusAction', 'setAdminShopPlanAction', 'updateSaasSettingsAction', 'updateSaasPlanAction', 'scheduleAdminPriceCorrectionAction']) {
     await assert.rejects(actions[name](form({ shop_id: shopId })), /forbidden/);
   }
   assert.equal(calls.length, 0);
@@ -162,4 +164,15 @@ test('extensions respect fallback access expiry and do not change provider cance
   const mutation = calls.find(call => call.operation === 'upsert');
   assert.equal(new Date(mutation.value.subscription_valid_until).getTime(), new Date(expiry).getTime() + 7 * 86400000);
   assert.equal(Object.hasOwn(mutation.value, 'cancel_at_period_end'), false);
+});
+
+test('plan edits do not modify app pricing when Dodo verification fails', async () => {
+  const { actions, calls } = actionModule({ existing: { id: shopId, code: 'starter' }, dodoIssue: 'Currency mismatch' });
+  const values = {
+    plan_id: shopId, display_name: 'Starter', tagline: 'Basic plan', description: '', support_level: 'standard', is_active: 'on',
+    monthly_price_rupees: '499', yearly_price_rupees: '4990', monthly_provider_product_id: 'pdt_month', yearly_provider_product_id: 'pdt_year',
+    monthly_discount_type: 'none', yearly_discount_type: 'none', monthly_discount_ends_at: '', yearly_discount_ends_at: '',
+  };
+  await assert.rejects(actions.updateSaasPlanAction(form(values)), /Currency%20mismatch/);
+  assert.ok(!calls.some(call => call.operation));
 });

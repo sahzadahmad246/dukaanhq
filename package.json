@@ -8,7 +8,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:admin": "node tests/admin/admin.test.mjs"
+    "test:admin": "node tests/admin/admin.test.mjs",
+    "test:payments": "node tests/payments/pricing.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-radio-group": "^1.3.8",

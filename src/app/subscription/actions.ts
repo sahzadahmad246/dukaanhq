@@ -1,5 +1,6 @@
 "use server";
 
+import type { ExpectedDodoPrice } from "@/lib/dodo/price-validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -322,19 +323,14 @@ export async function changeCurrentShopSubscriptionPlanAction(formData: FormData
 
   const { data: targetPlan } = await admin
     .from("saas_plans")
-    .select("id, code, display_name, saas_plan_prices(id, interval, provider_product_id, is_active)")
+    .select("id, code, display_name, saas_plan_prices(id, interval, interval_count, currency, regular_price_paise, discounted_price_paise, discount_enabled, discount_ends_at, provider_product_id, is_active)")
     .eq("code", planCodeValue)
     .eq("is_active", true)
     .maybeSingle<{
       id: string;
       code: PlanCode;
       display_name: string;
-      saas_plan_prices: Array<{
-        id: string;
-        interval: BillingInterval;
-        provider_product_id: string | null;
-        is_active: boolean;
-      }> | null;
+      saas_plan_prices: Array<ExpectedDodoPrice & { id: string }> | null;
     }>();
 
   const targetPrice = targetPlan?.saas_plan_prices?.find(
@@ -363,7 +359,7 @@ export async function changeCurrentShopSubscriptionPlanAction(formData: FormData
         dukaanhq_target_plan_code: targetPlan.code,
         dukaanhq_target_price_id: targetPrice.id,
       },
-    });
+    }, targetPrice);
 
     await admin.from("subscription_events").insert({
       shop_id: shopId,
