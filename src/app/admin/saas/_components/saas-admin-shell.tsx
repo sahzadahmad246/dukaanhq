@@ -44,14 +44,14 @@ export function SaasAdminHeader({ title, backHref, rightContent }: HeaderConfig)
   return null;
 }
 
-const navItems = [
+const navItems: Array<{ href: string; label: string; icon: typeof Home; exact?: boolean; disabled?: boolean }> = [
   { href: "/admin/saas", label: "Home", icon: LayoutDashboard, exact: true },
   { href: "/admin/saas/shops", label: "Shops", icon: Building2 },
   { href: "/admin/saas/plans", label: "Plans", icon: Tags },
   { href: "/admin/saas/subscriptions", label: "Subscriptions", icon: CreditCard },
-  { href: "/admin/saas/reports", label: "Reports", icon: BarChart3, disabled: true },
-  { href: "/admin/saas/support", label: "Support", icon: LifeBuoy, disabled: true },
-  { href: "/admin/saas/settings", label: "Settings", icon: Settings, disabled: true },
+  { href: "/admin/saas/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/saas/support", label: "Support", icon: LifeBuoy },
+  { href: "/admin/saas/settings", label: "Settings", icon: Settings },
 ];
 
 const primaryBottomItems = [
@@ -80,34 +80,9 @@ export function SaasAdminShell({
 }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [scrollDirection, setScrollDirection] = useState<"idle" | "up" | "down">("idle");
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig>({});
 
-  // Scroll-aware hide for bottom nav (match shop shell behavior)
-  useEffect(() => {
-    let lastY = window.scrollY;
-
-    const onScroll = () => {
-      const nextY = window.scrollY;
-      const delta = nextY - lastY;
-
-      if (nextY <= 8) {
-        setScrollDirection("idle");
-        lastY = nextY;
-        return;
-      }
-      if (Math.abs(delta) < 6) {
-        return;
-      }
-      setScrollDirection(delta > 0 ? "down" : "up");
-      lastY = nextY;
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const showBottomNav = scrollDirection !== "down";
+  const showBottomNav = true;
 
   return (
     <HeaderContext.Provider value={{ config: headerConfig, setConfig: setHeaderConfig }}>
@@ -158,7 +133,7 @@ export function SaasAdminShell({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition",
+                  "flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition",
                   active ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-100 hover:text-stone-950",
                 )}
               >
@@ -170,6 +145,10 @@ export function SaasAdminShell({
         </nav>
 
         <div className="border-t border-stone-200 p-3">
+          <button type="button" onClick={() => setDrawerOpen(true)} className="mb-2 flex min-h-14 w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-stone-50" aria-label="Open admin account menu">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-100 text-sm font-semibold">{userName.slice(0, 1).toUpperCase()}</span>
+            <span className="min-w-0"><span className="block truncate text-xs font-semibold">{userName}</span><span className="mt-1 block truncate text-[11px] text-stone-400">{userEmail}</span></span>
+          </button>
           <Link
             href="/"
             className="flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 hover:text-stone-950"
@@ -237,7 +216,7 @@ export function SaasAdminShell({
           </div>
         )}
 
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:py-8 lg:pb-8">
+        <main className="mx-auto w-full min-w-0 max-w-7xl px-4 py-6 pb-28 sm:px-6 lg:px-8 lg:py-8 lg:pb-8">
           {children}
         </main>
       </div>

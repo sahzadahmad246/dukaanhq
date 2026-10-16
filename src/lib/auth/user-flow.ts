@@ -95,7 +95,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
 
   const [{ data: shopRow }, { data: shopSettings }] = await Promise.all([
     membership
-      ? supabase.from("shops").select("slug").eq("id", membership.shop_id).maybeSingle<{ slug: string }>()
+      ? supabase.from("shops").select("slug, status").eq("id", membership.shop_id).maybeSingle<{ slug: string; status: string }>()
       : Promise.resolve({ data: null }),
     membership
       ? supabase.from("shop_settings")
@@ -106,7 +106,7 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
 
   const isOwner = profile?.role === "owner" || membership?.role === "owner";
   const isSuperAdmin = profile?.role === "superadmin";
-  const isSuspendedMembership = membership?.status === "SUSPENDED";
+  const isSuspendedMembership = membership?.status === "SUSPENDED" || Boolean(shopRow && shopRow.status !== "active");
   const hasWorkspaceAccess = Boolean(
     membership && !isSuspendedMembership && ["owner", "staff"].includes(membership.role),
   );

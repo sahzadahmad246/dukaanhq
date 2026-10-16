@@ -1,258 +1,109 @@
 import Link from "next/link";
-import { FileText, Mail, Package, Phone, User, Users } from "lucide-react";
-
-import { SaasAdminHeader } from "@/app/admin/saas/_components/saas-admin-shell";
+import { notFound } from "next/navigation";
+import { z } from "zod";
+import { ArrowLeft, ArrowUpRight, Mail, MapPin, Phone } from "lucide-react";
+import { getAdminReadClient } from "@/lib/admin/auth";
+import { checkAdminQuery, loadSales } from "@/lib/admin/data";
+import { summarizeSales } from "@/lib/admin/sales";
+import { accessEnd, adminDate, adminMoney, adminNumber, pageNumber, reportDays } from "@/lib/admin/format";
+import { AdminHeading, AdminPanel, AdminTable, MetricCards, Pagination, PeriodPicker, StatusBadge, adminButton, adminInput, adminSecondary } from "../../_components/admin-ui";
+import { ConfirmForm } from "../../_components/confirm-form";
+import { SubscriptionActionButton } from "../../subscriptions/_components/subscription-action-button";
+import { setAdminShopPlanAction, setAdminStaffStatusAction, setShopStatusAction, superadminExtendSubscriptionAction, superadminLockSubscriptionAction, superadminUnlockSubscriptionAction } from "../../actions";
 import { ShopHeaderMore } from "./_components/shop-header-more";
-import {
-  setShopStatusAction,
-  superadminUpdateShopInfoAction,
-} from "@/app/admin/saas/actions";
-import { InvoiceFooterLinesEditor } from "@/components/invoice-footer-lines-editor";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-type ShopRow = {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-  phone: string;
-  email: string;
-  logo_url: string | null;
-  address_line_1: string;
-  address_line_2: string | null;
-  city: string;
-  state: string;
-  postal_code: string;
-  created_at: string;
-};
-
-type ShopSettingsRow = {
-  invoice_prefix: string;
-  invoice_footer: string | null;
-};
-
-type MemberRow = {
-  id: string;
-  role: string;
-  status: string;
-  full_name: string | null;
-  email: string | null;
-  mobile_number: string | null;
-  joined_at: string | null;
-  suspended_at: string | null;
-};
-
-type InvoiceRow = {
-  id: string;
-  invoice_number: string;
-  customer_name: string;
-  customer_mobile: string | null;
-  grand_total: string;
-  payment_method: string;
-  payment_status: string;
-  created_at: string;
-};
-
-export default async function SaasAdminShopDetailsPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ shopId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string }>;
-}) {
-  const supabase = await createSupabaseServerClient();
+type Params = { tab?: string; days?: string; page?: string };
+export default async function ShopDetailsPage({ params, searchParams }: { params: Promise<{ shopId: string }>; searchParams: Promise<Params> }) {
   const { shopId } = await params;
-  await searchParams;
-
-  const { data: shop } = await supabase
-    .from("shops")
-    .select(
-      "id, name, slug, status, phone, email, logo_url, address_line_1, address_line_2, city, state, postal_code, created_at",
-    )
-    .eq("id", shopId)
-    .maybeSingle<ShopRow>();
-
-  const { data: shopSettings } = await supabase
-    .from("shop_settings")
-    .select("invoice_prefix, invoice_footer")
-    .eq("shop_id", shopId)
-    .maybeSingle<ShopSettingsRow>();
-
-  const { data: members } = await supabase
-    .from("shop_members")
-    .select("id, role, status, full_name, email, mobile_number, joined_at, suspended_at")
-    .eq("shop_id", shopId)
-    .order("role", { ascending: false })
-    .order("joined_at", { ascending: false })
-    .limit(100);
-
-  const [{ count: productsCount }, { count: invoicesCount }] = await Promise.all([
-    supabase.from("products").select("id", { count: "exact", head: true }).eq("shop_id", shopId),
-    supabase.from("invoices").select("id", { count: "exact", head: true }).eq("shop_id", shopId),
+  if (!z.string().uuid().safeParse(shopId).success) notFound();
+  const filters = await searchParams;
+  const days = reportDays(filters.days), page = pageNumber(filters.page);
+  const tab = ["overview", "invoices", "inventory", "customers", "team", "access"].includes(filters.tab ?? "") ? filters.tab! : "overview";
+  const db = await getAdminReadClient();
+  const [shopResult, settingsResult, productCount, invoiceCount, customerCount, memberCount, entitlementResult, sales] = await Promise.all([
+    db.from("shops").select("id, name, slug, status, phone, email, logo_url, address_line_1, address_line_2, city, state, postal_code, created_at").eq("id", shopId).maybeSingle(),
+    db.from("shop_settings").select("invoice_prefix, invoice_footer").eq("shop_id", shopId).maybeSingle(),
+    db.from("products").select("id", { count: "exact", head: true }).eq("shop_id", shopId),
+    db.from("invoices").select("id", { count: "exact", head: true }).eq("shop_id", shopId),
+    db.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", shopId),
+    db.from("shop_members").select("id", { count: "exact", head: true }).eq("shop_id", shopId),
+    db.from("shop_entitlements").select("shop_id, plan_id, billing_status, trial_ends_at, subscription_valid_until, access_expires_at, grace_ends_at, locked_reason, provider, cancel_at_period_end").eq("shop_id", shopId).maybeSingle(),
+    tab === "overview" ? loadSales(days, shopId) : Promise.resolve([]),
   ]);
-
-  const { data: recentInvoices } = await supabase
-    .from("invoices")
-    .select("id, invoice_number, customer_name, customer_mobile, grand_total, payment_method, payment_status, created_at")
-    .eq("shop_id", shopId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  const staffCount = (members ?? ([] as MemberRow[])).filter((m) => m.role === "staff").length;
-  const ownerCount = (members ?? ([] as MemberRow[])).filter((m) => m.role === "owner").length;
-
-  if (!shop) {
-    return (
-      <div className="mx-auto w-full max-w-4xl px-4 py-8">
-        <Link href="/admin/saas/shops" className="text-sm font-semibold text-stone-600 underline-offset-4 hover:underline">
-          ← Back to shops
-        </Link>
-        <h1 className="mt-4 text-2xl font-bold text-stone-950">Shop not found</h1>
-      </div>
-    );
-  }
-
-  const nextSuspendStatus = shop.status === "suspended" ? "active" : "suspended";
-  const nextSuspendLabel = shop.status === "suspended" ? "Unsuspend shop" : "Suspend shop";
-
-  return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8">
-      <SaasAdminHeader
-        title={shop.name}
-        backHref="/admin/saas/shops"
-        rightContent={<ShopHeaderMore shop={shop} shopSettings={shopSettings} />}
-      />
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-stone-950">Overview</h2>
-              <span className="text-sm text-stone-500">· {shop.status}</span>
-            </div>
-            <form action={setShopStatusAction}>
-              <input type="hidden" name="shop_id" value={shop.id} />
-              <input type="hidden" name="status" value={nextSuspendStatus} />
-              <button
-                type="submit"
-                className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 transition"
-              >
-                {nextSuspendLabel}
-              </button>
-            </form>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-stone-600">
-            <span className="flex items-center gap-1.5">
-              <Phone className="h-4 w-4 text-stone-400" />
-              {shop.phone}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Mail className="h-4 w-4 text-stone-400" />
-              {shop.email}
-            </span>
-          </div>
-
-          <div className="my-4 h-px bg-stone-100" />
-
-          <div className="flex items-center justify-between text-center">
-            <div className="flex-1">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-stone-500">
-                <Package className="h-4 w-4" /> Products
-              </div>
-              <div className="mt-1 text-2xl font-semibold text-stone-950">{productsCount ?? 0}</div>
-            </div>
-            <div className="h-8 w-px bg-stone-200" />
-            <div className="flex-1">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-stone-500">
-                <FileText className="h-4 w-4" /> Invoices
-              </div>
-              <div className="mt-1 text-2xl font-semibold text-stone-950">{invoicesCount ?? 0}</div>
-            </div>
-            <div className="h-8 w-px bg-stone-200" />
-            <div className="flex-1">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-stone-500">
-                <Users className="h-4 w-4" /> Staff
-              </div>
-              <div className="mt-1 text-2xl font-semibold text-stone-950">
-                {staffCount} <span className="text-xs text-stone-500">(+{ownerCount})</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <Users className="h-5 w-5 text-stone-500" />
-            <h2 className="text-lg font-semibold text-stone-950">Members</h2>
-            <span className="text-sm text-stone-500">({(members ?? []).filter((m) => m.role !== "customer").length})</span>
-          </div>
-
-          <div>
-            {(members ?? ([] as MemberRow[]))
-              .filter((m) => m.role !== "customer")
-              .map((m, index, arr) => (
-                <div key={m.id} className="py-3 flex items-center justify-between gap-3 border-b border-stone-100 last:border-b-0">
-                  <div className="min-w-0 flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-stone-100 flex items-center justify-center shrink-0">
-                      <User className="h-4 w-4 text-stone-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-stone-950">{m.full_name ?? m.email ?? "—"}</div>
-                      <div className="truncate text-xs text-stone-500">{m.email ?? m.mobile_number ?? "—"}</div>
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right text-sm">
-                    <div className="font-medium text-stone-800 capitalize">{m.role}</div>
-                    <div className={`text-xs ${m.status === "SUSPENDED" ? "text-red-600" : "text-stone-500"}`}>{m.status}</div>
-                  </div>
-                </div>
-              ))}
-            {members && members.length === 0 ? <p className="text-sm text-stone-600 py-2">No members found.</p> : null}
-          </div>
-        </section>
-      </div>
-
-      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-stone-950">Recent invoices</h2>
-        <p className="mt-1 text-sm text-stone-600">Last 20 invoices.</p>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-stone-200 text-xs uppercase tracking-wide text-stone-500">
-                <th className="py-2 pr-2">Invoice</th>
-                <th className="py-2 pr-2">Customer</th>
-                <th className="py-2 pr-2">Amount</th>
-                <th className="py-2 pr-2">Payment</th>
-                <th className="py-2">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(recentInvoices ?? ([] as InvoiceRow[])).map((inv) => (
-                <tr key={inv.id} className="border-b border-stone-100">
-                  <td className="py-2 pr-2 font-semibold text-stone-900">{inv.invoice_number}</td>
-                  <td className="py-2 pr-2 text-stone-700">
-                    {inv.customer_name}
-                    <div className="text-xs text-stone-500">{inv.customer_mobile ?? "—"}</div>
-                  </td>
-                  <td className="py-2 pr-2 text-stone-900">{inv.grand_total}</td>
-                  <td className="py-2 pr-2 text-stone-700">
-                    {inv.payment_method} · {inv.payment_status}
-                  </td>
-                  <td className="py-2 text-stone-600">{new Date(inv.created_at).toLocaleString("en-IN")}</td>
-                </tr>
-              ))}
-              {recentInvoices && recentInvoices.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-10 text-center text-sm text-stone-600">
-                    No invoices yet.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+  [shopResult, settingsResult, productCount, invoiceCount, customerCount, memberCount, entitlementResult].forEach(result => checkAdminQuery(result.error, "shop details"));
+  const shop = shopResult.data, ent = entitlementResult.data;
+  if (!shop) notFound();
+  const base = `/admin/saas/shops/${shopId}`, totals = summarizeSales(sales);
+  return <div className="space-y-6">
+    <Link href="/admin/saas/shops" className="inline-flex min-h-10 items-center gap-2 text-xs font-medium text-stone-500 hover:text-stone-900"><ArrowLeft className="h-4 w-4" />All shops</Link>
+    <AdminHeading eyebrow={`Workspace · /${shop.slug}`} title={shop.name} description={`Joined ${adminDate(shop.created_at)} · ${shop.city}, ${shop.state}`}>
+      <StatusBadge value={shop.status} /><ShopHeaderMore shop={shop} shopSettings={settingsResult.data} />
+    </AdminHeading>
+    <div className="flex flex-wrap gap-x-6 gap-y-3 text-xs text-stone-500">
+      <a href={`tel:${shop.phone}`} className="inline-flex items-center gap-2"><Phone className="h-3.5 w-3.5" />{shop.phone}</a>
+      <a href={`mailto:${shop.email}`} className="inline-flex min-w-0 items-center gap-2 break-all"><Mail className="h-3.5 w-3.5 shrink-0" />{shop.email}</a>
+      <span className="inline-flex items-start gap-2"><MapPin className="h-3.5 w-3.5 shrink-0" />{[shop.address_line_1, shop.address_line_2, shop.postal_code].filter(Boolean).join(", ")}</span>
     </div>
-  );
+    <MetricCards items={[{ label: "Products", value: adminNumber(productCount.count) }, { label: "Invoices", value: adminNumber(invoiceCount.count) }, { label: "Customers", value: adminNumber(customerCount.count) }, { label: "Team members", value: adminNumber(memberCount.count) }]} />
+    <nav aria-label="Shop sections" className="flex gap-1 overflow-x-auto border-b border-stone-200">{["overview", "invoices", "inventory", "customers", "team", "access"].map(value => <Link key={value} href={`${base}?${new URLSearchParams({ tab: value, days: String(days) })}`} aria-current={tab === value ? "page" : undefined} className={`shrink-0 border-b-2 px-3 py-3 text-xs font-medium capitalize ${tab === value ? "border-stone-900 text-stone-900" : "border-transparent text-stone-400 hover:text-stone-700"}`}>{value}</Link>)}</nav>
+    {tab === "overview" ? <>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">Sales performance</h2><PeriodPicker days={days} base={base} /></div>
+      <MetricCards items={[{ label: "Invoiced sales", value: adminMoney(totals.total), hint: `Last ${days} calendar days · excludes cancelled` }, { label: "Paid invoice value", value: adminMoney(totals.paid), hint: "Fully paid bills only" }, { label: "Average bill", value: adminMoney(totals.average) }, { label: "Needs payment", value: adminNumber(totals.pending), hint: "Unpaid or partially paid bills" }]} />
+      <div className="grid gap-4 lg:grid-cols-2"><AdminPanel title="Workspace access" action={<Link href={`${base}?tab=access`} className="text-xs font-medium">Manage →</Link>}><dl className="grid grid-cols-2 gap-5 p-5 text-xs"><div><dt className="mb-2 text-stone-400">Billing status</dt><dd><StatusBadge value={ent?.billing_status} /></dd></div><div><dt className="mb-2 text-stone-400">Access ends</dt><dd>{ent ? adminDate(accessEnd(ent)) : "Not configured"}</dd></div><div><dt className="mb-2 text-stone-400">Provider</dt><dd className="capitalize">{ent?.provider ?? "Manual"}</dd></div><div><dt className="mb-2 text-stone-400">Auto renewal</dt><dd>{ent?.cancel_at_period_end ? "Cancelled at period end" : "See subscription"}</dd></div></dl></AdminPanel><AdminPanel title="Shop information"><dl className="grid grid-cols-2 gap-5 p-5 text-xs"><div><dt className="mb-2 text-stone-400">Invoice prefix</dt><dd>{settingsResult.data?.invoice_prefix ?? "—"}</dd></div><div><dt className="mb-2 text-stone-400">Shop status</dt><dd><StatusBadge value={shop.status} /></dd></div><div className="col-span-2"><dt className="mb-2 text-stone-400">Public shop</dt><dd><Link className="inline-flex items-center gap-1 hover:underline" href={`/${shop.slug}`} target="_blank" rel="noreferrer">/{shop.slug}<ArrowUpRight className="h-3 w-3" /></Link></dd></div></dl></AdminPanel></div>
+    </> : null}
+    {tab === "invoices" || tab === "overview" ? <ShopInvoices shopId={shopId} page={tab === "overview" ? 1 : page} base={base} overview={tab === "overview"} /> : null}
+    {tab === "inventory" ? <ShopInventory shopId={shopId} page={page} base={base} /> : null}
+    {tab === "customers" ? <ShopCustomers shopId={shopId} page={page} base={base} /> : null}
+    {tab === "team" ? <ShopTeam shopId={shopId} page={page} base={base} /> : null}
+    {tab === "access" ? <>
+      <AdminPanel title="Shop access" description="Suspending a workspace blocks access for its members while preserving their individual staff statuses."><div className="flex flex-wrap items-center justify-between gap-4 p-5"><div><StatusBadge value={shop.status} /><p className="mt-2 text-xs text-stone-500">Shop data is retained when access is suspended.</p></div><ConfirmForm action={setShopStatusAction} message={`${shop.status === "active" ? "Suspend" : "Restore"} access for ${shop.name}?`}><input type="hidden" name="shop_id" value={shopId} /><input type="hidden" name="status" value={shop.status === "active" ? "suspended" : "active"} /><SubscriptionActionButton className={adminSecondary}>{shop.status === "active" ? "Suspend shop" : "Restore shop"}</SubscriptionActionButton></ConfirmForm></div></AdminPanel>
+      <ShopAccess shopId={shopId} />
+    </> : null}
+  </div>;
+}
+
+async function ShopInvoices({ shopId, page, base, overview }: { shopId: string; page: number; base: string; overview: boolean }) {
+  const db = await getAdminReadClient(), size = overview ? 5 : 25;
+  const { data, count, error } = await db.from("invoices").select("id, invoice_number, customer_name, customer_mobile, grand_total, payment_method, payment_status, invoice_date", { count: "exact" }).eq("shop_id", shopId).order("invoice_date", { ascending: false }).order("id").range((page - 1) * size, page * size - 1);
+  checkAdminQuery(error, "invoices");
+  return <AdminPanel title={overview ? "Recent invoices" : "Invoices"} action={overview ? <Link className="text-xs font-medium" href={`${base}?tab=invoices`}>All invoices →</Link> : undefined}><AdminTable headers={["Invoice / customer", "Amount", "Payment", "Date"]} rows={(data ?? []).map(row => ({ id: row.id, cells: [<div key="invoice"><p className="font-semibold text-stone-900">{row.invoice_number}</p><p className="mt-1 text-xs">{row.customer_name}</p><p className="mt-1 text-xs text-stone-400">{row.customer_mobile}</p></div>, adminMoney(row.grand_total), <div key="payment" className="space-y-2"><StatusBadge value={row.payment_status} /><p className="text-xs">{row.payment_method}</p></div>, adminDate(row.invoice_date)] }))} />{!overview ? <Pagination page={page} count={count ?? 0} base={base} params={{ tab: "invoices" }} /> : null}</AdminPanel>;
+}
+async function ShopInventory({ shopId, page, base }: { shopId: string; page: number; base: string }) {
+  const db = await getAdminReadClient();
+  const { data, count, error } = await db.from("products").select("id, name, tracking_type, base_selling_price, base_purchase_price, is_active, product_variants(quantity)", { count: "exact" }).eq("shop_id", shopId).order("created_at", { ascending: false }).order("id").range((page - 1) * 25, page * 25 - 1);
+  checkAdminQuery(error, "inventory");
+  const ids = (data ?? []).filter(row => row.tracking_type === "SERIALIZED").map(row => row.id);
+  const stock = new Map<string, number>();
+  for (let offset = 0; ids.length; offset += 1000) {
+    const result = await db.from("inventory_items").select("id, product_id").in("product_id", ids).eq("shop_id", shopId).eq("status", "IN_STOCK").order("id").range(offset, offset + 999);
+    checkAdminQuery(result.error, "serialized stock");
+    result.data?.forEach(row => stock.set(row.product_id, (stock.get(row.product_id) ?? 0) + 1));
+    if ((result.data?.length ?? 0) < 1000) break;
+  }
+  return <AdminPanel title="Inventory" description="Quantity is available stock. Purchase and selling prices are the product base prices."><AdminTable headers={["Product", "In stock", "Purchase price", "Selling price", "Status"]} rows={(data ?? []).map(row => ({ id: row.id, cells: [<div key="name"><p className="font-semibold text-stone-900">{row.name}</p><p className="mt-1 text-xs capitalize text-stone-400">{row.tracking_type.toLowerCase().replaceAll("_", " ")}</p></div>, row.tracking_type === "SERIALIZED" ? stock.get(row.id) ?? 0 : row.product_variants.reduce((sum, variant) => sum + Number(variant.quantity ?? 0), 0), adminMoney(row.base_purchase_price), adminMoney(row.base_selling_price), <StatusBadge key="status" value={row.is_active ? "active" : "inactive"} />] }))} /><Pagination page={page} count={count ?? 0} base={base} params={{ tab: "inventory" }} /></AdminPanel>;
+}
+async function ShopCustomers({ shopId, page, base }: { shopId: string; page: number; base: string }) {
+  const db = await getAdminReadClient();
+  const { data, count, error } = await db.from("customers").select("id, name, mobile, billing_address, gst_number, created_at", { count: "exact" }).eq("shop_id", shopId).order("created_at", { ascending: false }).order("id").range((page - 1) * 25, page * 25 - 1);
+  checkAdminQuery(error, "customers");
+  return <AdminPanel title="Customers"><AdminTable headers={["Customer", "Mobile", "Billing address", "GST", "Added"]} rows={(data ?? []).map(row => ({ id: row.id, cells: [<span key="name" className="font-semibold text-stone-900">{row.name}</span>, row.mobile || "—", row.billing_address || "—", row.gst_number || "—", adminDate(row.created_at)] }))} /><Pagination page={page} count={count ?? 0} base={base} params={{ tab: "customers" }} /></AdminPanel>;
+}
+async function ShopTeam({ shopId, page, base }: { shopId: string; page: number; base: string }) {
+  const db = await getAdminReadClient();
+  const { data, count, error } = await db.from("shop_members").select("id, role, status, full_name, email, mobile_number, joined_at", { count: "exact" }).eq("shop_id", shopId).order("joined_at", { ascending: false }).order("id").range((page - 1) * 25, page * 25 - 1);
+  checkAdminQuery(error, "team");
+  return <AdminPanel title="Team" description="Staff can be suspended or restored individually. Owner access is protected."><AdminTable headers={["Member", "Role", "Status", "Joined", "Manage"]} rows={(data ?? []).map(row => ({ id: row.id, cells: [<div key="member"><p className="font-semibold text-stone-900">{row.full_name || row.email || "Shop member"}</p><p className="mt-1 text-xs text-stone-400">{row.email || row.mobile_number || "—"}</p></div>, <span key="role" className="capitalize">{row.role}</span>, <StatusBadge key="status" value={row.status} />, adminDate(row.joined_at), row.role === "staff" ? <ConfirmForm key="action" action={setAdminStaffStatusAction} message={`${row.status === "ACTIVE" ? "Suspend" : "Restore"} this staff member?`}><input type="hidden" name="shop_id" value={shopId} /><input type="hidden" name="member_id" value={row.id} /><input type="hidden" name="status" value={row.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE"} /><SubscriptionActionButton className={adminSecondary}>{row.status === "ACTIVE" ? "Suspend" : "Restore"}</SubscriptionActionButton></ConfirmForm> : <span key="protected" className="text-xs text-stone-400">Protected</span>] }))} /><Pagination page={page} count={count ?? 0} base={base} params={{ tab: "team" }} /></AdminPanel>;
+}
+async function ShopAccess({ shopId }: { shopId: string }) {
+  const db = await getAdminReadClient();
+  const [accessResult, plansResult] = await Promise.all([
+    db.from("shop_entitlements").select("plan_id, billing_status, trial_ends_at, subscription_valid_until, access_expires_at, grace_ends_at, locked_reason").eq("shop_id", shopId).maybeSingle(),
+    db.from("saas_plans").select("id, display_name").eq("is_active", true).order("sort_order"),
+  ]);
+  checkAdminQuery(accessResult.error, "access"); checkAdminQuery(plansResult.error, "plans");
+  const ent = accessResult.data;
+  return <div className="grid gap-4 xl:grid-cols-2">
+    <AdminPanel title="Subscription access" description="Manual access controls do not charge the customer or change their payment-provider subscription."><div className="space-y-5 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><StatusBadge value={ent?.billing_status} /><span className="text-xs text-stone-500">Until {ent ? adminDate(accessEnd(ent)) : "not configured"}</span></div>{ent?.locked_reason ? <p className="text-xs text-stone-500">Reason: {ent.locked_reason}</p> : null}<ConfirmForm action={superadminExtendSubscriptionAction} message="Grant additional workspace access?" className="space-y-2"><input type="hidden" name="shop_id" value={shopId} /><label className="text-xs text-stone-500" htmlFor="access-days">Extend access by days</label><div className="flex gap-2"><input id="access-days" name="days" type="number" required min="1" max="3650" defaultValue="30" className={adminInput} /><SubscriptionActionButton className={adminButton}>Extend</SubscriptionActionButton></div></ConfirmForm>{ent ? <ConfirmForm action={ent.billing_status === "locked" ? superadminUnlockSubscriptionAction : superadminLockSubscriptionAction} message={`${ent.billing_status === "locked" ? "Unlock" : "Lock"} subscription access?`}><input type="hidden" name="shop_id" value={shopId} /><SubscriptionActionButton className={adminSecondary}>{ent.billing_status === "locked" ? "Unlock access" : "Lock access"}</SubscriptionActionButton></ConfirmForm> : null}</div></AdminPanel>
+    <AdminPanel title="Workspace plan" description="Override the feature plan for this workspace. Provider renewals may replace this override."><form action={setAdminShopPlanAction} className="space-y-4 p-5"><input type="hidden" name="shop_id" value={shopId} /><label className="block text-xs text-stone-500">Feature plan<select required name="plan_id" defaultValue={ent?.plan_id ?? ""} className={`${adminInput} mt-2`}><option value="" disabled>Choose a plan</option>{plansResult.data?.map(plan => <option key={plan.id} value={plan.id}>{plan.display_name}</option>)}</select></label><SubscriptionActionButton className={adminButton}>Save plan</SubscriptionActionButton><Link href="/admin/saas/subscriptions" className="block text-xs text-stone-500 hover:underline">View subscription records →</Link></form></AdminPanel>
+  </div>;
 }

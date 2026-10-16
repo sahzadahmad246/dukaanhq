@@ -1,233 +1,29 @@
 import Link from "next/link";
+import { getAdminReadClient } from "@/lib/admin/auth";
+import { checkAdminQuery } from "@/lib/admin/data";
+import { accessEnd, adminDate, pageNumber } from "@/lib/admin/format";
+import { AdminHeading, AdminPanel, AdminTable, Pagination, StatusBadge, adminButton, adminInput, adminSecondary } from "../_components/admin-ui";
+import { ConfirmForm } from "../_components/confirm-form";
+import { superadminExtendSubscriptionAction, superadminLockSubscriptionAction, superadminUnlockSubscriptionAction } from "../actions";
+import { SubscriptionActionButton } from "./_components/subscription-action-button";
 
-import {
-  superadminExtendSubscriptionAction,
-  superadminLockSubscriptionAction,
-  superadminUnlockSubscriptionAction,
-} from "@/app/admin/saas/actions";
-import { SubscriptionActionButton } from "@/app/admin/saas/subscriptions/_components/subscription-action-button";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-function dateText(value: string | null | undefined) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("en-IN");
-}
-
-function statusClass(status: string | null | undefined) {
-  if (status === "active" || status === "trialing") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  if (status === "past_due" || status === "cancel_at_period_end") return "bg-amber-50 text-amber-700 ring-amber-200";
-  if (status === "locked" || status === "expired" || status === "cancelled") return "bg-red-50 text-red-700 ring-red-200";
-  return "bg-stone-100 text-stone-600 ring-stone-200";
-}
-
-export default async function SaasSubscriptionsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
-}) {
-  const supabase = await createSupabaseServerClient();
-  await searchParams;
-
-  const { data: entitlements } = await supabase
-    .from("shop_entitlements")
-    .select(`
-      shop_id,
-      billing_status,
-      trial_ends_at,
-      subscription_valid_until,
-      access_expires_at,
-      grace_ends_at,
-      locked_reason,
-      cancel_at_period_end,
-      provider,
-      provider_subscription_id,
-      plan_id,
-      shops ( name, slug ),
-      saas_plans ( display_name, code )
-    `)
-    .order("updated_at", { ascending: false })
-    .limit(100);
-
-  const { data: subscriptions } = await supabase
-    .from("shop_subscriptions")
-    .select(`
-      id,
-      shop_id,
-      status,
-      billing_interval,
-      current_period_end,
-      next_payment_at,
-      last_payment_status,
-      provider,
-      provider_subscription_id,
-      shops ( name, slug ),
-      saas_plans ( display_name, code )
-    `)
-    .order("updated_at", { ascending: false })
-    .limit(50);
-
-  const { data: intents } = await supabase
-    .from("subscription_intents")
-    .select("id, owner_email, plan_code, billing_interval, status, created_shop_id, expires_at, created_at")
-    .order("created_at", { ascending: false })
-    .limit(25);
-
-  const { data: events } = await supabase
-    .from("subscription_events")
-    .select("id, event_type, processed_status, processed_message, shop_id, created_at")
-    .order("created_at", { ascending: false })
-    .limit(25);
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-stone-500">SaaS Admin</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-stone-950">Subscriptions</h1>
-        <p className="mt-2 text-sm text-stone-600">
-          Monitor shop access, payment references, pre-shop intents, and webhook events.
-        </p>
-      </div>
-
-      <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
-        <div className="border-b border-stone-200 px-4 py-3">
-          <h2 className="text-lg font-bold text-stone-950">Shop Access</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="bg-stone-50 text-xs uppercase tracking-wider text-stone-500">
-              <tr>
-                <th className="px-4 py-3">Shop</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Plan</th>
-                <th className="px-4 py-3">Access until</th>
-                <th className="px-4 py-3">Grace</th>
-                <th className="px-4 py-3">Reason</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {(entitlements ?? []).map((row) => {
-                const shop = Array.isArray(row.shops) ? row.shops[0] : row.shops;
-                const plan = Array.isArray(row.saas_plans) ? row.saas_plans[0] : row.saas_plans;
-                const isLocked = row.billing_status === "locked";
-                return (
-                  <tr key={row.shop_id}>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-stone-950">{shop?.name ?? "Unknown shop"}</div>
-                      <div className="text-xs text-stone-500">{shop?.slug ?? row.shop_id}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${statusClass(row.billing_status)}`}>
-                        {row.billing_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-stone-700">{plan?.display_name ?? "Manual/free access"}</td>
-                    <td className="px-4 py-3 text-stone-700">{dateText(row.subscription_valid_until ?? row.access_expires_at)}</td>
-                    <td className="px-4 py-3 text-stone-700">{dateText(row.grace_ends_at)}</td>
-                    <td className="px-4 py-3 text-stone-600">{row.locked_reason ?? "-"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <form action={superadminExtendSubscriptionAction} className="flex gap-2">
-                          <input type="hidden" name="shop_id" value={row.shop_id} />
-                          <input
-                            name="days"
-                            defaultValue="365"
-                            className="h-9 w-20 rounded-lg border border-stone-200 px-2 text-sm"
-                          />
-                          <SubscriptionActionButton className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-stone-950 px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-70">
-                            Extend
-                          </SubscriptionActionButton>
-                        </form>
-                        <form action={isLocked ? superadminUnlockSubscriptionAction : superadminLockSubscriptionAction}>
-                          <input type="hidden" name="shop_id" value={row.shop_id} />
-                          <SubscriptionActionButton
-                            className={[
-                              "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-70",
-                              isLocked
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-red-200 bg-red-50 text-red-700",
-                            ].join(" ")}
-                          >
-                            {isLocked ? "Unlock" : "Lock"}
-                          </SubscriptionActionButton>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <h2 className="text-lg font-bold text-stone-950">Latest Shop Subscriptions</h2>
-          <div className="mt-4 space-y-3">
-            {(subscriptions ?? []).map((sub) => {
-              const shop = Array.isArray(sub.shops) ? sub.shops[0] : sub.shops;
-              const plan = Array.isArray(sub.saas_plans) ? sub.saas_plans[0] : sub.saas_plans;
-              return (
-                <div key={sub.id} className="rounded-lg border border-stone-200 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-stone-950">{shop?.name ?? sub.shop_id}</p>
-                      <p className="text-xs text-stone-500">{plan?.display_name ?? "No plan"} · {sub.billing_interval}</p>
-                    </div>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${statusClass(sub.status)}`}>
-                      {sub.status}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs text-stone-600">Next payment: {dateText(sub.next_payment_at)}</p>
-                  <p className="mt-1 text-xs text-stone-600">Last payment: {sub.last_payment_status ?? "-"}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <h2 className="text-lg font-bold text-stone-950">Latest Intents</h2>
-          <div className="mt-4 space-y-3">
-            {(intents ?? []).map((intent) => (
-              <div key={intent.id} className="rounded-lg border border-stone-200 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-bold text-stone-950">{intent.owner_email}</p>
-                    <p className="text-xs text-stone-500">{intent.plan_code} · {intent.billing_interval}</p>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${statusClass(intent.status)}`}>
-                    {intent.status}
-                  </span>
-                </div>
-                <p className="mt-2 text-xs text-stone-600">Expires: {dateText(intent.expires_at)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-stone-200 bg-white p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-stone-950">Latest Webhook Events</h2>
-          <Link href="/admin/saas" className="text-sm font-semibold text-stone-600 hover:text-stone-950">Back to admin</Link>
-        </div>
-        <div className="mt-4 grid gap-2">
-          {(events ?? []).map((event) => (
-            <div key={event.id} className="rounded-lg border border-stone-200 px-3 py-2 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-bold text-stone-950">{event.event_type}</span>
-                <span className="text-xs text-stone-500">{dateText(event.created_at)}</span>
-              </div>
-              <p className="mt-1 text-xs text-stone-600">{event.processed_status} · {event.processed_message ?? "-"}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+export default async function SubscriptionsPage({ searchParams }: { searchParams: Promise<{ page?: string; status?: string }> }) {
+  const params = await searchParams, page = pageNumber(params.page);
+  const status = ["active", "trialing", "locked"].includes(params.status ?? "") ? params.status! : "";
+  const db = await getAdminReadClient();
+  let query = db.from("shop_entitlements").select("shop_id, billing_status, trial_ends_at, subscription_valid_until, access_expires_at, grace_ends_at, locked_reason, provider, cancel_at_period_end, shops(name, slug), saas_plans(display_name)", { count: "exact" }).order("updated_at", { ascending: false }).order("shop_id").range((page - 1) * 25, page * 25 - 1);
+  if (status) query = query.eq("billing_status", status);
+  const { data, count, error } = await query;
+  checkAdminQuery(error, "subscriptions");
+  const ids = (data ?? []).map(row => row.shop_id);
+  const { data: subscriptions, error: subError } = ids.length ? await db.from("shop_subscriptions").select("shop_id, status, billing_interval, next_payment_at, last_payment_status").in("shop_id", ids) : { data: [], error: null };
+  checkAdminQuery(subError, "provider subscriptions");
+  const byShop = new Map(subscriptions?.map(row => [row.shop_id, row]));
+  return <div className="space-y-6"><AdminHeading title="Subscriptions & access" description="Review workspace plans, provider billing status, and manual access grants."><Link href="/admin/saas/support?queue=all" className={adminSecondary}>Provider event log</Link></AdminHeading>
+    <form className="flex flex-wrap items-end gap-3"><label className="text-xs text-stone-500">Billing status<select name="status" defaultValue={status} className={`${adminInput} mt-2`}><option value="">All billing statuses</option><option value="active">Active</option><option value="trialing">Trialing</option><option value="locked">Locked</option></select></label><button className={adminButton}>Apply filter</button></form>
+    <AdminPanel title="Workspace subscriptions" description="Manual grants change app access; they do not collect payment or cancel provider billing."><AdminTable headers={["Shop", "Plan / provider", "Access", "Expires / grace", "Billing", "Manage"]} rows={(data ?? []).map(row => {
+      const shop = Array.isArray(row.shops) ? row.shops[0] : row.shops, plan = Array.isArray(row.saas_plans) ? row.saas_plans[0] : row.saas_plans, sub = byShop.get(row.shop_id), locked = row.billing_status === "locked";
+      return { id: row.shop_id, cells: [<Link key="shop" href={`/admin/saas/shops/${row.shop_id}?tab=access`} className="font-semibold text-stone-900 hover:underline">{shop?.name ?? row.shop_id}<span className="mt-1 block text-xs font-normal text-stone-400">/{shop?.slug}</span></Link>, <div key="plan"><p>{plan?.display_name ?? "No plan assigned"}</p><p className="mt-1 text-xs capitalize text-stone-400">{row.provider ?? "Manual"}{sub?.billing_interval ? ` · ${sub.billing_interval}` : ""}</p></div>, <div key="access" className="space-y-2"><StatusBadge value={row.billing_status} />{row.locked_reason ? <p className="text-xs">{row.locked_reason}</p> : null}</div>, <div key="expiry"><p>{adminDate(accessEnd(row))}</p>{row.grace_ends_at ? <p className="mt-1 text-xs text-amber-700">Grace: {adminDate(row.grace_ends_at)}</p> : null}</div>, <div key="billing" className="space-y-2"><StatusBadge value={sub?.status ?? "manual"} /><p className="text-xs text-stone-400">Next: {adminDate(sub?.next_payment_at)}</p>{row.cancel_at_period_end ? <p className="text-xs text-amber-700">Renewal cancelled</p> : null}</div>, <div key="manage" className="flex flex-col gap-2"><ConfirmForm action={superadminExtendSubscriptionAction} message="Extend workspace access by the entered number of days?" className="flex gap-2"><input type="hidden" name="shop_id" value={row.shop_id} /><input aria-label="Additional access days" name="days" type="number" required min="1" max="3650" defaultValue="30" className={`${adminInput} max-w-20`} /><SubscriptionActionButton className={adminButton}>Extend</SubscriptionActionButton></ConfirmForm><ConfirmForm action={locked ? superadminUnlockSubscriptionAction : superadminLockSubscriptionAction} message={`${locked ? "Unlock" : "Lock"} access for this shop?`}><input type="hidden" name="shop_id" value={row.shop_id} /><SubscriptionActionButton className={adminSecondary}>{locked ? "Unlock" : "Lock"} access</SubscriptionActionButton></ConfirmForm></div>] };
+    })} /><Pagination page={page} count={count ?? 0} base="/admin/saas/subscriptions" params={{ status }} /></AdminPanel>
+  </div>;
 }

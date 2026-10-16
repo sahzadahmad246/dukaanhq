@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
-  Building2,
   ChevronRight,
   CreditCard,
   Home,
@@ -14,12 +13,10 @@ import {
   LogOut,
   Settings,
   ShieldCheck,
-  Tags,
 } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatShopMemberRole } from "@/lib/auth/display-role";
-import { cn } from "@/lib/utils";
 
 type NavItem = {
   href: string;
@@ -31,9 +28,9 @@ type NavItem = {
 
 const secondaryItems: NavItem[] = [
   { href: "/admin/saas/subscriptions", label: "Subscriptions", icon: CreditCard },
-  { href: "/admin/saas/reports", label: "Reports", icon: BarChart3, disabled: true },
-  { href: "/admin/saas/support", label: "Support", icon: LifeBuoy, disabled: true },
-  { href: "/admin/saas/settings", label: "Settings", icon: Settings, disabled: true },
+  { href: "/admin/saas/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/saas/support", label: "Support", icon: LifeBuoy },
+  { href: "/admin/saas/settings", label: "Settings", icon: Settings },
 ];
 
 export function SaasAdminDrawer({

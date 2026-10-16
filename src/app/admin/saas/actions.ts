@@ -1,29 +1,12 @@
 "use server";
 
+import { requireSaasAdmin } from "@/lib/admin/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { isValidInvoiceFooter, normalizeInvoiceFooter } from "@/lib/invoice-footer";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-async function requireSuperadmin(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/auth/login");
-  }
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (profile?.role !== "superadmin") {
-    redirect("/");
-  }
-
-  return { user, profile };
-}
 
 function getAdminSupabase() {
   const supabase = createSupabaseAdminClient();
@@ -34,35 +17,24 @@ function getAdminSupabase() {
 }
 
 export async function updateSaasSettingsAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  await requireSuperadmin(supabase);
+  await requireSaasAdmin();
 
-  const trial_enabled = formData.get("trial_enabled") === "on";
-  const trial_duration_days = Math.min(
-    365,
-    Math.max(1, Math.floor(Number(formData.get("trial_duration_days")) || 30)),
-  );
-  const plan_display_name = String(formData.get("plan_display_name") ?? "").trim() || "DukaanHQ Pro";
-  const plan_price_rupees = Number(formData.get("plan_price_rupees"));
-  const plan_price_paise = Math.round((Number.isFinite(plan_price_rupees) ? plan_price_rupees : 499) * 100);
-
-  const { error } = await supabase
-    .from("saas_platform_settings")
-    .update({
-      trial_enabled,
-      trial_duration_days,
-      plan_display_name,
-      plan_price_paise,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", 1);
-
-  if (error) {
-    redirect(`/admin/saas?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath("/admin/saas");
-  redirect("/admin/saas?saved=1");
+  const parsed = z.object({
+    trial_enabled: z.boolean(),
+    trial_duration_days: z.coerce.number().int().min(1).max(365),
+    plan_display_name: z.string().trim().min(2).max(100),
+    plan_price_rupees: z.coerce.number().min(0).max(1000000),
+  }).safeParse({ trial_enabled: formData.get("trial_enabled") === "on", trial_duration_days: formData.get("trial_duration_days"), plan_display_name: formData.get("plan_display_name"), plan_price_rupees: formData.get("plan_price_rupees") });
+  if (!parsed.success) redirect(`/admin/saas/settings?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid settings")}`);
+  const admin = getAdminSupabase();
+  const { error } = await admin.from("saas_platform_settings").upsert({
+    id: 1, trial_enabled: parsed.data.trial_enabled, trial_duration_days: parsed.data.trial_duration_days,
+    plan_display_name: parsed.data.plan_display_name, plan_price_paise: Math.round(parsed.data.plan_price_rupees * 100),
+    updated_at: new Date().toISOString(),
+  });
+  if (error) redirect(`/admin/saas/settings?error=${encodeURIComponent(error.message)}`);
+  revalidatePath("/admin/saas", "layout");
+  redirect("/admin/saas/settings?saved=1");
 }
 
 const PlanBenefitSchema = z.object({
@@ -118,27 +90,6 @@ function normalizeDateInput(value: string) {
   const date = new Date(`${value}T23:59:59.999+05:30`);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
-
-const fixedPlanLimits = {
-  starter: {
-    products: 25,
-    invoices_per_month: 50,
-    staff: 1,
-    whatsapp_messages_per_month: 0,
-  },
-  growth: {
-    products: 250,
-    invoices_per_month: 500,
-    staff: 3,
-    whatsapp_messages_per_month: 0,
-  },
-  pro: {
-    products: null,
-    invoices_per_month: null,
-    staff: null,
-    whatsapp_messages_per_month: null,
-  },
-} as const;
 
 const fixedPlanEntitlements = {
   starter: {
@@ -207,8 +158,8 @@ const defaultPlanFeatures = {
 } as const;
 
 export async function updateSaasPlanAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  await requireSuperadmin(supabase);
+  await requireSaasAdmin();
+  const supabase = getAdminSupabase();
 
   const parsed = PlanBenefitSchema.safeParse({
     plan_id: formData.get("plan_id"),
@@ -247,11 +198,23 @@ export async function updateSaasPlanAction(formData: FormData) {
     redirect(`/admin/saas/plans?error=${encodeURIComponent(planReadError?.message ?? "Plan not found.")}`);
   }
 
-  const code = String(currentPlan.code) as keyof typeof fixedPlanLimits;
-  if (!Object.prototype.hasOwnProperty.call(fixedPlanLimits, code)) {
+  const code = String(currentPlan.code) as keyof typeof fixedPlanEntitlements;
+  if (!Object.prototype.hasOwnProperty.call(fixedPlanEntitlements, code)) {
     redirect("/admin/saas/plans?error=Only%20Starter,%20Growth,%20and%20Pro%20plans%20can%20be%20edited.");
   }
 
+  const limits: Record<string, number | null> = {};
+  for (const key of ["products", "invoices_per_month", "staff", "whatsapp_messages_per_month"]) {
+    const raw = String(formData.get(`limit_${key}`) ?? "").trim();
+    if (raw === "") limits[key] = null;
+    else {
+      const parsedLimit = z.coerce.number().int().min(0).max(100000000).safeParse(raw);
+      if (!parsedLimit.success) redirect(`/admin/saas/plans?error=Limits%20must%20be%20nonnegative%20whole%20numbers`);
+      limits[key] = parsedLimit.data;
+    }
+  }
+  const entitlements = Object.fromEntries(Object.keys(fixedPlanEntitlements[code]).map(key => [key, formData.get(`entitlement_${key}`) === "on"]));
+  const features = String(formData.get("features") ?? "").split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(0, 30);
   const { error: planUpdateError } = await supabase
     .from("saas_plans")
     .update({
@@ -260,9 +223,9 @@ export async function updateSaasPlanAction(formData: FormData) {
       description: parsed.data.description || null,
       support_level: parsed.data.support_level,
       is_active: parsed.data.is_active,
-      limits: fixedPlanLimits[code],
-      entitlements: fixedPlanEntitlements[code],
-      features: defaultPlanFeatures[code],
+      limits,
+      entitlements,
+      features: features.length ? features : defaultPlanFeatures[code],
       updated_at: new Date().toISOString(),
     })
     .eq("id", parsed.data.plan_id);
@@ -334,8 +297,7 @@ export async function updateSaasPlanAction(formData: FormData) {
 }
 
 export async function setShopStatusAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  await requireSuperadmin(supabase);
+  await requireSaasAdmin();
 
   const shop_id = String(formData.get("shop_id") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
@@ -344,10 +306,24 @@ export async function setShopStatusAction(formData: FormData) {
     redirect("/admin/saas/shops?error=Missing%20shop%20id");
   }
 
-  const { error } = await supabase.rpc("superadmin_set_shop_status", { p_shop_id: shop_id, p_status: status });
-  if (error) {
-    redirect(`/admin/saas/shops/${encodeURIComponent(shop_id)}?error=${encodeURIComponent(error.message)}`);
+  if (!z.string().uuid().safeParse(shop_id).success || !["active", "inactive", "suspended"].includes(status)) {
+    redirect("/admin/saas/shops?error=Invalid%20shop%20or%20status");
   }
+  const admin = getAdminSupabase();
+  if (status === "active") {
+    const { data: previous, error: previousError } = await admin.from("shops").select("status").eq("id", shop_id).maybeSingle();
+    if (previousError || !previous) redirect(`/admin/saas/shops/${shop_id}?error=Could%20not%20read%20shop%20status`);
+    if (previous.status === "suspended") {
+      // Older shop-suspension RPCs also suspended owners. Recover those owners
+      // while preserving staff suspensions, whose original cause is unknown.
+      const { error: ownerError } = await admin.from("shop_members").update({ status: "ACTIVE", suspended_at: null })
+        .eq("shop_id", shop_id).eq("role", "owner").eq("status", "SUSPENDED");
+      if (ownerError) redirect(`/admin/saas/shops/${shop_id}?error=${encodeURIComponent(ownerError.message)}`);
+    }
+  }
+  const { data, error } = await admin.from("shops").update({ status }).eq("id", shop_id).select("id").maybeSingle();
+  if (error || !data) redirect(`/admin/saas/shops/${encodeURIComponent(shop_id)}?error=${encodeURIComponent(error?.message ?? "Shop not found")}`);
+  revalidatePath("/admin/saas");
 
   revalidatePath("/admin/saas/shops");
   revalidatePath(`/admin/saas/shops/${shop_id}`);
@@ -355,19 +331,24 @@ export async function setShopStatusAction(formData: FormData) {
 }
 
 export async function superadminExtendSubscriptionAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  await requireSuperadmin(supabase);
+  await requireSaasAdmin();
 
   const shopId = String(formData.get("shop_id") ?? "").trim();
   const days = Math.min(3650, Math.max(1, Math.floor(Number(formData.get("days")) || 365)));
 
-  if (!shopId) {
-    redirect("/admin/saas/subscriptions?error=Missing%20shop%20id");
+  if (!z.string().uuid().safeParse(shopId).success) {
+    redirect("/admin/saas/subscriptions?error=Invalid%20shop%20id");
   }
 
   const admin = getAdminSupabase();
-  const validUntil = new Date();
-  validUntil.setDate(validUntil.getDate() + days);
+  if (!z.string().uuid().safeParse(shopId).success || !Number.isInteger(Number(formData.get("days"))) || Number(formData.get("days")) < 1 || Number(formData.get("days")) > 3650) {
+    redirect("/admin/saas/subscriptions?error=Enter%20between%201%20and%203650%20days");
+  }
+  const { data: existing, error: readError } = await admin.from("shop_entitlements")
+    .select("subscription_valid_until, access_expires_at, grace_ends_at, trial_ends_at").eq("shop_id", shopId).maybeSingle();
+  if (readError) redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(readError.message)}`);
+  const basis = Math.max(Date.now(), new Date(existing?.subscription_valid_until ?? 0).getTime() || 0, new Date(existing?.trial_ends_at ?? 0).getTime() || 0, new Date(existing?.access_expires_at ?? 0).getTime() || 0, new Date(existing?.grace_ends_at ?? 0).getTime() || 0);
+  const validUntil = new Date(basis + days * 86400000);
 
   const { error } = await admin.from("shop_entitlements").upsert(
     {
@@ -377,7 +358,6 @@ export async function superadminExtendSubscriptionAction(formData: FormData) {
       access_expires_at: validUntil.toISOString(),
       grace_ends_at: null,
       locked_reason: null,
-      cancel_at_period_end: false,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "shop_id" },
@@ -387,17 +367,16 @@ export async function superadminExtendSubscriptionAction(formData: FormData) {
     redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(error.message)}`);
   }
 
-  revalidatePath("/admin/saas/subscriptions");
+  revalidatePath("/admin/saas", "layout");
   redirect("/admin/saas/subscriptions?saved=1");
 }
 
 export async function superadminLockSubscriptionAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  await requireSuperadmin(supabase);
+  await requireSaasAdmin();
 
   const shopId = String(formData.get("shop_id") ?? "").trim();
-  if (!shopId) {
-    redirect("/admin/saas/subscriptions?error=Missing%20shop%20id");
+  if (!z.string().uuid().safeParse(shopId).success) {
+    redirect("/admin/saas/subscriptions?error=Invalid%20shop%20id");
   }
 
   const admin = getAdminSupabase();
@@ -414,21 +393,20 @@ export async function superadminLockSubscriptionAction(formData: FormData) {
     redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(error.message)}`);
   }
 
-  revalidatePath("/admin/saas/subscriptions");
+  revalidatePath("/admin/saas", "layout");
   redirect("/admin/saas/subscriptions?saved=1");
 }
 
 export async function superadminUnlockSubscriptionAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  await requireSuperadmin(supabase);
+  await requireSaasAdmin();
 
   const shopId = String(formData.get("shop_id") ?? "").trim();
-  if (!shopId) {
-    redirect("/admin/saas/subscriptions?error=Missing%20shop%20id");
+  if (!z.string().uuid().safeParse(shopId).success) {
+    redirect("/admin/saas/subscriptions?error=Invalid%20shop%20id");
   }
 
   const admin = getAdminSupabase();
-  const { data: entitlement } = await admin
+  const { data: entitlement, error: entitlementError } = await admin
     .from("shop_entitlements")
     .select("trial_ends_at, subscription_valid_until, access_expires_at")
     .eq("shop_id", shopId)
@@ -438,9 +416,13 @@ export async function superadminUnlockSubscriptionAction(formData: FormData) {
       access_expires_at: string | null;
     }>();
 
+  if (entitlementError) redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(entitlementError.message)}`);
   const nowMs = Date.now();
   const trialEndsMs = entitlement?.trial_ends_at ? new Date(entitlement.trial_ends_at).getTime() : 0;
   const validUntil = entitlement?.subscription_valid_until ?? entitlement?.access_expires_at ?? null;
+  if (!entitlement || (trialEndsMs <= nowMs && (validUntil ? new Date(validUntil).getTime() <= nowMs : Boolean(entitlement.trial_ends_at)))) {
+    redirect("/admin/saas/subscriptions?error=Access%20has%20expired.%20Extend%20access%20before%20unlocking.");
+  }
   const nextStatus = trialEndsMs > nowMs ? "trialing" : "active";
 
   const { error } = await admin
@@ -459,7 +441,7 @@ export async function superadminUnlockSubscriptionAction(formData: FormData) {
     redirect(`/admin/saas/subscriptions?error=${encodeURIComponent(error.message)}`);
   }
 
-  revalidatePath("/admin/saas/subscriptions");
+  revalidatePath("/admin/saas", "layout");
   redirect("/admin/saas/subscriptions?saved=1");
 }
 
@@ -473,7 +455,7 @@ const SuperadminUpdateShopSchema = z.object({
   city: z.string().trim().min(1, "City is required."),
   state: z.string().trim().min(1, "State is required."),
   postal_code: z.string().trim().min(1, "Postal code is required."),
-  logo_url: z.string().trim().optional().default(""),
+  logo_url: z.union([z.literal(""), z.url().refine(value => value.startsWith("https://"), "Logo URL must use HTTPS.")]).optional().default(""),
   invoice_prefix: z.string().trim().min(1, "Invoice prefix is required."),
   invoice_footer: z
     .string()
@@ -484,8 +466,7 @@ const SuperadminUpdateShopSchema = z.object({
 });
 
 export async function superadminUpdateShopInfoAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  await requireSuperadmin(supabase);
+  await requireSaasAdmin();
 
   const parsed = SuperadminUpdateShopSchema.safeParse({
     shop_id: formData.get("shop_id"),
@@ -541,6 +522,33 @@ export async function superadminUpdateShopInfoAction(formData: FormData) {
     redirect(`/admin/saas/shops/${parsed.data.shop_id}?error=${encodeURIComponent(settingsErr.message)}`);
   }
 
-  revalidatePath(`/admin/saas/shops/${parsed.data.shop_id}`);
+  revalidatePath("/admin/saas", "layout");
   redirect(`/admin/saas/shops/${parsed.data.shop_id}?saved=1`);
+}
+
+export async function setAdminStaffStatusAction(formData: FormData) {
+  await requireSaasAdmin();
+  const parsed = z.object({ shop_id: z.string().uuid(), member_id: z.string().uuid(), status: z.enum(["ACTIVE", "SUSPENDED"]) }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect("/admin/saas/shops?error=Invalid%20staff%20request");
+  const { shop_id, member_id, status } = parsed.data;
+  // Only staff can be changed here; owner access cannot be removed accidentally.
+  const { data, error } = await getAdminSupabase().from("shop_members").update({ status, suspended_at: status === "SUSPENDED" ? new Date().toISOString() : null })
+    .eq("id", member_id).eq("shop_id", shop_id).eq("role", "staff").select("id").maybeSingle();
+  if (error || !data) redirect(`/admin/saas/shops/${shop_id}?tab=team&error=${encodeURIComponent(error?.message ?? "Staff member not found")}`);
+  revalidatePath("/admin/saas", "layout");
+  redirect(`/admin/saas/shops/${shop_id}?tab=team&saved=1`);
+}
+
+export async function setAdminShopPlanAction(formData: FormData) {
+  await requireSaasAdmin();
+  const parsed = z.object({ shop_id: z.string().uuid(), plan_id: z.string().uuid() }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect("/admin/saas/shops?error=Choose%20a%20valid%20shop%20and%20plan");
+  const { shop_id, plan_id } = parsed.data;
+  const admin = getAdminSupabase();
+  const { data: plan, error: planError } = await admin.from("saas_plans").select("id").eq("id", plan_id).eq("is_active", true).maybeSingle();
+  if (planError || !plan) redirect(`/admin/saas/shops/${shop_id}?tab=access&error=Plan%20is%20not%20available`);
+  const { data, error } = await admin.from("shop_entitlements").update({ plan_id, updated_at: new Date().toISOString() }).eq("shop_id", shop_id).select("shop_id").maybeSingle();
+  if (error || !data) redirect(`/admin/saas/shops/${shop_id}?tab=access&error=${encodeURIComponent(error?.message ?? "Create shop access before assigning a plan")}`);
+  revalidatePath("/admin/saas", "layout");
+  redirect(`/admin/saas/shops/${shop_id}?tab=access&saved=1`);
 }

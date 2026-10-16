@@ -1,25 +1,13 @@
-import { redirect } from "next/navigation";
+import { requireSaasAdmin } from "@/lib/admin/auth";
 
 import { SaasAdminShell } from "@/app/admin/saas/_components/saas-admin-shell";
-import { getUserAppState } from "@/lib/auth/user-flow";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function SaasAdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createSupabaseServerClient();
-  const state = await getUserAppState(supabase);
-
-  if (!state.user) {
-    redirect("/auth/login");
-  }
-
-  if (!state.isSuperAdmin) {
-    redirect("/");
-  }
-
-  const userName = state.profile?.full_name || state.user.email?.split("@")[0] || "Admin";
-  const userEmail = state.profile?.email || state.user.email || "";
-  const userRole = state.profile?.role || "superadmin";
-  const userAvatarUrl = state.profile?.avatar_url ?? null;
+  const { user, profile } = await requireSaasAdmin();
+  const userName = profile.full_name || user.email?.split("@")[0] || "Admin";
+  const userEmail = profile.email || user.email || "";
+  const userRole = profile.role;
+  const userAvatarUrl = profile.avatar_url ?? null;
 
   return (
     <SaasAdminShell

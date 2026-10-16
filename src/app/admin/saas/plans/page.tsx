@@ -1,12 +1,12 @@
 import { SaasPlansBoard, type BillingInterval, type PlanRow } from "@/app/admin/saas/plans/_components/saas-plans-board";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getAdminReadClient } from "@/lib/admin/auth";
 
 export default async function SaasPlansPage({
   searchParams,
 }: {
   searchParams: Promise<{ edit?: string; saved?: string; error?: string; billing?: string }>;
 }) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getAdminReadClient();
   const query = await searchParams;
   const billingInterval: BillingInterval = query.billing === "year" ? "year" : "month";
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Boxes, Check, Pencil, ReceiptText, Sparkles, Users, X } from "lucide-react";
 
+import { SubscriptionActionButton } from "../../subscriptions/_components/subscription-action-button";
 import { updateSaasPlanAction } from "@/app/admin/saas/actions";
 
 export type PlanCode = "starter" | "growth" | "pro";
@@ -51,6 +52,7 @@ const planTone: Record<PlanCode, string> = {
 const entitlementLabels: Array<[keyof NonNullable<PlanRow["entitlements"]>, string]> = [
   ["inventory", "Inventory"],
   ["invoices", "Invoices"],
+  ["basic_pdf_invoice", "Basic PDF invoices"],
   ["loan_emi_details", "Loan/EMI details"],
   ["customer_signature", "Customer signature"],
   ["shop_stamp", "Shop stamp"],
@@ -299,11 +301,15 @@ function EditPlanModal({
               <DiscountFields prefix="yearly" price={yearly} />
             </section>
 
-            <section className="rounded-lg border border-stone-200 bg-stone-50 p-4">
-              <h3 className="text-sm font-bold uppercase tracking-wide text-stone-500">Fixed benefits</h3>
-              <p className="mt-2 text-sm leading-6 text-stone-600">
-                Benefit access is locked to the Starter, Growth, and Pro structure we discussed. Edit labels and prices here; entitlement changes should happen in code/migration so app limits stay predictable.
-              </p>
+            <section className="space-y-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
+              <h3 className="text-sm font-semibold text-stone-700">Usage limits</h3>
+              <p className="text-xs leading-relaxed text-stone-500">Leave a limit empty for unlimited usage. Changes apply to shops on this plan.</p>
+              <div className="grid gap-3 sm:grid-cols-2">{([
+                ["products", "Products"], ["invoices_per_month", "Invoices per month"], ["staff", "Team seats"], ["whatsapp_messages_per_month", "WhatsApp messages per month"],
+              ] as const).map(([key, label]) => <label key={key} className="text-xs font-medium text-stone-600">{label}<input type="number" min="0" max="100000000" step="1" name={`limit_${key}`} defaultValue={plan.limits?.[key] ?? ""} placeholder="Unlimited" className="mt-2 h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm" /></label>)}</div>
+              <h3 className="pt-2 text-sm font-semibold text-stone-700">Feature access</h3>
+              <div className="grid gap-3 sm:grid-cols-2">{entitlementLabels.map(([key, label]) => <label key={key} className="flex min-h-10 items-center gap-2 text-xs text-stone-600"><input type="checkbox" name={`entitlement_${key}`} defaultChecked={plan.entitlements?.[key] === true} className="h-4 w-4 accent-stone-900" />{label}</label>)}</div>
+              <label className="block text-xs font-medium text-stone-600">Pricing page benefits (one per line)<textarea name="features" defaultValue={(plan.features ?? []).join("\n")} className="mt-2 min-h-32 w-full rounded-lg border border-stone-200 bg-white p-3 text-sm" /></label>
             </section>
           </div>
 
@@ -315,9 +321,7 @@ function EditPlanModal({
             >
               Cancel
             </button>
-            <button type="submit" className="inline-flex h-10 items-center rounded-lg bg-stone-950 px-4 text-sm font-semibold text-white hover:bg-stone-800">
-              Save plan
-            </button>
+            <SubscriptionActionButton className="inline-flex min-h-11 items-center rounded-lg bg-stone-950 px-4 text-sm font-semibold text-white hover:bg-stone-800">Save plan</SubscriptionActionButton>
           </div>
         </form>
       </div>

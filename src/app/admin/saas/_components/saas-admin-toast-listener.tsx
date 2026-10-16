@@ -24,7 +24,7 @@ export function SaasAdminToastListener() {
     }
 
     if (error) {
-      toast.error(decodeURIComponent(error));
+      toast.error(error);
     }
 
     if (saved || error) {
