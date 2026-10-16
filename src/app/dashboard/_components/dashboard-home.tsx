@@ -31,6 +31,7 @@ import {
 import type { DashboardStats, RecentInvoice, RecentProduct, SubscriptionNotice } from "../load-dashboard-data";
 import type { BillingInvoiceSummary } from "@/app/billing/load-billing-data";
 import type { Brand, Category } from "@/lib/types/inventory";
+import { useBillFormSession } from "@/lib/hooks/use-bill-form-session";
 import { AddBillModal } from "@/app/billing/_components/add-bill-modal";
 import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
 import { ProductDetailsDrawer } from "@/app/inventory/_components/product-details-drawer";
@@ -267,7 +268,7 @@ export function DashboardHome({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [isAddBillOpen, setIsAddBillOpen] = useState(false);
+  const [isAddBillOpen, setIsAddBillOpen, resumeBillDraft] = useBillFormSession();
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isInviteStaffOpen, setIsInviteStaffOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -1022,6 +1023,7 @@ export function DashboardHome({
 
       {/* Modals */}
       <AddBillModal
+          resumeDraft={resumeBillDraft}
         open={isAddBillOpen || !!editingInvoice}
         onClose={() => {
           setIsAddBillOpen(false);

@@ -38,7 +38,7 @@ export async function loadInventoryData(workspaceData?: WorkspaceData) {
       category?: { name?: string | null } | null;
     };
 
-    const { data: productRows } = await supabase
+    const productsQuery = supabase
       .from("products")
       .select(`
         *,
@@ -51,7 +51,8 @@ export async function loadInventoryData(workspaceData?: WorkspaceData) {
       .eq("shop_id", shop.id)
       .order("created_at", { ascending: false });
 
-    const [{ data: categoryRows }, { data: brandRows }] = await Promise.all([
+    const [{ data: productRows }, { data: categoryRows }, { data: brandRows }] = await Promise.all([
+      productsQuery,
       supabase.from("categories").select("*").eq("shop_id", shop.id).order("name"),
       supabase.from("brands").select("*").eq("shop_id", shop.id).order("name"),
     ]);
@@ -60,22 +61,22 @@ export async function loadInventoryData(workspaceData?: WorkspaceData) {
     brands = (brandRows ?? []) as Brand[];
 
     if (productRows) {
-      products = (productRows as ProductRow[]).map((product) => ({
+      products = (productRows as ProductRow[]).map(({ inventory_items, stock_movements, ...product }) => ({
         ...product,
         total_quantity: computeInventoryQuantity({
           productKind: product.product_kind,
           trackingType: product.tracking_type,
           variants: product.variants,
-          inventoryItems: product.inventory_items,
+          inventoryItems: inventory_items,
         }),
-        damaged_count: (product.inventory_items ?? []).filter((item) => item.status === "DAMAGED").length,
-        returned_count: (product.inventory_items ?? []).filter((item) => item.status === "RETURNED").length,
+        damaged_count: (inventory_items ?? []).filter((item) => item.status === "DAMAGED").length,
+        returned_count: (inventory_items ?? []).filter((item) => item.status === "RETURNED").length,
         has_damaged_activity:
-          (product.inventory_items ?? []).some((item) => item.status === "DAMAGED") ||
-          (product.stock_movements ?? []).some((movement) => movement.type === "DAMAGE"),
+          (inventory_items ?? []).some((item) => item.status === "DAMAGED") ||
+          (stock_movements ?? []).some((movement) => movement.type === "DAMAGE"),
         has_return_activity:
-          (product.inventory_items ?? []).some((item) => item.status === "RETURNED") ||
-          (product.stock_movements ?? []).some((movement) => movement.type === "RETURN"),
+          (inventory_items ?? []).some((item) => item.status === "RETURNED") ||
+          (stock_movements ?? []).some((movement) => movement.type === "RETURN"),
       }));
     }
   }

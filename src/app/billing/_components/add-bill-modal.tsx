@@ -3,7 +3,7 @@
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Check, ChevronLeft, ChevronRight, Gift, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,7 +256,11 @@ function readStoredBillDraft() {
 
 function clearStoredBillDraft() {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(BILL_DRAFT_STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(BILL_DRAFT_STORAGE_KEY);
+  } catch {
+    // Device storage may be unavailable.
+  }
 }
 
 function money(value: number) {
@@ -1094,6 +1098,7 @@ function LineEditor({
 
 export function AddBillModal({
   open,
+  resumeDraft = false,
   onClose,
   products,
   shopLogoUrl,
@@ -1107,6 +1112,7 @@ export function AddBillModal({
   allowWhatsappInvoiceSending = true,
 }: {
   open: boolean;
+  resumeDraft?: boolean;
   onClose: () => void;
   products: ProductSummary[];
   shopLogoUrl?: string | null;
@@ -1138,6 +1144,7 @@ export function AddBillModal({
   const [quickItemDraft, setQuickItemDraft] = useState<BillingLineDraft | null>(null);
   const [editingQuickLineId, setEditingQuickLineId] = useState<string | null>(null);
   const [closeProductDialogAfterQuickSave, setCloseProductDialogAfterQuickSave] = useState(false);
+  const initializedForm = useRef<string | null>(null);
   const [draftSyncReady, setDraftSyncReady] = useState(false);
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   const [savedDraft, setSavedDraft] = useState<StoredBillDraft | null>(null);
@@ -1149,25 +1156,16 @@ export function AddBillModal({
 
   const queryClient = useQueryClient();
 
-  // Prefetch product details for top products when modal opens (cached for 30 min)
   useEffect(() => {
-    if (open && products.length > 0) {
-      // Prefetch first 10 to avoid hammering server
-      const toPrefetch = products.slice(0, 10);
-      for (const product of toPrefetch) {
-        queryClient.prefetchQuery({
-          queryKey: productDetailsQueryKey(product.id),
-          queryFn: () => fetchProductDetails(product.id),
-          staleTime: 30 * 60 * 1000,
-        });
-      }
+    if (!open) {
+      initializedForm.current = null;
+      return;
     }
-  }, [open, products, queryClient]);
-
-  useEffect(() => {
-    if (!open) return;
+    const formId = invoiceToEdit?.id ?? "new";
+    if (initializedForm.current === formId) return;
 
     const timeoutId = window.setTimeout(() => {
+      initializedForm.current = formId;
       if (invoiceToEdit) {
         setDraftSyncReady(false);
         setShowRestorePrompt(false);
@@ -1247,6 +1245,19 @@ export function AddBillModal({
         setSavedDraft(existingDraft);
         setShowRestorePrompt(Boolean(existingDraft));
         setDraftSyncReady(!existingDraft);
+        if (resumeDraft && existingDraft) {
+          setCustomer(existingDraft.customer);
+          setPaymentDraft(existingDraft.paymentDraft);
+          setPendingPaymentDraft(existingDraft.paymentDraft);
+          setNotes(existingDraft.notes);
+          setInvoiceDateTime(existingDraft.invoiceDateTime);
+          setInvoiceDateTouched(true);
+          setLines(existingDraft.lines.map(normalizeDraftLine));
+          setCurrentStep(existingDraft.currentStep);
+          setSavedDraft(null);
+          setShowRestorePrompt(false);
+          setDraftSyncReady(true);
+        }
       }
       setIsQuickItemDialogOpen(false);
       setQuickItemDraft(null);
@@ -1257,7 +1268,7 @@ export function AddBillModal({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [allowDigitalInvoiceAssets, allowWhatsappInvoiceSending, open, invoiceToEdit]);
+  }, [allowDigitalInvoiceAssets, allowWhatsappInvoiceSending, open, invoiceToEdit, resumeDraft]);
 
   useEffect(() => {
     if (!open || invoiceToEdit || !draftSyncReady) return;
@@ -1290,7 +1301,11 @@ export function AddBillModal({
       lines,
     };
 
-    window.localStorage.setItem(BILL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+    try {
+      window.localStorage.setItem(BILL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Keep the form usable when device storage is full or unavailable.
+    }
   }, [basicPdfSignatureMode, currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceDateTime, invoiceToEdit, lines, notes, open, paymentDraft]);
 
   useEffect(() => {

@@ -54,20 +54,17 @@ export type BillingInvoiceSummary = {
 
 export async function loadBillingData(searchParams?: { q?: string; period?: string }) {
   const workspace = await getWorkspaceData();
-  const inventory = await loadInventoryData();
+  const inventoryPromise = loadInventoryData(workspace);
   const supabase = await createSupabaseServerClient();
 
   let invoices: BillingInvoiceSummary[] = [];
   let planEntitlements: Record<string, boolean> | null = null;
 
-  if (workspace.shopEntitlement?.plan_id) {
-    const { data: plan } = await supabase
-      .from("saas_plans")
-      .select("entitlements")
-      .eq("id", workspace.shopEntitlement.plan_id)
-      .maybeSingle<{ entitlements: Record<string, boolean> | null }>();
-    planEntitlements = plan?.entitlements ?? null;
-  }
+  const planPromise = workspace.shopEntitlement?.plan_id
+    ? supabase.from("saas_plans").select("entitlements")
+        .eq("id", workspace.shopEntitlement.plan_id)
+        .maybeSingle<{ entitlements: Record<string, boolean> | null }>().then((result) => result)
+    : Promise.resolve({ data: null });
 
   if (workspace.shop) {
     let query = supabase
@@ -148,6 +145,9 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
       send_ready_pdf_url: invoice.invoice_pdf_url ?? null,
     }));
   }
+
+  const [inventory, { data: plan }] = await Promise.all([inventoryPromise, planPromise]);
+  planEntitlements = plan?.entitlements ?? null;
 
   return {
     ...workspace,

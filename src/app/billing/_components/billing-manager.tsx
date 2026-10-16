@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import type { Product, Category, Brand } from "@/lib/types/inventory";
 import { InventoryTopBar } from "@/app/inventory/_components/inventory-top-bar";
 import { AddProductModal } from "@/app/inventory/_components/add-product-modal";
+import { useBillFormSession } from "@/lib/hooks/use-bill-form-session";
 import { AddBillModal } from "./add-bill-modal";
 import { BillDetailsDrawer } from "./bill-details-drawer";
 import { downloadInvoicePdf, downloadExternalPdf, type PrintableInvoice } from "./invoice-print";
@@ -156,7 +157,7 @@ export function BillingManager({
   const [searchQuery, setSearchQuery] = useState(currentQuery);
   const [showHeader, setShowHeader] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [isAddBillOpen, setIsAddBillOpen] = useState(false);
+  const [isAddBillOpen, setIsAddBillOpen, resumeBillDraft] = useBillFormSession();
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<BillingInvoiceSummary | null>(null);
@@ -771,6 +772,7 @@ export function BillingManager({
         </section>
 
         <AddBillModal
+          resumeDraft={resumeBillDraft}
           open={isAddBillOpen || !!editingInvoice}
           onClose={() => {
             setIsAddBillOpen(false);

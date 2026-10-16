@@ -197,7 +197,7 @@ function buildSubscriptionNotice(input: {
 
 export async function loadDashboardData() {
   const workspace = await getWorkspaceData();
-  const inventory = await loadInventoryData(workspace);
+  const inventoryPromise = loadInventoryData(workspace);
   const supabase = await createSupabaseServerClient();
 
   const stats: DashboardStats = {
@@ -217,16 +217,15 @@ export async function loadDashboardData() {
   let subscriptionNotice: SubscriptionNotice | null = null;
   let planEntitlements: Record<string, boolean> | null = null;
 
-  if (workspace.shopEntitlement?.plan_id) {
-    const { data: plan } = await supabase
-      .from("saas_plans")
-      .select("entitlements")
-      .eq("id", workspace.shopEntitlement.plan_id)
-      .maybeSingle<{ entitlements: Record<string, boolean> | null }>();
-    planEntitlements = plan?.entitlements ?? null;
-  }
+  const planPromise = workspace.shopEntitlement?.plan_id
+    ? supabase.from("saas_plans").select("entitlements")
+        .eq("id", workspace.shopEntitlement.plan_id)
+        .maybeSingle<{ entitlements: Record<string, boolean> | null }>()
+    : Promise.resolve({ data: null });
 
   if (!workspace.shop) {
+    const [inventory, { data: plan }] = await Promise.all([inventoryPromise, planPromise]);
+    planEntitlements = plan?.entitlements ?? null;
     return {
       ...workspace,
       stats,
@@ -241,7 +240,7 @@ export async function loadDashboardData() {
   }
 
   const shopId = workspace.shop.id;
-  const { data: subscription } = await supabase
+  const subscriptionQuery = supabase
     .from("shop_subscriptions")
     .select("status, next_payment_at, current_period_end, cancel_at_period_end, last_payment_status")
     .eq("shop_id", shopId)
@@ -252,6 +251,47 @@ export async function loadDashboardData() {
       cancel_at_period_end: boolean;
       last_payment_status: string | null;
     }>();
+  const allInvoicesQuery = supabase
+    .from("invoices")
+    .select("id, grand_total, invoice_date")
+    .eq("shop_id", shopId);
+  const customerCountQuery = supabase
+    .from("customers")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId);
+  const lowStockDataQuery = supabase
+    .from("products")
+    .select("id, low_stock_threshold, product_variants(quantity)")
+    .eq("shop_id", shopId)
+    .eq("is_active", true)
+    .eq("tracking_type", "QUANTITY_BASED");
+  const recentQuery = supabase
+    .from("invoices")
+    .select(`
+      id, invoice_number, invoice_date, customer_name, customer_mobile, billing_address, customer_gst_number,
+      subtotal, tax_total, discount_total, grand_total, payment_method, payment_details, payment_status, notes,
+      shop_name_snapshot, shop_address_snapshot, shop_phone_snapshot, shop_gst_snapshot, invoice_footer_snapshot, invoice_pdf_url, customer_signature_url,
+      invoice_items (
+        id, product_id, variant_id, inventory_item_id, product_name_snapshot, brand_name_snapshot, category_name_snapshot,
+        variant_name_snapshot, identifier_snapshot, quantity, unit_price, tax_rate, discount_amount, line_total
+      )
+    `)
+    .eq("shop_id", shopId)
+    .order("invoice_date", { ascending: false })
+    .limit(5);
+  const recentProdsQuery = supabase
+    .from("products")
+    .select("id, name, image_url, base_purchase_price, base_selling_price, tracking_type, created_at, brands(name), categories(name), product_variants(quantity)")
+    .eq("shop_id", shopId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const [inventory, { data: plan }, { data: subscription }, { data: allInvoices },
+    { count: customerCount }, { data: lowStockData }, { data: recent }, { data: recentProds }] = await Promise.all([
+    inventoryPromise, planPromise, subscriptionQuery, allInvoicesQuery,
+    customerCountQuery, lowStockDataQuery, recentQuery, recentProdsQuery,
+  ]);
+  planEntitlements = plan?.entitlements ?? null;
 
   subscriptionNotice = buildSubscriptionNotice({
     entitlement: workspace.shopEntitlement,
@@ -263,12 +303,7 @@ export async function loadDashboardData() {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-  // Fetch all invoices for stats
-  const { data: allInvoices } = await supabase
-    .from("invoices")
-    .select("id, grand_total, invoice_date")
-    .eq("shop_id", shopId);
-
+  // Calculate statistics from the queries above.
   if (allInvoices) {
     stats.totalInvoices = allInvoices.length;
     stats.totalRevenue = allInvoices.reduce((s, i) => s + Number(i.grand_total || 0), 0);
@@ -285,25 +320,13 @@ export async function loadDashboardData() {
 
   // Total in-stock items (quantity-based stock + serialized IN_STOCK items)
   stats.inStockItems = (inventory.products ?? []).reduce(
-    (sum: number, p: any) => sum + (p.total_quantity || 0),
+    (sum, product) => sum + (product.total_quantity || 0),
     0
   );
 
-  // Customers count
-  const { count: customerCount } = await supabase
-    .from("customers")
-    .select("id", { count: "exact", head: true })
-    .eq("shop_id", shopId);
   stats.totalCustomers = customerCount ?? 0;
 
   // Low stock products
-  const { data: lowStockData } = await supabase
-    .from("products")
-    .select("id, low_stock_threshold, product_variants(quantity)")
-    .eq("shop_id", shopId)
-    .eq("is_active", true)
-    .eq("tracking_type", "QUANTITY_BASED");
-
   if (lowStockData) {
     stats.lowStockProducts = (lowStockData as LowStockProductRow[]).filter((p) => {
       const totalQty = (p.product_variants ?? []).reduce((sum, variant) => sum + (variant.quantity ?? 0), 0);
@@ -312,21 +335,6 @@ export async function loadDashboardData() {
   }
 
   // Recent invoices (last 5) with items for card display
-  const { data: recent } = await supabase
-    .from("invoices")
-    .select(`
-      id, invoice_number, invoice_date, customer_name, customer_mobile, billing_address, customer_gst_number,
-      subtotal, tax_total, discount_total, grand_total, payment_method, payment_details, payment_status, notes,
-      shop_name_snapshot, shop_address_snapshot, shop_phone_snapshot, shop_gst_snapshot, invoice_footer_snapshot, invoice_pdf_url, customer_signature_url,
-      invoice_items (
-        id, product_id, variant_id, inventory_item_id, product_name_snapshot, brand_name_snapshot, category_name_snapshot,
-        variant_name_snapshot, identifier_snapshot, quantity, unit_price, tax_rate, discount_amount, line_total
-      )
-    `)
-    .eq("shop_id", shopId)
-    .order("invoice_date", { ascending: false })
-    .limit(5);
-
   if (recent) {
     recentInvoices = recent.map((inv) => ({
       id: inv.id,
@@ -356,14 +364,6 @@ export async function loadDashboardData() {
   }
 
   // Recent products (last 5 added)
-  const { data: recentProds } = await supabase
-    .from("products")
-    .select("id, name, image_url, base_purchase_price, base_selling_price, tracking_type, created_at, brands(name), categories(name), product_variants(quantity)")
-    .eq("shop_id", shopId)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(5);
-
   if (recentProds) {
     recentProducts = (recentProds as RecentProductRow[]).map((p) => ({
       id: p.id,

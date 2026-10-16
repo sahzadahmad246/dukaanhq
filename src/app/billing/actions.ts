@@ -106,13 +106,16 @@ export async function createInvoiceAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  const invoiceLimit = await checkPlanLimit(supabase, shop.id, "invoices_per_month");
+  const [invoiceLimit, signatureAccess, stampAccess] = await Promise.all([
+    checkPlanLimit(supabase, shop.id, "invoices_per_month"),
+    checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices"),
+    checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices"),
+  ]);
   if (!invoiceLimit.ok) {
     return { status: "error", message: invoiceLimit.message };
   }
 
-  const signatureAccess = await checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices");
-  const stampAccess = await checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices");
+
   const allowDigitalInvoiceAssets = signatureAccess.ok && stampAccess.ok;
 
   const { data: invoiceId, error } = await supabase.rpc("create_inventory_invoice", {
@@ -217,8 +220,10 @@ export async function updateInvoiceAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  const signatureAccess = await checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices");
-  const stampAccess = await checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices");
+  const [signatureAccess, stampAccess] = await Promise.all([
+    checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices"),
+    checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices"),
+  ]);
   const allowDigitalInvoiceAssets = signatureAccess.ok && stampAccess.ok;
 
   const { data: updatedId, error } = await supabase.rpc("update_invoice_details", {

@@ -93,21 +93,16 @@ export async function getUserAppState(supabase: SupabaseClient): Promise<UserApp
     .eq("user_id", user.id)
     .maybeSingle<MembershipRecord>();
 
-  const { data: shopRow } = membership
-    ? await supabase
-        .from("shops")
-        .select("slug")
-        .eq("id", membership.shop_id)
-        .maybeSingle<{ slug: string }>()
-    : { data: null };
-
-  const { data: shopSettings } = membership
-    ? await supabase
-        .from("shop_settings")
-        .select("invoice_prefix, currency, tax_mode, invoice_footer, opening_time, closing_time, working_days, onboarding_completed")
-        .eq("shop_id", membership.shop_id)
-        .maybeSingle<ShopSettingsRecord>()
-    : { data: null };
+  const [{ data: shopRow }, { data: shopSettings }] = await Promise.all([
+    membership
+      ? supabase.from("shops").select("slug").eq("id", membership.shop_id).maybeSingle<{ slug: string }>()
+      : Promise.resolve({ data: null }),
+    membership
+      ? supabase.from("shop_settings")
+          .select("invoice_prefix, currency, tax_mode, invoice_footer, opening_time, closing_time, working_days, onboarding_completed")
+          .eq("shop_id", membership.shop_id).maybeSingle<ShopSettingsRecord>()
+      : Promise.resolve({ data: null }),
+  ]);
 
   const isOwner = profile?.role === "owner" || membership?.role === "owner";
   const isSuperAdmin = profile?.role === "superadmin";

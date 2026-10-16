@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 
@@ -5,7 +6,7 @@ import { getUserAppState } from "@/lib/auth/user-flow";
 import { buildShopRoute } from "@/lib/shop-routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
+export const getWorkspaceData = cache(async function getWorkspaceData(options?: { requireOwner?: boolean }) {
   noStore();
 
   const supabase = await createSupabaseServerClient();
@@ -55,21 +56,16 @@ export async function getWorkspaceData(options?: { requireOwner?: boolean }) {
     .eq("id", membership.shop_id)
     .maybeSingle();
 
-  const { data: fullShopSettings } = await supabase
-    .from("shop_settings")
-    .select("invoice_prefix, currency, tax_mode, invoice_footer, opening_time, closing_time, working_days, onboarding_completed")
-    .eq("shop_id", membership.shop_id)
-    .maybeSingle();
 
   return {
     user,
     profile,
     profileSyncReady,
     shop,
-    shopSettings: fullShopSettings ?? shopSettings,
+    shopSettings,
     membership,
     saasPlatform,
     shopEntitlement,
     canUseShopProduct,
   };
-}
+});
