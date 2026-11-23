@@ -1,5 +1,47 @@
 # Database migration (Supabase)
 
+## Complete invoice history
+
+Run **`db/045_invoice_history_pagination.sql`** after 043/044 before deploying
+the bill-history update. It adds a read-only, shop-scoped function and indexes
+for loading 30 bills at a time. Both regular and used-phone Bills screens load
+the next batch while scrolling, with a manual Load more / retry option.
+There is no all-time history cap. Search includes older bills, product names,
+variants and IMEIs; totals cover the entire selected filter. Date filters use India time.
+Stable date-and-ID cursors prevent newer inserts or deletions from shifting the next batch.
+Used phone bills are labelled in the preview, details and PDF; the sale picker
+contains available used stock only. Existing stored PDFs for used bills are
+regenerated on download so they receive the label too.
+
+## Second-hand phones
+
+Before deploying the second-hand phones feature, run **`db/043_second_hand_phones.sql`**
+in the Supabase SQL Editor on a database with the existing inventory/billing migrations through 042.
+It adds catalogue and invoice labels, private seller purchase records, a private
+`second-hand-invoices` Storage bucket (PDF/JPG/PNG/WebP, 5 MB maximum), and atomic
+purchase / sale functions. It preserves current stock and invoices as regular inventory.
+The migration is transactional and can be run again safely.
+
+Also run **`db/044_second_hand_seller_phone_validation.sql`** after 043, including
+on databases where 043 was already applied. It enforces a dial code followed by
+exactly ten seller-phone digits on new purchase records, without rewriting older records.
+
+The owner’s **Used Phones** navigation tab contains Stock and Bills. Record the
+seller’s name and phone, purchase source/date, brand/model, RAM/storage, colour,
+IMEI(s), purchase price and selling price. The seller phone uses a country-code
+selector and exactly ten digits. Purchase source and brand support dropdowns and
+manual entry; RAM/storage uses the same brand-aware presets as new products.
+Both IMEIs support scanning and accept exactly fifteen digits. The original purchase invoice is optional.
+Each phone is an individual stock unit, even when multiple phones share the same model.
+Buyer bills use the existing invoice format and numbering sequence, and omit seller details.
+Deleting a bill with restock restores that phone; its seller purchase record is retained.
+Second-hand stock and bills count toward the existing product and invoice plan limits.
+
+Run `bun run test:second-hand` for form/action checks and PostgreSQL integration tests.
+The latter use PGlite locally with Supabase auth and Storage table stubs; they do not
+connect to or change your Supabase project. They cover RLS, migration repeatability,
+duplicate IMEIs, atomic purchases, separate billing, double-sale prevention and restocking.
+
 ## SaaS subscriptions, entitlements, and staff role
 
 Use a **single** SQL bundle so you do not have to run numbered fragments in order.

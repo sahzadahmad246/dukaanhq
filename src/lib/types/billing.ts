@@ -57,6 +57,7 @@ export const BillingLineDraftSchema = z.object({
 export type BillingLineDraft = z.infer<typeof BillingLineDraftSchema>;
 
 export const CreateInvoicePayloadSchema = z.object({
+  is_second_hand: z.boolean().default(false),
   customer: CustomerDraftSchema,
   items: z.array(BillingLineDraftSchema).min(1, "At least one product is required"),
   payment_method: z.enum(["CASH", "CARD", "UPI", "BANK_TRANSFER", "OTHER"]).default("CASH"),
@@ -75,6 +76,7 @@ export const UpdateInvoicePayloadSchema = CreateInvoicePayloadSchema.extend({
 export type UpdateInvoicePayload = z.infer<typeof UpdateInvoicePayloadSchema>;
 
 export const InvoiceSchema = z.object({
+  is_second_hand: z.boolean().optional(),
   id: z.string().uuid(),
   invoice_number: z.string().min(1),
   invoice_date: z.string(),

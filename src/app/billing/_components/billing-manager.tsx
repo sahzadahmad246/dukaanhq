@@ -34,9 +34,12 @@ import { deleteInvoiceAction } from "../actions";
 import type { BillingInvoiceSummary } from "../load-billing-data";
 import { productDetailsQueryKey } from "@/app/inventory/queries";
 import { sendInvoiceWhatsappWithFreshPdf } from "./invoice-whatsapp-client";
+import { useInvoiceHistory } from "@/lib/hooks/use-invoice-history";
+import type { InvoiceHistoryPage } from "@/lib/billing/invoice-history";
 
 type ProductSummary = Product & {
   total_quantity: number;
+  stock_identifier?: string | null;
   brand?: { name?: string | null } | null;
   category?: { name?: string | null } | null;
   variants?: Array<{
@@ -99,33 +102,10 @@ function formatRelativeInvoiceDate(value: string | null | undefined) {
   return format(parsed, "dd MMM");
 }
 
-function normalizeBillSearchText(invoice: BillingInvoiceSummary) {
-  return [
-    invoice.invoice_number,
-    invoice.customer_name,
-    invoice.customer_mobile,
-    invoice.billing_address,
-    invoice.customer_gst_number,
-    invoice.payment_method,
-    invoice.payment_status,
-    invoice.notes,
-    invoice.payment_details?.methods?.join(" "),
-    invoice.invoice_items?.map((item) => [
-      item.product_name_snapshot,
-      item.brand_name_snapshot,
-      item.category_name_snapshot,
-      item.variant_name_snapshot,
-      item.identifier_snapshot,
-    ].filter(Boolean).join(" ")).join(" "),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
 export function BillingManager({
   products,
-  invoices,
+  invoiceHistory,
+  shopId,
   categories,
   brands,
   shopLogoUrl,
@@ -134,9 +114,13 @@ export function BillingManager({
   settingsHref,
   allowDigitalInvoiceAssets = true,
   allowWhatsappInvoiceSending = true,
+  isSecondHand = false,
+  embedded = false,
+  onAddStock,
 }: {
   products: ProductSummary[];
-  invoices: BillingInvoiceSummary[];
+  invoiceHistory: InvoiceHistoryPage;
+  shopId: string;
   categories: Category[];
   brands: Brand[];
   shopLogoUrl?: string | null;
@@ -145,16 +129,40 @@ export function BillingManager({
   settingsHref?: string;
   allowDigitalInvoiceAssets?: boolean;
   allowWhatsappInvoiceSending?: boolean;
+  isSecondHand?: boolean;
+  embedded?: boolean;
+  onAddStock?: () => void;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  const currentQuery = searchParams.get("q") ?? "";
-  const currentPeriod = searchParams.get("period") ?? "all";
+  const currentQuery = (searchParams.get("q") ?? "").trim().slice(0, 200);
+  const requestedPeriod = searchParams.get("period");
+  const currentPeriod = requestedPeriod === "today" || requestedPeriod === "week" || requestedPeriod === "month" ? requestedPeriod : "all";
+  const history = useInvoiceHistory({ shopId, isSecondHand, search: currentQuery, period: currentPeriod }, invoiceHistory);
+  const { invoices, hasNextPage, fetchNextPage, isFetching, isFetchingNextPage, isFetchNextPageError, isError, refetch } = history;
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const element = loadMoreRef.current;
+    if (!element || !hasNextPage || isFetching || isError || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void fetchNextPage();
+    }, { rootMargin: "400px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetching, isError, fetchNextPage]);
 
   const [searchQuery, setSearchQuery] = useState(currentQuery);
+  const submittedSearch = useRef(currentQuery);
+  useEffect(() => {
+    if (submittedSearch.current !== currentQuery) {
+      setSearchQuery(currentQuery);
+      submittedSearch.current = currentQuery;
+    }
+  }, [currentQuery]);
   const [showHeader, setShowHeader] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isAddBillOpen, setIsAddBillOpen, resumeBillDraft] = useBillFormSession();
@@ -202,14 +210,13 @@ export function BillingManager({
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      const search = searchQuery.trim().slice(0, 200);
+      if (search === currentQuery) return;
       const params = new URLSearchParams(searchParams.toString());
-      if (searchQuery && searchQuery !== currentQuery) {
-        params.set("q", searchQuery);
-        router.push(`${pathname}?${params.toString()}`);
-      } else if (!searchQuery && currentQuery) {
-        params.delete("q");
-        router.push(`${pathname}?${params.toString()}`);
-      }
+      if (search) params.set("q", search);
+      else params.delete("q");
+      submittedSearch.current = search;
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
     }, 500);
     return () => clearTimeout(timer);
   }, [searchQuery, currentQuery, pathname, router, searchParams]);
@@ -242,31 +249,16 @@ export function BillingManager({
     if (currentQuery || currentPeriod !== "all") {
       window.scrollTo({ top: 120, behavior: "smooth" });
     }
-  }, [invoices, currentQuery, currentPeriod]);
+  }, [currentQuery, currentPeriod]);
 
-  const displayedInvoices = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    const visibleInvoices = invoices.filter(inv => !deletedInvoiceIds.has(inv.id));
-    if (!normalizedQuery) return visibleInvoices;
-    return visibleInvoices.filter((invoice) => normalizeBillSearchText(invoice).includes(normalizedQuery));
-  }, [invoices, searchQuery, deletedInvoiceIds]);
+  const displayedInvoices = useMemo(() => invoices.filter((invoice) => !deletedInvoiceIds.has(invoice.id)), [invoices, deletedInvoiceIds]);
 
   const selectedInvoice = useMemo(
     () => displayedInvoices.find((inv) => inv.id === selectedInvoiceId) ?? invoices.find((inv) => inv.id === selectedInvoiceId) ?? null,
     [displayedInvoices, invoices, selectedInvoiceId]
   );
 
-  const stats = useMemo(
-    () => ({
-      count: displayedInvoices.length,
-      totalValue: displayedInvoices.reduce((sum, inv) => sum + Number(inv.grand_total || 0), 0),
-      avgValue:
-        displayedInvoices.length > 0
-          ? displayedInvoices.reduce((sum, inv) => sum + Number(inv.grand_total || 0), 0) / displayedInvoices.length
-          : 0,
-    }),
-    [displayedInvoices]
-  );
+  const stats = history.summary ?? { count: 0, totalValue: 0, avgValue: 0 };
 
   async function downloadInvoice(invoice: PrintableInvoice, withAssets = false) {
     try {
@@ -319,6 +311,7 @@ export function BillingManager({
       const result = await deleteInvoiceAction(invoiceId, restockItems);
       if (result.status === "success") {
         toast.success(result.message);
+        void queryClient.invalidateQueries({ queryKey: ["billing-history", shopId] });
         setDeletedInvoiceIds((prev) => new Set(prev).add(invoiceId));
         if (selectedInvoiceId === invoiceId) {
           setSelectedInvoiceId(null);
@@ -499,7 +492,7 @@ export function BillingManager({
       <div className="bm-root -mx-3 px-1">
         {/* ── Sticky top bar ── */}
         <div
-          className={`fixed left-1/2 -translate-x-1/2 w-full max-w-3xl top-0 z-40 bm-topbar transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full -translate-x-1/2"
+          className={embedded ? "bm-topbar" : `fixed left-1/2 -translate-x-1/2 w-full max-w-3xl top-0 z-40 bm-topbar transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full -translate-x-1/2"
             }`}
         >
           <div className="mx-auto w-full max-w-3xl px-1 py-3">
@@ -513,7 +506,7 @@ export function BillingManager({
           </div>
         </div>
 
-        <div className="h-16" />
+        {!embedded && <div className="h-16" />}
 
         <section className="w-full px-1 pt-2">
 
@@ -585,7 +578,7 @@ export function BillingManager({
             </div>
           ) : (
             <>
-              <p className="bm-section-label">{displayedInvoices.length} invoice{displayedInvoices.length !== 1 ? "s" : ""}</p>
+              <p className="bm-section-label">Showing {displayedInvoices.length} of {stats.count} invoice{stats.count !== 1 ? "s" : ""}</p>
               <div className="bm-list">
                 {displayedInvoices.map((invoice, i) => {
                   const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
@@ -607,6 +600,7 @@ export function BillingManager({
                               {invoice.invoice_number}
 
                             </span>
+                            {invoice.is_second_hand && <span className="bm-inv-num" style={{ background: "#fef3c7", color: "#92400e" }}>Used phone</span>}
                             <span className="bm-inv-num" style={{ background: accent.tint, color: accent.textAccent }}>
                               {getBillPaymentLabel(invoice)}
                             </span>
@@ -665,7 +659,7 @@ export function BillingManager({
                                   e.stopPropagation();
                                   setOpenDownloadDropdownId(null);
                                   const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
-                                  const success = invoice.send_ready_pdf_url 
+                                  const success = !invoice.is_second_hand && invoice.send_ready_pdf_url
                                     ? await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`)
                                     : false;
                                   
@@ -769,16 +763,23 @@ export function BillingManager({
               </div>
             </>
           )}
+          <div ref={loadMoreRef} className="flex min-h-20 items-center justify-center py-5" aria-live="polite">
+            {isFetchingNextPage ? <p role="status" className="flex items-center gap-2 text-sm text-stone-500"><Loader2 className="h-4 w-4 animate-spin" />Loading more bills…</p>
+              : isError ? <div className="text-center"><p className="mb-2 text-sm text-red-700">Could not load bills. Your current list is still available.</p><button className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium" onClick={() => { if (isFetchNextPageError) void fetchNextPage(); else void refetch(); }}>Try again</button></div>
+              : hasNextPage ? <button disabled={isFetching} className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50" onClick={() => void fetchNextPage()}>Load more bills</button>
+              : invoices.length > 0 ? <p className="text-sm text-stone-500">All bills loaded</p> : null}
+          </div>
         </section>
 
         <AddBillModal
+          isSecondHand={isSecondHand}
           resumeDraft={resumeBillDraft}
           open={isAddBillOpen || !!editingInvoice}
           onClose={() => {
             setIsAddBillOpen(false);
             setEditingInvoice(null);
           }}
-          onOpenAddProduct={() => setIsAddProductModalOpen(true)}
+          onOpenAddProduct={isSecondHand ? onAddStock : () => setIsAddProductModalOpen(true)}
           invoiceToEdit={editingInvoice}
           products={liveProducts}
           shopLogoUrl={shopLogoUrl}
@@ -841,7 +842,7 @@ export function BillingManager({
           }}
         />
 
-        <AddProductModal
+        {!isSecondHand && <AddProductModal
           open={isAddProductModalOpen}
           mode="create"
           productId={null}
@@ -850,7 +851,7 @@ export function BillingManager({
           categories={categories}
           brands={brands}
           products={liveProducts}
-        />
+        />}
 
         {showScrollTop && (
           <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}

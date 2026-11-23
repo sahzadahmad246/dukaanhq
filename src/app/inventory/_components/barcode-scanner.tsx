@@ -22,48 +22,18 @@ type TorchConstraintTrack = MediaStreamTrack & {
   getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean };
 };
 
-type ScannerExpectedType = "IMEI" | "SERIAL" | "ANY" | "QR";
-
-function normalizeScannedValue(value: string, expectedType: ScannerExpectedType) {
-  const trimmed = value.trim();
-  const imeiMatch = trimmed.match(/(?:IMEI\d?\s*[:\-]?\s*)?(\d{15})/i);
-  if (imeiMatch?.[1]) {
-    return imeiMatch[1];
-  }
-
-  const serialMatch = trimmed.match(/(?:S\/?N\s*[:\-]?\s*)([A-Z0-9\-\/]+)/i);
-  if (serialMatch?.[1]) {
-    return serialMatch[1];
-  }
-
-  if (expectedType === "IMEI") {
-    const compactDigits = trimmed.replace(/\D/g, "");
-    if (compactDigits.length >= 15) {
-      return compactDigits.slice(0, 15);
-    }
-    return "";
-  }
-
-  if (expectedType === "SERIAL") {
-    const compact = trimmed.replace(/\s+/g, " ");
-    return compact.length > 0 ? compact : "";
-  }
-
-  if (expectedType === "QR") {
-    return trimmed;
-  }
-
-  return trimmed.replace(/\s+/g, " ");
-}
+import { normalizeScannedValue, type ScannerExpectedType } from "@/lib/barcode-values";
 
 export function BarcodeScanner({
   onScan,
   onClose,
   expectedType = "ANY",
+  zIndex = 60,
 }: {
   onScan: (result: string) => void;
   onClose: () => void;
   expectedType?: ScannerExpectedType;
+  zIndex?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -350,7 +320,7 @@ export function BarcodeScanner({
   }, [expectedType]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm">
+    <div role="dialog" aria-modal="true" aria-label={expectedType === "IMEI" ? "Scan IMEI barcode" : "Scan barcode"} style={{ zIndex }} className="fixed inset-0 flex items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
         <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4">
           <p className="font-medium text-white shadow-black drop-shadow-md">
@@ -373,6 +343,7 @@ export function BarcodeScanner({
             <button
               type="button"
               onClick={onClose}
+              aria-label="Close scanner"
               className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition hover:bg-white/30"
             >
               <X className="h-5 w-5" />

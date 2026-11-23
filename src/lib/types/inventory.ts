@@ -27,6 +27,7 @@ export const ProductKindSchema = z.enum(["MOBILE", "SERIALIZED", "QUANTITY_BASED
 export type ProductKind = z.infer<typeof ProductKindSchema>;
 
 export const ProductSchema = z.object({
+  is_second_hand: z.boolean().optional(),
   id: z.string().uuid(),
   shop_id: z.string().uuid(),
   category_id: z.string().uuid().nullable(),

@@ -15,6 +15,7 @@ export type DashboardStats = {
 };
 
 export type RecentInvoice = {
+  is_second_hand?: boolean;
   id: string;
   invoice_number: string;
   invoice_date: string;
@@ -268,7 +269,7 @@ export async function loadDashboardData() {
   const recentQuery = supabase
     .from("invoices")
     .select(`
-      id, invoice_number, invoice_date, customer_name, customer_mobile, billing_address, customer_gst_number,
+      id, is_second_hand, invoice_number, invoice_date, customer_name, customer_mobile, billing_address, customer_gst_number,
       subtotal, tax_total, discount_total, grand_total, payment_method, payment_details, payment_status, notes,
       shop_name_snapshot, shop_address_snapshot, shop_phone_snapshot, shop_gst_snapshot, invoice_footer_snapshot, invoice_pdf_url, customer_signature_url,
       invoice_items (

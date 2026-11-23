@@ -880,7 +880,7 @@ export function DashboardHome({
                                 e.stopPropagation();
                                 setOpenDownloadDropdownId(null);
                                 const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
-                                const success = invoice.send_ready_pdf_url 
+                                const success = !invoice.is_second_hand && invoice.send_ready_pdf_url
                                   ? await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`)
                                   : false;
                                 
@@ -955,7 +955,8 @@ export function DashboardHome({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenDropdownId(null);
-                                setEditingInvoice(invoice);
+                                if (invoice.is_second_hand) router.push(`${shopSlug ? `/${shopSlug}` : ""}/second-hand?tab=bills&q=${encodeURIComponent(invoice.invoice_number)}`);
+                                else setEditingInvoice(invoice);
                               }}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
                             >
@@ -1107,7 +1108,8 @@ export function DashboardHome({
         onEdit={() => {
           setSelectedInvoiceId(null);
           if (selectedInvoice) {
-            setEditingInvoice(selectedInvoice);
+            if (selectedInvoice.is_second_hand) router.push(`${shopSlug ? `/${shopSlug}` : ""}/second-hand?tab=bills&q=${encodeURIComponent(selectedInvoice.invoice_number)}`);
+            else setEditingInvoice(selectedInvoice);
           }
         }}
         onDelete={(id) => {

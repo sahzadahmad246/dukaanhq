@@ -9,6 +9,15 @@ import { CreateInvoicePayloadSchema } from "@/lib/types/billing";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import type { ActionResponse } from "@/app/inventory/actions";
 import { UpdateInvoicePayloadSchema } from "@/lib/types/billing";
+import { validateInvoiceInventoryScope } from "@/lib/billing/inventory-scope";
+import { buildShopRoute } from "@/lib/shop-routes";
+
+function refreshBillingPages(shopSlug: string) {
+  for (const route of ["billing", "inventory", "second-hand", "dashboard"] as const) {
+    revalidatePath(`/${route}`);
+    revalidatePath(buildShopRoute(shopSlug, route));
+  }
+}
 
 function parseJsonField<T>(value: FormDataEntryValue | null, schema: z.ZodSchema<T>) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -85,7 +94,7 @@ export async function createInvoiceAction(
   _prevState: ActionResponse,
   formData: FormData
 ): Promise<ActionResponse> {
-  const { shop } = await getWorkspaceData();
+  const { shop, membership } = await getWorkspaceData();
   if (!shop) return { status: "error", message: "No active shop found." };
 
   const payloadResult = parseJsonField(formData.get("invoice_payload"), CreateInvoicePayloadSchema);
@@ -106,6 +115,11 @@ export async function createInvoiceAction(
   }
 
   const supabase = await createSupabaseServerClient();
+  if (payload.is_second_hand && membership?.role !== "owner") {
+    return { status: "error", message: "Only the shop owner can create second-hand bills." };
+  }
+  const scopeError = await validateInvoiceInventoryScope(supabase, shop.id, payload);
+  if (scopeError) return { status: "error", message: scopeError };
   const [invoiceLimit, signatureAccess, stampAccess] = await Promise.all([
     checkPlanLimit(supabase, shop.id, "invoices_per_month"),
     checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices"),
@@ -118,7 +132,7 @@ export async function createInvoiceAction(
 
   const allowDigitalInvoiceAssets = signatureAccess.ok && stampAccess.ok;
 
-  const { data: invoiceId, error } = await supabase.rpc("create_inventory_invoice", {
+  const { data: invoiceId, error } = await supabase.rpc(payload.is_second_hand ? "create_second_hand_invoice" : "create_inventory_invoice", {
     p_shop_id: shop.id,
     p_customer: payload.customer,
     p_items: payload.items,
@@ -144,6 +158,7 @@ export async function createInvoiceAction(
       invoice_items (
         id,
         invoice_id,
+        product_id,
         product_name_snapshot,
         brand_name_snapshot,
         category_name_snapshot,
@@ -160,8 +175,7 @@ export async function createInvoiceAction(
     .eq("shop_id", shop.id)
     .single();
 
-  revalidatePath("/billing");
-  revalidatePath("/inventory");
+  refreshBillingPages(shop.slug);
 
   return {
     status: "success",
@@ -175,10 +189,15 @@ export async function createInvoiceAction(
 }
 
 export async function deleteInvoiceAction(invoiceId: string, restockItems: boolean = true): Promise<ActionResponse> {
-  const { shop } = await getWorkspaceData();
+  const { shop, membership } = await getWorkspaceData();
   if (!shop) return { status: "error", message: "No active shop found." };
 
   const supabase = await createSupabaseServerClient();
+  const { data: existing } = await supabase.from("invoices").select("is_second_hand")
+    .eq("id", invoiceId).eq("shop_id", shop.id).maybeSingle();
+  if (!existing || (existing.is_second_hand && membership?.role !== "owner")) {
+    return { status: "error", message: "Bill not found or access denied." };
+  }
   const { error } = await supabase.rpc("delete_inventory_invoice", { 
     p_invoice_id: invoiceId, 
     p_restock_items: restockItems 
@@ -188,9 +207,7 @@ export async function deleteInvoiceAction(invoiceId: string, restockItems: boole
     return { status: "error", message: error.message || "Failed to delete bill." };
   }
 
-  revalidatePath("/billing");
-  revalidatePath("/dashboard");
-  revalidatePath("/inventory");
+  refreshBillingPages(shop.slug);
 
   return { status: "success", message: "Bill deleted successfully." };
 }
@@ -199,7 +216,7 @@ export async function updateInvoiceAction(
   _prevState: ActionResponse,
   formData: FormData
 ): Promise<ActionResponse> {
-  const { shop } = await getWorkspaceData();
+  const { shop, membership } = await getWorkspaceData();
   if (!shop) return { status: "error", message: "No active shop found." };
 
   const payloadResult = parseJsonField(formData.get("invoice_payload"), UpdateInvoicePayloadSchema);
@@ -220,6 +237,25 @@ export async function updateInvoiceAction(
   }
 
   const supabase = await createSupabaseServerClient();
+  const { data: existing } = await supabase.from("invoices")
+    .select("is_second_hand, invoice_items(product_id, variant_id, inventory_item_id)")
+    .eq("id", payload.invoice_id).eq("shop_id", shop.id).maybeSingle();
+  if (!existing || existing.is_second_hand !== payload.is_second_hand ||
+    (existing.is_second_hand && membership?.role !== "owner")) {
+    return { status: "error", message: "Bill not found or access denied." };
+  }
+  const scopeError = await validateInvoiceInventoryScope(supabase, shop.id, payload);
+  if (scopeError) return { status: "error", message: scopeError };
+  if (payload.is_second_hand) {
+    const stockKey = (item: { product_id?: string | null; variant_id?: string | null; inventory_item_id?: string | null }) =>
+      `${item.product_id}:${item.variant_id}:${item.inventory_item_id}`;
+    const originalUnits = existing.invoice_items.filter((item) => item.product_id).map(stockKey).sort();
+    const nextUnits = payload.items.filter((item) => item.product_id).map(stockKey).sort();
+    if (JSON.stringify(originalUnits) !== JSON.stringify(nextUnits) ||
+      payload.items.some((item) => item.product_id && (item.quantity !== 1 || !item.inventory_item_id))) {
+      return { status: "error", message: "The phones on a saved bill cannot be changed. Delete and restock the bill before creating a replacement." };
+    }
+  }
   const [signatureAccess, stampAccess] = await Promise.all([
     checkPlanEntitlement(supabase, shop.id, "customer_signature", "Customer signature on invoices"),
     checkPlanEntitlement(supabase, shop.id, "shop_stamp", "Shop stamp on invoices"),
@@ -251,7 +287,7 @@ export async function updateInvoiceAction(
     .select(`
       *,
       invoice_items (
-        id, invoice_id, product_name_snapshot, brand_name_snapshot,
+        id, invoice_id, product_id, product_name_snapshot, brand_name_snapshot,
         category_name_snapshot, variant_name_snapshot, identifier_snapshot,
         quantity, unit_price, tax_rate, discount_amount, line_total
       )
@@ -260,9 +296,7 @@ export async function updateInvoiceAction(
     .eq("shop_id", shop.id)
     .single();
 
-  revalidatePath("/billing");
-  revalidatePath("/dashboard");
-  revalidatePath("/inventory");
+  refreshBillingPages(shop.slug);
 
   return {
     status: "success",

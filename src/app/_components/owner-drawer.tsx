@@ -13,6 +13,7 @@ import {
   ReceiptText,
   Settings2,
   ShoppingBag,
+  Smartphone,
   SquareUserRound,
   Tickets,
   Users,
@@ -78,11 +79,11 @@ export function OwnerDrawer({
 }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const drawerSections = useMemo(() => {
+  const drawerSections = useMemo<DrawerSection[]>(() => {
     const buildHref = (path: string) => {
       const route = path.replace(/^\//, "");
       if (!shopSlug) return path;
-      if (route === "dashboard" || route === "billing" || route === "inventory" || route === "staff" || route === "profile" || route === "settings" || route === "subscribe" || route === "subscription") {
+      if (route === "dashboard" || route === "billing" || route === "inventory" || route === "second-hand" || route === "staff" || route === "profile" || route === "settings" || route === "subscribe" || route === "subscription") {
         return buildShopRoute(shopSlug, route as Parameters<typeof buildShopRoute>[1]);
       }
       return path;
@@ -101,7 +102,10 @@ export function OwnerDrawer({
     return [
       {
         title: "Operations",
-        items: operationsAndGrowthSections[0].items.map((item) => ({ ...item, href: buildHref(item.href) })),
+        items: [
+          ...operationsAndGrowthSections[0].items.map((item) => ({ ...item, href: buildHref(item.href) })),
+          ...(ownerRole === "owner" ? [{ href: buildHref("/second-hand"), label: "Second-hand phones", icon: Smartphone }] : []),
+        ],
       },
       {
         title: "Growth",

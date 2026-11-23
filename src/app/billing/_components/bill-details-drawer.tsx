@@ -5,6 +5,7 @@ import { Download, Loader2, MoreVertical, Pencil, PhoneCall, Receipt, Send, Tras
 import { useState } from "react";
 
 import { formatVariantLabelForDisplay } from "@/lib/inventory-labels";
+import { invoiceItemConditionLabel } from "@/lib/billing/invoice-condition";
 import { downloadExternalPdf, type PrintableInvoice } from "./invoice-print";
 
 type InvoiceDetails = PrintableInvoice & {
@@ -90,7 +91,7 @@ export function BillDetailsDrawer({
       >
         <div className="flex items-center justify-between border-b border-stone-200 bg-[#fffdf8] px-5 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-stone-950">Bill Details</h2>
+            <h2 className="text-lg font-semibold text-stone-950">{invoice?.is_second_hand ? "Used Phone Bill" : "Bill Details"}</h2>
             {invoice ? <p className="mt-1 text-xs text-stone-500">{invoice.invoice_number}</p> : null}
           </div>
           <div className="flex items-center gap-2">
@@ -128,7 +129,7 @@ export function BillDetailsDrawer({
                           e.stopPropagation();
                           setShowDownloadMenu(false);
                           const safeName = (invoice.customer_name || "customer").trim().toLowerCase().replace(/[^a-z0-9]/g, "-");
-                          const success = invoice.send_ready_pdf_url 
+                          const success = !invoice.is_second_hand && invoice.send_ready_pdf_url
                             ? await downloadExternalPdf(invoice.send_ready_pdf_url, `${safeName}-bill.pdf`)
                             : false;
                           
@@ -321,6 +322,7 @@ export function BillDetailsDrawer({
                             >
                               {item.product_name_snapshot}
                             </button>
+                            {invoiceItemConditionLabel(invoice, item) && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Used phone</span>}
                             {!item.product_id ? (
                               <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
                                 Quick Add

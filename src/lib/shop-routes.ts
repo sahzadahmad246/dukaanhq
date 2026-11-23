@@ -2,6 +2,7 @@ export type ShopAppRoute =
   | "dashboard"
   | "billing"
   | "inventory"
+  | "second-hand"
   | "staff"
   | "profile"
   | "settings"

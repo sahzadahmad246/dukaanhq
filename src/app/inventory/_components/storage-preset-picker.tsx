@@ -12,11 +12,19 @@ export function StoragePresetPicker({
   onChange,
   presets,
   placeholder,
+  inputId,
+  name,
+  required,
+  maxLength,
 }: {
   value: string;
   onChange: (nextValue: string) => void;
   presets: string[];
   placeholder?: string;
+  inputId?: string;
+  name?: string;
+  required?: boolean;
+  maxLength?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
@@ -49,6 +57,10 @@ export function StoragePresetPicker({
       <div className="relative">
         <Input
           ref={inputRef}
+          id={inputId}
+          name={name}
+          required={required}
+          maxLength={maxLength}
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
@@ -59,11 +71,15 @@ export function StoragePresetPicker({
           }}
           placeholder={placeholder}
           className="pr-10"
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
         />
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 transition hover:text-stone-700"
+          aria-label={open ? "Close storage options" : "Open storage options"}
         >
           <ChevronsUpDown className="h-4 w-4" />
         </button>

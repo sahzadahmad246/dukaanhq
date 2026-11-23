@@ -4,21 +4,15 @@ import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Check, ChevronLeft, ChevronRight, Gift, Lightbulb, Loader2, Package2, Pencil, Plus, ScanBarcode, Search, Smartphone, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-const COUNTRY_CODES = [
-  { code: "+91", label: "🇮🇳 (+91)" },
-  { code: "+1", label: "🇺🇸/🇨🇦 (+1)" },
-  { code: "+44", label: "🇬🇧 (+44)" },
-  { code: "+971", label: "🇦🇪 (+971)" },
-  { code: "+61", label: "🇦🇺 (+61)" },
-  { code: "+65", label: "🇸🇬 (+65)" },
-  { code: "+60", label: "🇲🇾 (+60)" },
-];
+import { COUNTRY_CODES } from "@/lib/phone";
+import { filterBillingProducts } from "@/lib/billing/invoice-condition";
 import { buildVariantLabel, formatVariantLabelForDisplay } from "@/lib/inventory-labels";
 import type { Product } from "@/lib/types/inventory";
 import { cn } from "@/lib/utils";
@@ -41,6 +35,7 @@ type BasicPdfSignatureMode = "placeholders" | "electronic";
 
 type ProductSummary = Product & {
   total_quantity: number;
+  stock_identifier?: string | null;
   brand?: { name?: string | null } | null;
   category?: { name?: string | null } | null;
   variants?: Array<{
@@ -200,11 +195,11 @@ type StoredBillDraft = {
   lines: BillingLineDraft[];
 };
 
-function readStoredBillDraft() {
+function readStoredBillDraft(storageKey: string) {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = window.localStorage.getItem(BILL_DRAFT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredBillDraft>;
     if (parsed.version !== 2) return null;
@@ -254,10 +249,10 @@ function readStoredBillDraft() {
   }
 }
 
-function clearStoredBillDraft() {
+function clearStoredBillDraft(storageKey: string) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(BILL_DRAFT_STORAGE_KEY);
+    window.localStorage.removeItem(storageKey);
   } catch {
     // Device storage may be unavailable.
   }
@@ -368,18 +363,18 @@ function Stepper({
   );
 }
 
-function isLineComplete(line: BillingLineDraft, products: ProductSummary[]) {
+function isLineComplete(line: BillingLineDraft, products: ProductSummary[], allowUnavailable = false) {
   if (isQuickLine(line)) {
     return Boolean(line.quick_item_name.trim()) && (Number.parseInt(line.quantity || "0", 10) || 0) > 0;
   }
 
   const product = products.find((item) => item.id === line.product_id);
   if (!product) return false;
-  if (getProductSaleBlockReason(product)) return false;
+  if (!allowUnavailable && getProductSaleBlockReason(product)) return false;
   if (!line.variant_id) return false;
 
   if (product.product_kind === "MOBILE") {
-    return Boolean(line.imei_1.trim());
+    return Boolean(line.imei_1.trim()) && (product.tracking_type !== "SERIALIZED" || Boolean(line.inventory_item_id));
   }
 
   if (product.tracking_type === "SERIALIZED") {
@@ -514,6 +509,7 @@ function buildProductSearchLabel(product: ProductSummary) {
 
 function buildProductSupportMeta(product: ProductSummary) {
   const parts = [
+    product.stock_identifier ? `IMEI ${product.stock_identifier}` : null,
     product.product_kind === "MOBILE"
       ? "Mobile"
       : product.tracking_type === "SERIALIZED"
@@ -546,6 +542,7 @@ function ProductPicker({
           product.name,
           product.brand?.name,
           product.category?.name,
+          product.stock_identifier,
           ...(product.variants ?? []).flatMap((variant) => [variant.storage_label, variant.color, variant.name]),
         ]
           .filter(Boolean)
@@ -738,6 +735,14 @@ function LineEditor({
       })
       .sort((a, b) => new Date(a.added_at).getTime() - new Date(b.added_at).getTime());
   }, [productDetails?.inventory_items, selectedVariant]);
+
+  useEffect(() => {
+    if (selectedProduct?.tracking_type !== "SERIALIZED" || selectedProduct.product_kind !== "MOBILE" ||
+      !line.variant_id || line.inventory_item_id || availableUnits.length !== 1) return;
+    const unit = availableUnits[0];
+    onChange({ inventory_item_id: unit.id, identifier_value: buildInventoryItemLabel(unit),
+      imei_1: unit.imei_1 ?? "", imei_2: unit.imei_2 ?? "", quantity: "1" });
+  }, [availableUnits, line.inventory_item_id, line.variant_id, onChange, selectedProduct]);
 
   const selectedUnit = availableUnits.find((item) => item.id === line.inventory_item_id) ?? null;
   const stockLeft = selectedVariant ? variantStockMap.get(selectedVariant.id) ?? 0 : selectedProduct?.total_quantity ?? 0;
@@ -939,6 +944,8 @@ function LineEditor({
                             onChange({
                               identifier_value: val,
                               inventory_item_id: matchedUnit ? matchedUnit.id : "",
+                              imei_1: matchedUnit?.imei_1 ?? "",
+                              imei_2: matchedUnit?.imei_2 ?? "",
                               quantity: "1",
                               variant_id: nextVariantId,
                               unit_price: String(variantPrice)
@@ -1021,7 +1028,7 @@ function LineEditor({
             </div>
           </div>
 
-          {selectedProduct.product_kind === "MOBILE" ? (
+          {selectedProduct.product_kind === "MOBILE" && selectedProduct.tracking_type !== "SERIALIZED" ? (
             <div className="rounded-[1.3rem] border border-stone-200 bg-stone-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-stone-200 bg-stone-100/50">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">IMEI</p>
@@ -1079,6 +1086,8 @@ function LineEditor({
               onChange({
                 identifier_value: result,
                 inventory_item_id: matchedUnit ? matchedUnit.id : "",
+                imei_1: matchedUnit?.imei_1 ?? "",
+                imei_2: matchedUnit?.imei_2 ?? "",
                 quantity: "1",
                 variant_id: nextVariantId,
                 unit_price: String(variantPrice)
@@ -1096,11 +1105,16 @@ function LineEditor({
   );
 }
 
+export type InitialBillStock = {
+  product_id: string; variant_id: string; inventory_item_id: string;
+  imei_1: string; imei_2: string; unit_price: string;
+};
+
 export function AddBillModal({
   open,
   resumeDraft = false,
   onClose,
-  products,
+  products: allProducts,
   shopLogoUrl,
   shopPostalCode,
   onInvoiceCreated,
@@ -1110,6 +1124,8 @@ export function AddBillModal({
   settingsHref,
   allowDigitalInvoiceAssets = true,
   allowWhatsappInvoiceSending = true,
+  isSecondHand = false,
+  initialStock,
 }: {
   open: boolean;
   resumeDraft?: boolean;
@@ -1124,7 +1140,12 @@ export function AddBillModal({
   settingsHref?: string;
   allowDigitalInvoiceAssets?: boolean;
   allowWhatsappInvoiceSending?: boolean;
+  isSecondHand?: boolean;
+  initialStock?: InitialBillStock;
 }) {
+  const products = useMemo(() => filterBillingProducts(allProducts, isSecondHand, Boolean(invoiceToEdit)), [allProducts, isSecondHand, invoiceToEdit]);
+  const pathname = usePathname();
+  const draftStorageKey = isSecondHand ? `${BILL_DRAFT_STORAGE_KEY}:second-hand:${pathname}` : BILL_DRAFT_STORAGE_KEY;
   const [isPending, startTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState<StepId>("customer");
   const [customer, setCustomer] = useState<CustomerDraft>({ name: "", country_code: "+91", mobile: "", billing_address: "", gst_number: "" });
@@ -1230,7 +1251,7 @@ export function AddBillModal({
         );
         setCurrentStep("customer");
       } else {
-        const existingDraft = readStoredBillDraft();
+        const existingDraft = initialStock ? null : readStoredBillDraft(draftStorageKey);
         setCustomer({ name: "", country_code: "+91", mobile: "", billing_address: "", gst_number: "" });
         setPaymentDraft(createEmptyPaymentDraft());
         setPendingPaymentDraft(createEmptyPaymentDraft());
@@ -1240,7 +1261,7 @@ export function AddBillModal({
         setNotes("");
         setInvoiceDateTime(toDatetimeLocalValue(new Date()));
         setInvoiceDateTouched(false);
-        setLines([]);
+        setLines(initialStock ? [{ ...createLine(), ...initialStock, identifier_value: [initialStock.imei_1, initialStock.imei_2].filter(Boolean).join(" / ") }] : []);
         setCurrentStep("customer");
         setSavedDraft(existingDraft);
         setShowRestorePrompt(Boolean(existingDraft));
@@ -1268,7 +1289,7 @@ export function AddBillModal({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [allowDigitalInvoiceAssets, allowWhatsappInvoiceSending, open, invoiceToEdit, resumeDraft]);
+  }, [allowDigitalInvoiceAssets, allowWhatsappInvoiceSending, open, invoiceToEdit, resumeDraft, draftStorageKey, initialStock]);
 
   useEffect(() => {
     if (!open || invoiceToEdit || !draftSyncReady) return;
@@ -1284,7 +1305,7 @@ export function AddBillModal({
       currentStep !== "customer";
 
     if (!hasAnyContent) {
-      clearStoredBillDraft();
+      clearStoredBillDraft(draftStorageKey);
       return;
     }
 
@@ -1302,11 +1323,11 @@ export function AddBillModal({
     };
 
     try {
-      window.localStorage.setItem(BILL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(payload));
     } catch {
       // Keep the form usable when device storage is full or unavailable.
     }
-  }, [basicPdfSignatureMode, currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceDateTime, invoiceToEdit, lines, notes, open, paymentDraft]);
+  }, [basicPdfSignatureMode, currentStep, customer, customerSignatureDataUrl, deliveryMode, draftSyncReady, invoiceDateTime, invoiceToEdit, lines, notes, open, paymentDraft, draftStorageKey]);
 
   useEffect(() => {
     if (!open || currentStep !== "preview" || invoiceDateTouched || invoiceToEdit) return;
@@ -1443,7 +1464,7 @@ export function AddBillModal({
   }
 
   function discardSavedDraft() {
-    clearStoredBillDraft();
+    clearStoredBillDraft(draftStorageKey);
     setSavedDraft(null);
     setShowRestorePrompt(false);
     setDraftSyncReady(true);
@@ -1554,7 +1575,7 @@ export function AddBillModal({
       return;
     }
 
-    if (!isLineComplete(draftLine, products)) {
+    if (!isLineComplete(draftLine, products, Boolean(invoiceToEdit))) {
       setClientError("Select the product and complete its sale details before adding it to the bill.");
       return;
     }
@@ -1651,7 +1672,7 @@ export function AddBillModal({
         return false;
       }
 
-      const hasInvalidLine = lines.some((line) => !isLineComplete(line, products));
+      const hasInvalidLine = lines.some((line) => !isLineComplete(line, products, Boolean(invoiceToEdit)));
 
       if (hasInvalidLine) {
         setClientError("Complete each product line by selecting the option and stock details.");
@@ -1740,6 +1761,7 @@ export function AddBillModal({
 
         const invoicePayload = {
           ...(invoiceToEdit ? { invoice_id: invoiceToEdit.id } : {}),
+          is_second_hand: isSecondHand,
           customer: {
             name: customer.name,
             mobile: `${customer.country_code} ${customer.mobile}`.trim(),
@@ -1778,7 +1800,24 @@ export function AddBillModal({
         if (result.status === "success" && result.data) {
           toast.success(invoiceToEdit ? "Invoice updated successfully!" : "Invoice created successfully!");
           setDraftSyncReady(false);
-          clearStoredBillDraft();
+          clearStoredBillDraft(draftStorageKey);
+          void queryClient.invalidateQueries({ queryKey: ["billing-history"] });
+          onInvoiceCreated?.(
+            preparedLines.flatMap((line) =>
+              line.product_id
+                ? [{
+                  product_id: line.product_id,
+                  variant_id: line.variant_id,
+                  quantity: line.quantity,
+                }]
+                : []
+            )
+          );
+          // Invalidate cached product details so stock numbers refresh
+          for (const line of preparedLines) {
+            if (!line.product_id) continue;
+            queryClient.invalidateQueries({ queryKey: productDetailsQueryKey(line.product_id) });
+          }
 
           try {
             const createdInvoice = result.data as Parameters<typeof downloadInvoicePdf>[0] & { id: string };
@@ -1826,25 +1865,9 @@ export function AddBillModal({
             }
           } catch (pdfError) {
             console.error("[Bill Submit] PDF download failed:", pdfError);
-            throw pdfError;
+            toast.error("Invoice saved, but PDF delivery failed. You can download or send it again from Bills.");
           }
 
-          onInvoiceCreated?.(
-            preparedLines.flatMap((line) =>
-              line.product_id
-                ? [{
-                  product_id: line.product_id,
-                  variant_id: line.variant_id,
-                  quantity: line.quantity,
-                }]
-                : []
-            )
-          );
-          // Invalidate cached product details so stock numbers refresh
-          for (const line of preparedLines) {
-            if (!line.product_id) continue;
-            queryClient.invalidateQueries({ queryKey: productDetailsQueryKey(line.product_id) });
-          }
           onClose();
         } else if (result.status === "error") {
           toast.error(result.message || "Failed to submit bill.");
@@ -1872,7 +1895,7 @@ export function AddBillModal({
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <h2 className="text-center text-lg font-semibold text-stone-950">Create Bill</h2>
+          <h2 className="text-center text-lg font-semibold text-stone-950">{isSecondHand ? "Used Phone Bill" : "Create Bill"}</h2>
           <div aria-hidden="true" className="h-10 w-10" />
         </div>
 
@@ -1941,7 +1964,7 @@ export function AddBillModal({
 
           {currentStep === "products" ? (
             <section className="space-y-4 py-2">
-              <StepTitle step={2} title="Products" />
+              <StepTitle step={2} title={isSecondHand ? "Used phone stock" : "Products"} />
 
               {lines.length > 0 ? (
                 <div className="space-y-3">
@@ -2230,6 +2253,7 @@ export function AddBillModal({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-bold text-stone-900 leading-snug">{line.product_name_snapshot}</p>
+                            {isSecondHand && line.product_id && <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Used phone</span>}
                             {variantLabel ? (
                               <p className="mt-1 text-[13px] font-semibold text-stone-500">{variantLabel}</p>
                             ) : null}

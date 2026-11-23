@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:admin": "node tests/admin/admin.test.mjs",
-    "test:payments": "node tests/payments/pricing.test.mjs"
+    "test:payments": "node tests/payments/pricing.test.mjs",
+    "test:second-hand": "node --test tests/second-hand/*.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-radio-group": "^1.3.8",
@@ -37,6 +38,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.17",
     "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^20",

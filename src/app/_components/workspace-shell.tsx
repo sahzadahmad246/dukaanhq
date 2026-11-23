@@ -8,13 +8,14 @@ import {
   Package,
   ReceiptText,
   Users,
+  Smartphone,
 } from "lucide-react";
 
 import { DashboardToastListener } from "@/app/_components/dashboard-toast-listener";
 import { OwnerDrawer } from "@/app/_components/owner-drawer";
 import { buildShopRoute } from "@/lib/shop-routes";
 
-type NavKey = "dashboard" | "billing" | "inventory" | "staff";
+type NavKey = "dashboard" | "billing" | "inventory" | "second-hand" | "staff";
 
 const navItems: Array<{
   route: NavKey;
@@ -25,6 +26,7 @@ const navItems: Array<{
   { route: "dashboard", key: "dashboard", label: "Home", icon: House },
   { route: "billing", key: "billing", label: "Bill", icon: ReceiptText },
   { route: "inventory", key: "inventory", label: "Inventory", icon: Package },
+  { route: "second-hand", key: "second-hand", label: "Used Phones", icon: Smartphone },
   { route: "staff", key: "staff", label: "Staff", icon: Users },
 ];
 
@@ -87,7 +89,7 @@ export function WorkspaceShell({
 
   const showHeader = !hideHeader && scrollDirection !== "up";
   const showBottomNav = scrollDirection !== "down";
-  const visibleNavItems = navItems.filter((item) => item.key !== "staff" || ownerRole === "owner");
+  const visibleNavItems = navItems.filter((item) => !["staff", "second-hand"].includes(item.key) || ownerRole === "owner");
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-950">
@@ -171,7 +173,7 @@ export function WorkspaceShell({
                 <Link
                   key={item.key}
                   href={shopSlug ? buildShopRoute(shopSlug, item.route) : `/${item.route}`}
-                  className="flex min-w-16 flex-col items-center gap-1 text-xs"
+                  className="flex min-w-0 flex-1 flex-col items-center gap-1 text-xs"
                 >
                   <span
                     className={[

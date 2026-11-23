@@ -1,9 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getWorkspaceData } from "@/lib/workspace/get-workspace-data";
 import { loadInventoryData } from "@/app/inventory/load-inventory-data";
+import { EMPTY_INVOICE_HISTORY, readInvoiceHistoryPage, type InvoiceHistoryPage } from "@/lib/billing/invoice-history";
 
 export type BillingInvoiceSummary = {
   id: string;
+  is_second_hand?: boolean;
   invoice_number: string;
   invoice_date: string;
   customer_name: string;
@@ -52,12 +54,12 @@ export type BillingInvoiceSummary = {
   }>;
 };
 
-export async function loadBillingData(searchParams?: { q?: string; period?: string }) {
-  const workspace = await getWorkspaceData();
-  const inventoryPromise = loadInventoryData(workspace);
+export async function loadBillingData(searchParams?: { q?: string; period?: string }, isSecondHand = false) {
+  const workspace = await getWorkspaceData(isSecondHand ? { requireOwner: true } : undefined);
+  const inventoryPromise = loadInventoryData(workspace, isSecondHand);
   const supabase = await createSupabaseServerClient();
 
-  let invoices: BillingInvoiceSummary[] = [];
+  let invoiceHistory: InvoiceHistoryPage = EMPTY_INVOICE_HISTORY;
   let planEntitlements: Record<string, boolean> | null = null;
 
   const planPromise = workspace.shopEntitlement?.plan_id
@@ -67,83 +69,14 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
     : Promise.resolve({ data: null });
 
   if (workspace.shop) {
-    let query = supabase
-      .from("invoices")
-      .select(`
-        id,
-        invoice_number,
-        invoice_date,
-        customer_name,
-        customer_mobile,
-        billing_address,
-        customer_gst_number,
-        subtotal,
-        tax_total,
-        discount_total,
-        grand_total,
-        payment_method,
-        payment_details,
-        customer_signature_url,
-        invoice_pdf_url,
-        payment_status,
-        notes,
-        shop_name_snapshot,
-        shop_address_snapshot,
-        shop_phone_snapshot,
-        shop_gst_snapshot,
-        invoice_footer_snapshot,
-        invoice_items (
-          id,
-          product_id,
-          variant_id,
-          inventory_item_id,
-          product_name_snapshot,
-          brand_name_snapshot,
-          category_name_snapshot,
-          variant_name_snapshot,
-          identifier_snapshot,
-          quantity,
-          unit_price,
-          tax_rate,
-          discount_amount,
-          line_total
-        )
-      `)
-      .eq("shop_id", workspace.shop.id);
-
-    if (searchParams?.q) {
-      query = query.or(`invoice_number.ilike.%${searchParams.q}%,customer_name.ilike.%${searchParams.q}%,customer_mobile.ilike.%${searchParams.q}%`);
-    }
-
-    if (searchParams?.period) {
-      const now = new Date();
-      let startDate: Date | null = null;
-      
-      switch (searchParams.period) {
-        case 'today':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case 'week':
-          const day = now.getDay() || 7; 
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1);
-          break;
-        case 'month':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-      }
-      
-      if (startDate) {
-        query = query.gte("invoice_date", startDate.toISOString());
-      }
-    }
-
-    query = query.order("invoice_date", { ascending: false }).limit(100);
-
-    const { data } = await query;
-    invoices = (data ?? []).map((invoice) => ({
-      ...invoice,
-      send_ready_pdf_url: invoice.invoice_pdf_url ?? null,
-    }));
+    const period = searchParams?.period;
+    invoiceHistory = await readInvoiceHistoryPage(supabase, {
+      shopId: workspace.shop.id,
+      isSecondHand,
+      search: (searchParams?.q ?? "").trim().slice(0, 200),
+      period: period === "today" || period === "week" || period === "month" ? period : "all",
+      cursor: null,
+    });
   }
 
   const [inventory, { data: plan }] = await Promise.all([inventoryPromise, planPromise]);
@@ -154,7 +87,8 @@ export async function loadBillingData(searchParams?: { q?: string; period?: stri
     products: inventory.products,
     categories: inventory.categories,
     brands: inventory.brands,
-    invoices,
+    invoices: invoiceHistory.invoices,
+    invoiceHistory,
     planEntitlements,
   };
 }

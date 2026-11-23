@@ -15,7 +15,7 @@ type PageProps = {
 
 export default async function BillingPage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const { user, profile, shop, membership, products, invoices, categories, brands, planEntitlements } = await loadBillingData(query);
+  const { user, profile, shop, membership, products, invoiceHistory, categories, brands, planEntitlements } = await loadBillingData(query);
 
   if (shop?.slug) {
     if (!query.shop) {
@@ -45,7 +45,8 @@ export default async function BillingPage({ searchParams }: PageProps) {
       <Suspense fallback={null}>
         <BillingManager
           products={products}
-          invoices={invoices}
+          invoiceHistory={invoiceHistory}
+          shopId={shop?.id ?? ""}
           categories={categories}
           brands={brands}
           shopLogoUrl={shop?.logo_url ?? null}

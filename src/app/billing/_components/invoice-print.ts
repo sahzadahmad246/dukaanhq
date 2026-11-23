@@ -2,8 +2,10 @@
 
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { formatVariantLabelForDisplay } from "@/lib/inventory-labels";
+import { invoiceItemConditionLabel } from "@/lib/billing/invoice-condition";
 
 export type PrintableInvoice = {
+  is_second_hand?: boolean;
   invoice_number: string;
   invoice_date: string;
   customer_name: string;
@@ -349,6 +351,7 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
   }
 
   infoRows.push({ label: "Payment", value: paymentSummary, full: true });
+  if (invoice.is_second_hand) infoRows.push({ label: "Sale type", value: "Used phone", full: true });
   if (invoice.payment_details?.methods?.includes("LOAN")) {
     const loanFields: Array<{ label: string; value: string }> = [];
 
@@ -386,6 +389,7 @@ function buildInvoiceDocData(invoice: PrintableInvoice): InvoiceDocData {
       index: index + 1,
       name: sanitizeForPdf(item.product_name_snapshot),
       meta: [
+        invoiceItemConditionLabel(invoice, item),
         isFreeGift ? "FREE ITEM" : null,
         variantMeta ? sanitizeForPdf(variantMeta) : null,
         ...(item.identifier_snapshot
