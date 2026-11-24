@@ -1,0 +1,9 @@
+{
+  "name": "dukaanhq-new",
+  "private": true,
+  "packageManager": "bun@1.3.6",
+  "workspaces": ["backend"],
+  "scripts": {
+    "check": "bun run --cwd backend check"
+  }
+}

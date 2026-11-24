@@ -1,0 +1,185 @@
+{
+  "recordedAt": "2026-11-23T16:44:04.262Z",
+  "scope": "Local foundation HTTP and synthetic SQL patterns only. NOT authenticated legacy app timings or production speedup claims. Invoice writes and SMS sign-in are not performed.",
+  "environment": {
+    "node": "v24.22.3",
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 5 3500U with Radeon Vega Mobile Gfx",
+    "database": "PGlite 0.5.17, in-memory, single process",
+    "network": "localhost HTTP, no TLS",
+    "warmed": true
+  },
+  "http": [
+    {
+      "concurrency": 1,
+      "requestsPerSecond": 444,
+      "samples": 100,
+      "p50Ms": 2.163,
+      "p95Ms": 2.968,
+      "maxMs": 4.375,
+      "responseBytes": 15,
+      "queryCountPerRequest": 0
+    },
+    {
+      "concurrency": 10,
+      "requestsPerSecond": 1109.4,
+      "samples": 1000,
+      "p50Ms": 5.981,
+      "p95Ms": 12.349,
+      "maxMs": 25.064,
+      "responseBytes": 15,
+      "queryCountPerRequest": 0
+    }
+  ],
+  "datasets": [
+    {
+      "label": "small",
+      "products": 100,
+      "invoices": 300,
+      "measurements": [
+        {
+          "operation": "inventoryWholeListPattern",
+          "samples": 10,
+          "p50Ms": 3.191,
+          "p95Ms": 3.722,
+          "maxMs": 3.722,
+          "queryCount": 1,
+          "rows": 100,
+          "responseBytes": 9885
+        },
+        {
+          "operation": "inventoryFirstPageCandidate",
+          "samples": 10,
+          "p50Ms": 2.021,
+          "p95Ms": 2.323,
+          "maxMs": 2.323,
+          "queryCount": 1,
+          "rows": 50,
+          "responseBytes": 4353
+        },
+        {
+          "operation": "dashboardInvoiceRowsPattern",
+          "samples": 10,
+          "p50Ms": 5.553,
+          "p95Ms": 5.896,
+          "maxMs": 5.896,
+          "queryCount": 1,
+          "rows": 300,
+          "responseBytes": 23293
+        },
+        {
+          "operation": "dashboardAggregateCandidate",
+          "samples": 10,
+          "p50Ms": 1.104,
+          "p95Ms": 1.485,
+          "maxMs": 1.485,
+          "queryCount": 1,
+          "rows": 1,
+          "responseBytes": 39
+        }
+      ]
+    },
+    {
+      "label": "medium",
+      "products": 1000,
+      "invoices": 3000,
+      "measurements": [
+        {
+          "operation": "inventoryWholeListPattern",
+          "samples": 10,
+          "p50Ms": 20.237,
+          "p95Ms": 21.785,
+          "maxMs": 21.785,
+          "queryCount": 1,
+          "rows": 1000,
+          "responseBytes": 100787
+        },
+        {
+          "operation": "inventoryFirstPageCandidate",
+          "samples": 10,
+          "p50Ms": 2.818,
+          "p95Ms": 8.518,
+          "maxMs": 8.518,
+          "queryCount": 1,
+          "rows": 50,
+          "responseBytes": 4453
+        },
+        {
+          "operation": "dashboardInvoiceRowsPattern",
+          "samples": 10,
+          "p50Ms": 35.078,
+          "p95Ms": 37.257,
+          "maxMs": 37.257,
+          "queryCount": 1,
+          "rows": 3000,
+          "responseBytes": 235894
+        },
+        {
+          "operation": "dashboardAggregateCandidate",
+          "samples": 10,
+          "p50Ms": 2.307,
+          "p95Ms": 2.898,
+          "maxMs": 2.898,
+          "queryCount": 1,
+          "rows": 1,
+          "responseBytes": 41
+        }
+      ]
+    },
+    {
+      "label": "large",
+      "products": 10000,
+      "invoices": 30000,
+      "measurements": [
+        {
+          "operation": "inventoryWholeListPattern",
+          "samples": 10,
+          "p50Ms": 152.113,
+          "p95Ms": 175.29,
+          "maxMs": 175.29,
+          "queryCount": 1,
+          "rows": 10000,
+          "responseBytes": 1027789
+        },
+        {
+          "operation": "inventoryFirstPageCandidate",
+          "samples": 10,
+          "p50Ms": 1.467,
+          "p95Ms": 2.474,
+          "maxMs": 2.474,
+          "queryCount": 1,
+          "rows": 50,
+          "responseBytes": 4553
+        },
+        {
+          "operation": "dashboardInvoiceRowsPattern",
+          "samples": 10,
+          "p50Ms": 352.411,
+          "p95Ms": 387.01,
+          "maxMs": 387.01,
+          "queryCount": 1,
+          "rows": 30000,
+          "responseBytes": 2388895
+        },
+        {
+          "operation": "dashboardAggregateCandidate",
+          "samples": 10,
+          "p50Ms": 11.198,
+          "p95Ms": 11.562,
+          "maxMs": 11.562,
+          "queryCount": 1,
+          "rows": 1,
+          "responseBytes": 43
+        }
+      ]
+    }
+  ],
+  "pending": [
+    "Authenticated current sign-in",
+    "Current workspace bootstrap",
+    "Current inventory search",
+    "Current dashboard",
+    "Current bill creation in disposable staging"
+  ]
+}
