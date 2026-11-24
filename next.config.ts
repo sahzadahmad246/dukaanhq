@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
+// Allow server action requests up to 10 MB.
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
